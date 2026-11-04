@@ -1,0 +1,667 @@
+"""Settings: the few options the phone may change, the audit log viewer, backups and diagnostics.
+
+Only an allow-list of non-secret options can be changed from the phone (`ALLOWED_KEYS`). Everything that
+decides who may log in or what may run on the laptop (token, session secret, allowed hosts and origins,
+scripts, apps, shells, the Jarvis folder) stays hand-edited in hub.json and is refused with a 400.
+
+The hub's own config file is found through `ctx.config_path` when the server provides it; otherwise
+through `config.default_path()` (HUB_CONFIG or ~/.laptop-hub/hub.json), and only if that file is the
+same hub's (same login token hash). When no file can be found the change still applies until restart and
+the response says `persisted: false`.
+"""
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import json
+import os
+import platform
+import re
+import shutil
+import sys
+import threading
+import time
+import zipfile
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+import httpx
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, StrictBool
+
+from . import config as cfg
+from .common import Ctx
+
+# ---- what may be changed -------------------------------------------------------------------------------
+
+MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model")
+ALLOWED_KEYS = (*MODEL_KEYS, "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic")
+# Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
+LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
+               "shells", "jarvis_dir")
+SECRET_KEYS = ("ntfy_topic",)   # changes are audited without the value (the topic works like a password)
+
+MODEL_NAME = re.compile(r"\A[A-Za-z0-9._:/-]{1,80}\Z")
+TOPIC = re.compile(r"\A[A-Za-z0-9_-]{8,64}\Z")
+BACKUP_NAME = re.compile(r"\Ahub-backup-\d{8}-\d{6}(?:-\d{1,3})?\.zip\Z")
+KEEP_BACKUPS = 5
+MAX_BACKUP_BYTES = 2 * 1024 ** 3          # refuse to zip more than 2 GiB
+SECRET_SCAN_BYTES = 2 * 1024 * 1024       # files up to this size are checked for the token hash / secret
+MAX_AUDIT_ROWS = 500
+MAX_AUDIT_SCAN_BYTES = 16 * 1024 * 1024   # the viewer never reads further back than this
+AUDIT_CHUNK = 64 * 1024
+MAX_FIELD_CHARS = 500
+OLLAMA_TIMEOUT = 3.0
+
+STARTED = time.time()
+
+
+class PullBody(BaseModel):
+    name: str
+    confirm: StrictBool = False
+
+
+class ModelTestBody(BaseModel):
+    model: str
+
+
+class BackupBody(BaseModel):
+    confirm: StrictBool = False
+
+
+# ---- config helpers ---------------------------------------------------------------------------------------
+
+def _version() -> str:
+    try:
+        from .server import VERSION
+        return str(VERSION)
+    except Exception:  # noqa: BLE001 - the About page must never fail
+        return "unknown"
+
+
+def _clean_name(value: Any, key: str) -> str:
+    if not isinstance(value, str) or not MODEL_NAME.match(value.strip()):
+        raise HTTPException(400, f"{key} must be a model name like qwen3:4b (letters, digits and . _ : / - only).")
+    return value.strip()
+
+
+def _clean_roots(value: Any, key: str, roots: dict[str, str]) -> list[str]:
+    if not isinstance(value, list) or len(value) > 50 or not all(isinstance(v, str) for v in value):
+        raise HTTPException(400, f"{key} must be a list of shared folder names.")
+    out: list[str] = []
+    for name in value:
+        if name not in roots:
+            raise HTTPException(400, f"There is no shared folder called '{name}'.")
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def _clean_ntfy_server(value: Any) -> str:
+    bad = HTTPException(400, "ntfy_server must be an https address like https://ntfy.sh.")
+    if not isinstance(value, str) or len(value) > 200:
+        raise bad
+    url = value.strip()
+    try:
+        parsed = urlparse(url)
+        parsed.port  # noqa: B018 - raises ValueError for a bad port
+    except ValueError:
+        raise bad from None
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.params or any(c.isspace() for c in url)):
+        raise bad
+    return url.rstrip("/")
+
+
+def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
+    """(new values, confirmed). Raises HTTPException 400 for anything outside the allow-list or invalid."""
+    if not isinstance(body, dict) or not body:
+        raise HTTPException(400, "Send the settings you want to change.")
+    confirm = body.get("confirm") is True
+    unknown = sorted(k for k in body if k not in ALLOWED_KEYS and k != "confirm")
+    if unknown:
+        locked = [k for k in unknown if k in LOCKED_KEYS]
+        if locked:
+            raise HTTPException(400, f"{', '.join(locked)} can only be changed by editing hub.json on the laptop.")
+        raise HTTPException(400, f"Unknown setting: {', '.join(unknown)[:80]}.")
+    changes: dict[str, Any] = {}
+    for key in ALLOWED_KEYS:
+        if key not in body:
+            continue
+        value = body[key]
+        if key in MODEL_KEYS:
+            changes[key] = _clean_name(value, key)
+        elif key in ("kb_roots", "writable_roots"):
+            changes[key] = _clean_roots(value, key, config.roots)
+        elif key == "ntfy_server":
+            changes[key] = _clean_ntfy_server(value)
+        elif key == "ntfy_topic":
+            if not isinstance(value, str) or (value and not TOPIC.match(value)):
+                raise HTTPException(400, "ntfy_topic must be 8 to 64 letters, digits, - or _ (or empty to switch push off).")
+            changes[key] = value
+    if not changes:
+        raise HTTPException(400, "Send the settings you want to change.")
+    added = [r for r in changes.get("writable_roots", []) if r not in config.writable_roots]
+    for name in added:
+        if not Path(config.roots[name]).is_dir():
+            raise HTTPException(400, f"The folder for '{name}' does not exist on the laptop.")
+    return changes, confirm
+
+
+# ---- the audit log tail -------------------------------------------------------------------------------------
+
+def tail_lines(path: Path, end: int | None = None, max_bytes: int = MAX_AUDIT_SCAN_BYTES, chunk: int = AUDIT_CHUNK):
+    """Lines of a file from the end backwards as (offset, bytes), reading chunks, never the whole file.
+
+    `end` starts the scan before that byte offset (a cursor). Stops after `max_bytes` have been read; a line cut
+    by that limit is dropped. Sets `.truncated` on the returned generator-owner via the final item (see caller)."""
+    try:
+        handle = open(path, "rb")
+    except OSError:
+        return
+    with handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        pos = size if end is None else max(0, min(end, size))
+        scanned, carry = 0, b""
+        while pos > 0 and scanned < max_bytes:
+            step = min(chunk, pos, max_bytes - scanned)
+            pos -= step
+            scanned += step
+            handle.seek(pos)
+            data = handle.read(step) + carry
+            parts = data.split(b"\n")
+            carry = parts[0]
+            offset = pos + len(carry) + 1
+            starts = []
+            for part in parts[1:]:
+                starts.append((offset, part))
+                offset += len(part) + 1
+            for item in reversed(starts):
+                yield item
+        if pos == 0 and carry:
+            yield (0, carry)
+        elif pos > 0:
+            yield (-1, b"")   # marker: stopped because of the read limit
+
+
+def read_audit(path: Path | None, limit: int, q: str = "", event: str = "", before: str = "") -> dict:
+    limit = max(1, min(int(limit), MAX_AUDIT_ROWS))
+    if path is None:
+        return {"rows": [], "count": 0, "next_before": None, "truncated": False}
+    needle = q.strip().lower()
+    cursor: int | None = None
+    before_time = ""
+    if before:
+        if before.isdigit():
+            cursor = int(before)
+        else:
+            before_time = before[:40]
+    rows: list[dict] = []
+    truncated = False
+    more = False
+    for offset, raw in tail_lines(path, cursor):
+        if offset == -1:
+            truncated = True
+            break
+        text = raw.decode("utf-8", errors="replace").strip()
+        if not text:
+            continue
+        try:
+            row = json.loads(text)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or not isinstance(row.get("event"), str):
+            continue
+        if event and row["event"] != event:
+            continue
+        if before_time and not str(row.get("time", "")) < before_time:
+            continue
+        if needle and needle not in text.lower():
+            continue
+        if len(rows) >= limit:
+            more = True
+            break
+        row = {k: (v[:MAX_FIELD_CHARS] + "..." if isinstance(v, str) and len(v) > MAX_FIELD_CHARS else v)
+               for k, v in row.items()}
+        row["pos"] = offset
+        rows.append(row)
+    return {"rows": rows, "count": len(rows), "next_before": rows[-1]["pos"] if (rows and more) else None,
+            "truncated": truncated}
+
+
+def audit_events(path: Path | None) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    if path is None:
+        return counts
+    for offset, raw in tail_lines(path, max_bytes=2 * 1024 * 1024):
+        if offset == -1:
+            break
+        try:
+            row = json.loads(raw.decode("utf-8", errors="replace"))
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("event"), str) and len(row["event"]) <= 80:
+            counts[row["event"]] = counts.get(row["event"], 0) + 1
+    return counts
+
+
+# ---- backups ------------------------------------------------------------------------------------------------
+
+def make_backup(config, audit_path: Path | None, config_path: Path | None, now=time.time) -> dict:
+    """Zip the data folder, the notes folder and the audit log. hub.json and anything holding the token hash or
+    session secret is left out. Keeps the newest KEEP_BACKUPS archives."""
+    data = config.data_path()
+    out_dir = data / "backups"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_resolved = out_dir.resolve()
+    markers = [m.encode() for m in (config.token_hash, config.session_secret.hex()) if m]
+    skip_paths = set()
+    for p in (config_path, cfg.default_path()):
+        try:
+            if p:
+                skip_paths.add(Path(p).resolve())
+        except OSError:
+            pass
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now()))
+    name, n = f"hub-backup-{stamp}.zip", 1
+    while (out_dir / name).exists():
+        n += 1
+        name = f"hub-backup-{stamp}-{n}.zip"
+    part = out_dir / (name + ".part")
+    seen: set[Path] = set()
+    stats = {"files": 0, "excluded": 0, "bytes": 0}
+
+    def add(archive: zipfile.ZipFile, path: Path, arcname: str) -> None:
+        try:
+            if path.is_symlink() or not path.is_file():
+                return
+            resolved = path.resolve()
+            if resolved in seen:
+                return
+            seen.add(resolved)
+            if (path.name == "hub.json" or resolved in skip_paths or path.suffix in (".tmp", ".part")):
+                stats["excluded"] += 1
+                return
+            size = path.stat().st_size
+            if size <= SECRET_SCAN_BYTES:
+                blob = path.read_bytes()
+                if any(m in blob for m in markers):
+                    stats["excluded"] += 1
+                    return
+            stats["bytes"] += size
+            if stats["bytes"] > MAX_BACKUP_BYTES:
+                raise HTTPException(413, "Your data is over 2 GB, which is too big for a one-tap backup.")
+            archive.write(path, arcname)
+            stats["files"] += 1
+        except OSError:
+            return   # a file that vanished or is locked is skipped
+
+    try:
+        with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as archive:
+            for label, base in (("data", data), ("notes", Path(config.notes_dir))):
+                if not base.is_dir():
+                    continue
+                for folder, dirs, names in os.walk(base, followlinks=False):
+                    dirs[:] = [d for d in dirs
+                               if not Path(folder, d).is_symlink() and Path(folder, d).resolve() != out_resolved]
+                    for fname in names:
+                        full = Path(folder, fname)
+                        add(archive, full, f"{label}/{full.relative_to(base).as_posix()}")
+            if audit_path:
+                add(archive, Path(audit_path), "audit/audit.log")
+            archive.writestr("MANIFEST.json", json.dumps(
+                {"created": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now())), "files": stats["files"],
+                 "version": _version()}))
+        os.replace(part, out_dir / name)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    for old in list_backups(out_dir)[KEEP_BACKUPS:]:
+        try:
+            (out_dir / old["name"]).unlink()
+        except OSError:
+            pass
+    return {"name": name, "size": (out_dir / name).stat().st_size, "files": stats["files"],
+            "excluded": stats["excluded"]}
+
+
+def list_backups(out_dir: Path) -> list[dict]:
+    """Newest first."""
+    found = []
+    if out_dir.is_dir():
+        for path in out_dir.iterdir():
+            if BACKUP_NAME.match(path.name) and path.is_file() and not path.is_symlink():
+                st = path.stat()
+                found.append((st.st_mtime_ns, path.name, st))
+    found.sort(reverse=True)
+    return [{"name": name, "size": st.st_size,
+             "created": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(st.st_mtime))} for _, name, st in found]
+
+
+# ---- the router -------------------------------------------------------------------------------------------------
+
+def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) -> APIRouter:
+    """`transport` lets tests answer Ollama's requests without a network."""
+    router = APIRouter(prefix="/api/settings", dependencies=[Depends(ctx.need_auth)])
+    config = ctx.config
+    lock = threading.Lock()
+    backup_lock = threading.Lock()
+
+    def audit_path() -> Path | None:
+        return Path(ctx.audit_path) if getattr(ctx, "audit_path", None) else None
+
+    def config_file() -> Path | None:
+        """Where hub.json is, or None when we cannot be sure it is this hub's file."""
+        given = getattr(ctx, "config_path", None)
+        if given:
+            return Path(given)
+        guess = cfg.default_path()
+        try:
+            if guess.is_file() and cfg.load(guess).token_hash == config.token_hash:
+                return guess
+        except cfg.ConfigError:
+            pass
+        return None
+
+    def ollama(timeout: Any = OLLAMA_TIMEOUT) -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=config.ollama_host, timeout=timeout, transport=transport)
+
+    async def installed_models() -> tuple[bool, list[dict], str]:
+        """(reachable, models, a friendly problem sentence)."""
+        try:
+            async with ollama() as client:
+                response = await client.get("/api/tags")
+            response.raise_for_status()
+            items = response.json().get("models") or []
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError, AttributeError):
+            return False, [], "Ollama is not running. Start the Ollama app on the laptop."
+        models = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("model") or item.get("name") or "")
+            if not name:
+                continue
+            details = item.get("details") if isinstance(item.get("details"), dict) else {}
+            models.append({"name": name, "size_mb": round(int(item.get("size") or 0) / 1e6),
+                           "modified": str(item.get("modified_at") or "")[:19],
+                           "params": str(details.get("parameter_size") or "")})
+        return True, models, ""
+
+    def snapshot() -> dict:
+        return {
+            "chat_model": config.chat_model, "assistant_model": config.assistant_model,
+            "claude_model": config.claude_model, "whisper_model": config.whisper_model,
+            "embed_model": config.embed_model,
+            "kb_roots": list(config.kb_roots), "writable_roots": list(config.writable_roots),
+            "roots": [{"name": n, "exists": Path(p).is_dir()} for n, p in config.roots.items()],
+            "ntfy_server": config.ntfy_server, "ntfy_topic_set": bool(config.ntfy_topic),
+            "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
+            "shells": list(config.shell_table()), "apps": list(config.apps), "scripts": list(config.scripts),
+            "has_claude_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "version": _version(), "data_dir_exists": config.data_path().is_dir(),
+            "platform": sys.platform, "locked": list(LOCKED_KEYS), "editable": list(ALLOWED_KEYS),
+        }
+
+    async def full_snapshot() -> dict:
+        info = snapshot()
+        reachable, models, _ = await installed_models()
+        info["ollama"] = {"reachable": reachable, "models": [m["name"] for m in models]}
+        info["config_persistable"] = config_file() is not None
+        return info
+
+    # ---- settings ----------------------------------------------------------------------------------------------
+
+    @router.get("")
+    @router.get("/")
+    async def get_settings():
+        return await full_snapshot()
+
+    @router.patch("")
+    @router.patch("/")
+    async def patch_settings(body: Any = Body(...)):
+        changes, confirmed = validate_patch(config, body)
+        added = [r for r in changes.get("writable_roots", []) if r not in config.writable_roots]
+        if added and not confirmed:
+            raise HTTPException(409, f"Letting the phone change files in {', '.join(added)} needs your OK. "
+                                     "Confirm to continue.")
+        persisted, note = False, ""
+        with lock:
+            old = {k: getattr(config, k) for k in changes}
+            path = config_file()
+            if path is not None:
+                try:
+                    disk = cfg.load(path)
+                    for key, value in changes.items():
+                        setattr(disk, key, value)
+                    cfg.save(disk, path)
+                    persisted = True
+                except cfg.ConfigError:
+                    note = "The settings file on the laptop could not be read, so this change lasts until the hub restarts."
+                except OSError:
+                    note = "The settings file could not be written, so this change lasts until the hub restarts."
+            else:
+                note = "The settings file could not be found, so this change lasts until the hub restarts."
+            for key, value in changes.items():
+                setattr(config, key, value)
+        shown = {k: ({"changed": True} if k in SECRET_KEYS else {"old": old[k], "new": changes[k]})
+                 for k in changes if old[k] != changes[k]}
+        ctx.audit("settings_change", changes=shown, persisted=persisted)
+        info = await full_snapshot()
+        info["persisted"] = persisted
+        if note:
+            info["note"] = note
+        return info
+
+    # ---- models --------------------------------------------------------------------------------------------------
+
+    @router.get("/models")
+    async def list_models():
+        reachable, models, problem = await installed_models()
+        names = {m["name"] for m in models}
+
+        def has(wanted: str) -> bool:
+            return wanted in names or f"{wanted}:latest" in names
+
+        configured = {key: {"name": getattr(config, key), "installed": has(getattr(config, key)) if reachable else None}
+                      for key in ("chat_model", "embed_model")}
+        out = {"reachable": reachable, "models": models, "configured": configured}
+        if problem:
+            out["error"] = problem
+        return out
+
+    @router.post("/models/pull")
+    async def pull_model(body: PullBody):
+        name = body.name.strip()
+        if not MODEL_NAME.match(name):
+            raise HTTPException(400, "That is not a model name. Use something like qwen3:4b.")
+        if not body.confirm:
+            raise HTTPException(409, f"Downloading {name} can take several GB and a while. Confirm to start.")
+        ctx.audit("model_pull", name=name)
+
+        async def events():
+            ok = False
+            try:
+                async with ollama(httpx.Timeout(None, connect=OLLAMA_TIMEOUT)) as client:
+                    async with client.stream("POST", "/api/pull",
+                                             json={"model": name, "name": name, "stream": True}) as response:
+                        if response.status_code >= 400:
+                            yield {"error": f"Ollama could not download {name} (it answered {response.status_code})."}
+                        else:
+                            async for line in response.aiter_lines():
+                                if not line.strip():
+                                    continue
+                                try:
+                                    item = json.loads(line)
+                                except ValueError:
+                                    continue
+                                if not isinstance(item, dict):
+                                    continue
+                                if item.get("error"):
+                                    yield {"error": str(item["error"])[:300]}
+                                    break
+                                total, done = item.get("total"), item.get("completed")
+                                event = {"status": str(item.get("status", ""))[:80]}
+                                if isinstance(total, int) and isinstance(done, int) and total > 0:
+                                    event["percent"] = round(min(done / total, 1.0) * 100, 1)
+                                yield event
+                                if event["status"] == "success":
+                                    ok = True
+            except (httpx.HTTPError, httpx.InvalidURL):
+                yield {"error": "Ollama is not running. Start the Ollama app on the laptop."}
+            ctx.audit("model_pull_done", name=name, ok=ok)
+
+        async def stream():
+            async for event in events():
+                yield f"data: {json.dumps(event)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+    @router.post("/models/test")
+    async def test_model(body: ModelTestBody):
+        name = body.model.strip()
+        if not MODEL_NAME.match(name):
+            raise HTTPException(400, "That is not a model name. Use something like qwen3:4b.")
+        started = time.perf_counter()
+        try:
+            async with ollama(60.0) as client:
+                response = await client.post("/api/generate", json={
+                    "model": name, "prompt": "Reply with the single word: ready", "stream": False,
+                    "options": {"num_predict": 8}})
+            if response.status_code == 404:
+                return {"ok": False, "model": name, "error": f"{name} is not installed. Download it first."}
+            response.raise_for_status()
+            reply = str(response.json().get("response", "")).strip()
+        except httpx.TimeoutException:
+            return {"ok": False, "model": name, "error": "The model took over a minute to answer."}
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError):
+            return {"ok": False, "model": name, "error": "Ollama is not running or could not answer."}
+        return {"ok": True, "model": name, "latency_ms": round((time.perf_counter() - started) * 1000),
+                "reply": reply[:80]}
+
+    # ---- diagnostics ------------------------------------------------------------------------------------------------
+
+    def writable_dir(path: Path) -> bool:
+        probe = path
+        while not probe.exists() and probe != probe.parent:
+            probe = probe.parent
+        return probe.is_dir() and os.access(probe, os.W_OK)
+
+    def local_checks() -> list[dict]:
+        out: list[dict] = []
+
+        def check(name: str, good: bool, detail: str, fix: str = "", required: bool = True) -> None:
+            out.append({"name": name, "ok": bool(good), "detail": detail, "fix": "" if good else fix,
+                        "level": "ok" if good else ("fail" if required else "warn")})
+
+        path = config_file()
+        check("Settings file", path is not None, "hub.json found." if path else "hub.json was not found by the settings page.",
+              "Start the hub with `python -m hub serve` so it knows its settings file.", required=False)
+        for name, folder in config.roots.items():
+            check(f"Folder {name}", Path(folder).is_dir(), "Folder found." if Path(folder).is_dir() else "Folder is missing.",
+                  f"Create the folder or fix roots.{name} in hub.json.")
+        check("Notes folder", writable_dir(Path(config.notes_dir)), "Notes can be saved.", "Make sure notes_dir exists and is writable.")
+        data = config.data_path()
+        check("Data folder", writable_dir(data), "History and settings can be saved.",
+              "Make sure data_dir exists and is writable.")
+        ap = audit_path()
+        if ap is not None:
+            check("Audit log", writable_dir(ap.parent), "The audit log can be written.", "Make sure the audit log folder is writable.")
+        try:
+            free = shutil.disk_usage(data if data.exists() else Path.home()).free / 1e9
+            check("Disk space", free >= 1, f"{free:.1f} GB free.", "Free up some space on the laptop disk.", required=False)
+        except OSError:
+            pass
+        check("Voice notes (faster-whisper)", importlib.util.find_spec("faster_whisper") is not None,
+              "faster-whisper installed.", "pip install -r requirements-voice.txt", required=False)
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        check("Claude key", has_key, "ANTHROPIC_API_KEY is set." if has_key else "ANTHROPIC_API_KEY is not set.",
+              "Set ANTHROPIC_API_KEY on the laptop, or choose the local model.", required=False)
+        for name, argv in config.shell_table().items():
+            found = shutil.which(argv[0]) is not None
+            check(f"Shell {name}", found, f"{argv[0]} found." if found else f"{argv[0]} not found.",
+                  "Install it or fix shells in hub.json.", required=False)
+        if sys.platform == "win32":
+            has_pty = importlib.util.find_spec("winpty") is not None
+            check("Windows terminal (pywinpty)", has_pty, "pywinpty installed.", "pip install pywinpty")
+        has_ts = shutil.which("tailscale") is not None
+        check("Tailscale", has_ts, "tailscale found." if has_ts else "tailscale not found.",
+              "Install Tailscale (tailscale.com/download) for HTTPS and remote access.", required=False)
+        if (config.jarvis_dir or "").strip():
+            ok = (Path(config.jarvis_dir) / "jarvis.py").is_file()
+            check("Jarvis folder", ok, "jarvis.py found." if ok else "jarvis.py not found in the Jarvis folder.",
+                  "Point jarvis_dir in hub.json at your jarvis-voice-assistant folder.", required=False)
+        return out
+
+    @router.get("/diagnostics")
+    async def diagnostics():
+        checks = await asyncio.to_thread(local_checks)
+        reachable, models, problem = await installed_models()
+        names = {m["name"] for m in models}
+        extra = [{"name": "Ollama", "ok": reachable,
+                  "detail": f"Running, {len(models)} model{'s' if len(models) != 1 else ''}." if reachable else problem,
+                  "fix": "" if reachable else "Start the Ollama app (needed for Explain, Ask and tags).",
+                  "level": "ok" if reachable else "fail"}]
+        if reachable:
+            for label, wanted, required in (("Chat model", config.chat_model, True), ("Search model", config.embed_model, False)):
+                have = wanted in names or f"{wanted}:latest" in names
+                extra.append({"name": label, "ok": have, "detail": f"{wanted} is installed." if have else f"{wanted} is missing.",
+                              "fix": "" if have else f"Download it in Settings, or run: ollama pull {wanted}",
+                              "level": "ok" if have else ("fail" if required else "warn")})
+        return [checks[0], *extra, *checks[1:]] if checks else extra
+
+    # ---- audit viewer --------------------------------------------------------------------------------------------------
+
+    @router.get("/audit")
+    async def audit_view(limit: int = Query(100, ge=1, le=10000), q: str = Query("", max_length=200),
+                         event: str = Query("", max_length=80), before: str = Query("", max_length=40)):
+        return await asyncio.to_thread(read_audit, audit_path(), min(limit, MAX_AUDIT_ROWS), q, event, before)
+
+    @router.get("/audit/events")
+    async def audit_event_names():
+        counts = await asyncio.to_thread(audit_events, audit_path())
+        return {"events": sorted(counts), "counts": counts}
+
+    # ---- backups ------------------------------------------------------------------------------------------------------------
+
+    @router.post("/backup")
+    async def create_backup(body: BackupBody):
+        if not body.confirm:
+            raise HTTPException(409, "A backup copies your notes and history into one file on the laptop. Confirm to continue.")
+        if not backup_lock.acquire(blocking=False):
+            raise HTTPException(409, "A backup is already running.")
+        try:
+            result = await asyncio.to_thread(make_backup, config, audit_path(), config_file())
+        except OSError:
+            raise HTTPException(500, "The backup could not be written. Check there is free space on the laptop.") from None
+        finally:
+            backup_lock.release()
+        ctx.audit("backup_create", name=result["name"], size=result["size"], files=result["files"])
+        return result
+
+    @router.get("/backups")
+    def backups():
+        return {"backups": list_backups(config.data_path() / "backups")}
+
+    @router.get("/backups/{name}")
+    def download_backup(name: str):
+        if not BACKUP_NAME.match(name):
+            raise HTTPException(400, "That is not a backup name.")
+        path = config.data_path() / "backups" / name
+        if not path.is_file() or path.is_symlink():
+            raise HTTPException(404, "No such backup.")
+        ctx.audit("backup_download", name=name)
+        return FileResponse(path, media_type="application/zip", filename=name, content_disposition_type="attachment")
+
+    # ---- about ---------------------------------------------------------------------------------------------------------------
+
+    @router.get("/about")
+    def about():
+        return {"version": _version(), "uptime_s": int(time.time() - STARTED),
+                "python": platform.python_version(), "platform": platform.platform()}
+
+    return router

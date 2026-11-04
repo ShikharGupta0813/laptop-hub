@@ -1,0 +1,6 @@
+# Optional: the Screen feature (see the screen on the phone, and control it when you switch control on).
+# The hub starts without these; the Screen page just says what is missing.
+mss>=9.0.1               # fast screen capture
+pillow>=10.3.0           # resize and JPEG-encode the pictures
+pyautogui>=0.9.54        # mouse and keyboard (only used after you tap "Enable control")
+pygetwindow>=0.0.9; sys_platform == "win32"   # list and focus windows (Windows only)
