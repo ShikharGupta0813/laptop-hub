@@ -27,7 +27,10 @@
 #view-terminal .term-dot[data-state="connecting"] { background: var(--warn); }
 #view-terminal .term-dot[data-state="disconnected"] { background: var(--bad); }
 #view-terminal .term-status-text { font-weight: 600; flex: none; }
-#view-terminal .term-status-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-terminal .term-status-detail {
+  min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  line-clamp: 2; overflow-wrap: anywhere;
+}
 #view-terminal .term-status-detail.is-error { color: var(--bad); }
 
 #view-terminal .term-screen {

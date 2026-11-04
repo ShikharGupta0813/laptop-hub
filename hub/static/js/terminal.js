@@ -129,6 +129,13 @@ export function init(container, ctx) {
     term.write(`\r\n\x1b[${sgr}m${clean(text)}\x1b[0m\r\n`);
   }
 
+  // Tell the person something short: a toast, and the status line as a backup that always stays visible.
+  function tell(message) {
+    ctx.toast(message);
+    statusDetail.classList.remove("is-error");
+    statusDetail.textContent = message;
+  }
+
   // ---------- socket ----------
   function dims() {
     const rows = term && term.rows > 1 ? term.rows : 24;
@@ -324,18 +331,18 @@ export function init(container, ctx) {
   const sendSequence = (seq) => sendInput(seq);
 
   async function doPaste() {
-    if (state !== "connected") { ctx.toast("Not connected. Press Reconnect first."); return; }
+    if (state !== "connected") { tell("Not connected. Press Reconnect first."); return; }
     try {
       if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error("no clipboard API");
       const text = await navigator.clipboard.readText();
-      if (!text) { ctx.toast("The clipboard is empty."); return; }
+      if (!text) { tell("The clipboard is empty."); return; }
       term.paste(text);
       term.focus();
     } catch (error) {
       pastePanel.hidden = false;
       pasteBox.value = "";
       pasteBox.focus();
-      ctx.toast(ctx.secure ? "Clipboard access was blocked. Paste into the box instead."
+      tell(ctx.secure ? "Clipboard access was blocked. Paste into the box instead."
         : "Clipboard needs HTTPS here. Paste into the box instead.");
       layoutSoon();
     }
@@ -355,7 +362,7 @@ export function init(container, ctx) {
       text = lines.join("\n").replace(/\s+$/, "");
       whole = true;
     }
-    if (!text) { ctx.toast("Nothing to copy."); return; }
+    if (!text) { tell("Nothing to copy."); return; }
     try {
       await navigator.clipboard.writeText(text);
     } catch (_) {
@@ -366,9 +373,9 @@ export function init(container, ctx) {
       let ok = false;
       try { ok = document.execCommand("copy"); } catch (__) { ok = false; }
       area.remove();
-      if (!ok) { ctx.toast("The browser blocked copying."); return; }
+      if (!ok) { tell("The browser blocked copying."); return; }
     }
-    ctx.toast(whole ? "Nothing was selected, so the visible screen was copied." : "Copied the selection.");
+    tell(whole ? "Nothing was selected, so the visible screen was copied." : "Copied the selection.");
   }
 
   function makeKey(label, aria, onPress, opts = {}) {
@@ -535,7 +542,7 @@ export function init(container, ctx) {
       shellsLoaded = true;
     } catch (error) {
       shellsLoaded = false;
-      ctx.toast(error.message || "Could not load the list of shells.");
+      tell(error.message || "Could not load the list of shells.");
     }
     select.textContent = "";
     if (!shells.length) {

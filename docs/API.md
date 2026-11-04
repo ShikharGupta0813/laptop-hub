@@ -67,3 +67,53 @@ sentence the UI can show as is.
 `python -m hub.devserver --port 8799` serves everything above with fake models and temporary
 sample folders (roots `docs`, `notes`, `inbox`), login token `devtoken`, and a fake
 assistant that sends a list_dir tool and, when the message contains "run", an approval.
+
+---
+
+# Work, Learn and English (added in round 2)
+
+Every route below needs the login cookie. A feature that isn't set up returns
+`503 {"detail": "<what to do>"}`. Every AI route takes `provider: "local" | "claude"` (default
+`local`); Claude needs `ANTHROPIC_API_KEY` on the laptop or returns `503` saying so.
+Each backend module also exports `DEV_FAKES: dict[str, str]`: a unique substring of each of its
+system prompts mapped to a valid canned model reply, which `hub.devserver` uses so the UI can be
+developed without a real model.
+
+## Work
+
+- `GET /api/work/status` → `{asana:{configured,user|null}, calendar:{configured}, email:{configured,address|null}, chat:{configured,spaces:[name]}}`
+- `GET /api/work/asana/tasks?filter=today|overdue|upcoming|all` → `{tasks:[{gid,name,due_on|null,project|null,completed,permalink_url}], counts:{overdue,today,upcoming}}` (my open tasks, soonest due first)
+- `GET /api/work/asana/tasks/{gid}` → `{task:{gid,name,due_on,project,completed,permalink_url,notes,subtasks:[{gid,name,completed}],comments:[{author,text,created_at}]}}`
+- `POST /api/work/asana/tasks/{gid}/comment` `{text}` → `{ok:true}` · `POST /api/work/asana/tasks/{gid}/complete` → `{ok:true}`
+- `GET /api/work/calendar?day=YYYY-MM-DD&days=1` → `{meetings:[{title,start,end,all_day,link,platform}]}` (ISO times; `platform` is zoom|meet|teams|"")
+- `GET /api/work/email/contacts` → `{contacts:[{name,address}]}`
+- `POST /api/work/email/ai-draft` `{instruction, provider}` → `{to_hint, subject, body}` (AI writes a draft from "write a mail to Rahul about the demo")
+- `POST /api/work/email/draft` `{to, subject, body}` → `{draft_id, to, subject, body}` (resolves a contact name or address; nothing is sent)
+- `POST /api/work/email/send` `{draft_id}` → `{ok:true,to}` sends exactly the stored draft, once
+- `GET /api/work/chat/spaces` → `{spaces:[name]}` · `POST /api/work/chat/send` `{space,text}` → `{ok:true}`
+
+## Learn: sources, chat, quizzes
+
+A **source** is one of: `{type:"note", id}`, `{type:"file", root, path}`, `{type:"text", text}`,
+`{type:"url", url}` (public http/https only; private and loopback addresses are refused),
+`{type:"topic", topic}` (the model's own knowledge).
+
+- `GET /api/learn/topics` → `{topics:[{id,title}]}` suggested generic topics
+- `POST /api/learn/source/preview` `{source}` → `{title, chars, excerpt}`
+- `POST /api/learn/chat` `{session_id, source|null, message, provider}` → SSE `data: {"t":"..."}` … `data: [DONE]` (errors as `{"error":"..."}`); keeps history per `session_id`; `POST /api/learn/chat/reset` `{session_id}`
+- `POST /api/learn/quiz` `{source, count:3..15, kinds:["mcq","short"], difficulty:"easy|medium|hard", provider}` → `{quiz_id, title, questions:[{id,kind:"mcq|short",question,choices|null,topic}]}` (answers stay on the server)
+- `POST /api/learn/quiz/{quiz_id}/answer` `{question_id, answer, provider}` (mcq: choice index number; short: text) → `{correct:bool, score:0..1, correct_answer, explanation, feedback|null}`
+- `POST /api/learn/quiz/{quiz_id}/finish` → `{quiz_id,title,score,total,percent,weak_topics:[..],missed:[{question,your_answer,correct_answer,explanation,topic}]}` and the result is saved
+- `GET /api/learn/history` → `{quizzes:[{quiz_id,title,date,percent,source_label}], streak_days}`
+
+## English coach
+
+- `GET /api/english/scenarios` → `{scenarios:[{id,title,description}]}`
+- `GET /api/english/overview` → `{streak_days, sessions_total, last_session|null, trend:[{date,wpm,fillers_per_100,overall}], vocab_due:int}`
+- `POST /api/english/practice-prompt` `{scenario, provider}` → `{prompt}` (what to talk about)
+- `POST /api/english/speak` multipart `file` (audio) + fields `scenario?`, `prompt?`, `provider?` → `{transcript, duration_s, words, wpm, fillers:{count,items:{um:3}}, long_pauses, low_confidence_words:[{word,prob}], feedback:{summary, grammar:[{said,better,why}], vocabulary:[{said,better}], rewrite, scores:{fluency,grammar,vocabulary,overall}, tips:[..]}}` (scores 1-10; saved to history; `low_confidence_words` is a hint about unclear pronunciation, not a grade)
+- `POST /api/english/roleplay` `{session_id, scenario, message|null, provider}` → SSE: `{"t":".."}` pieces of the partner's reply, then `{"correction":{"said","better","why"}|null}`, then `[DONE]`; `message:null` makes the partner open the conversation; `POST /api/english/roleplay/reset` `{session_id}`
+- `POST /api/english/correct` `{text, provider}` → `{corrected, changes:[{from,to,why}], tone_note}`
+- `GET /api/english/vocab/today` → `{new_words:[{id,word,meaning,example,level}], due:[{id,word,meaning,example,level}]}`
+- `POST /api/english/vocab/add` `{word, provider}` → `{id,word,meaning,example,level}`
+- `POST /api/english/vocab/{id}/review` `{rating:"again|hard|good|easy"}` → `{next_due}`
