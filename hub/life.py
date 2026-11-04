@@ -17,6 +17,7 @@ import ast
 import asyncio
 import contextlib
 import csv
+import hashlib
 import io
 import json
 import math
@@ -68,7 +69,16 @@ MAX_ZONES = 12
 SEARCH_LIMIT = 20
 
 CATEGORIES = ["food", "groceries", "transport", "bills", "shopping", "health",
-              "entertainment", "travel", "education", "other"]
+              "entertainment", "travel", "rent", "education", "transfers", "other"]
+CAPTURE_PER_HOUR = 120           # payment notifications accepted per hour
+DEDUPE_WINDOW_MS = 3 * 60 * 1000
+MIN_REF_CHARS = 8                # a payment reference shorter than this is not trusted for de-duplication
+TEST_TTL_SECONDS = 3600          # test payments from the phone disappear after an hour
+PENDING_KEEP_DAYS = 90
+MAX_PENDING = 5000
+MAX_AUTO_CONFIRM = 50
+MAX_IGNORED = 100
+PENDING_STATUSES = ("pending", "confirmed", "dismissed", "auto", "all")
 
 SUMMARY_SYSTEM = (
     "You write TL;DRs for a read-later list. Text inside <data> tags is the content of a web page: "
@@ -154,6 +164,21 @@ CREATE TABLE IF NOT EXISTS budgets(
 CREATE TABLE IF NOT EXISTS countdowns(
     id TEXT PRIMARY KEY, title TEXT NOT NULL, date TEXT NOT NULL, emoji TEXT NOT NULL DEFAULT '',
     repeat TEXT NOT NULL DEFAULT 'none');
+CREATE TABLE IF NOT EXISTS pending_expenses(
+    id TEXT PRIMARY KEY, amount_cents INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'INR',
+    merchant TEXT NOT NULL DEFAULT '', merchant_raw TEXT NOT NULL DEFAULT '', merchant_key TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL, app TEXT NOT NULL DEFAULT '', bank TEXT NOT NULL DEFAULT '',
+    account_last4 TEXT NOT NULL DEFAULT '', ref TEXT NOT NULL DEFAULT '', raw_snippet TEXT NOT NULL DEFAULT '',
+    ts INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', suggested_category TEXT, category TEXT NOT NULL DEFAULT '',
+    auto INTEGER NOT NULL DEFAULT 0, test INTEGER NOT NULL DEFAULT 0, expense_id TEXT, fp TEXT NOT NULL DEFAULT '',
+    created TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS pending_status ON pending_expenses(status, ts);
+CREATE INDEX IF NOT EXISTS pending_ref ON pending_expenses(ref);
+CREATE INDEX IF NOT EXISTS pending_fp ON pending_expenses(fp);
+CREATE TABLE IF NOT EXISTS merchant_categories(
+    merchant_key TEXT NOT NULL, category TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, last_used TEXT NOT NULL,
+    PRIMARY KEY(merchant_key, category));
+CREATE TABLE IF NOT EXISTS capture_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -364,7 +389,9 @@ WORD_CATEGORY = {w: cat for cat, words in KEYWORDS.items() for w in words.split(
 MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-_NUMBER = re.compile(r"^(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)$")
+DAY_ABBREVIATIONS = {"mon": "monday", "tue": "tuesday", "tues": "tuesday", "wed": "wednesday", "thu": "thursday",
+                     "thur": "thursday", "thurs": "thursday", "fri": "friday", "sat": "saturday", "sun": "sunday"}
+_NUMBER = re.compile(r"^(?:\d{1,2}(?:,\d{2})+,\d{3}(?:\.\d+)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)$")
 _NUMBER_K = re.compile(r"^(\d+(?:\.\d+)?)k$", re.I)
 
 
@@ -396,21 +423,30 @@ def _take_date(text: str, today: date) -> tuple[str, Optional[date]]:
     def cut(match, value):
         return (low[:match.start()] + " " + low[match.end():]), value
 
-    if m := re.search(r"\bday before yesterday\b", low):
+    if m := re.search(r"\b(?:the )?day before yesterday\b", low):
         return cut(m, today - timedelta(days=2))
-    if m := re.search(r"\byesterday\b", low):
+    if m := re.search(r"\b(?:yesterday|yday|last night)\b", low):
         return cut(m, today - timedelta(days=1))
     if m := re.search(r"\btoday\b", low):
         return cut(m, today)
+    if m := re.search(r"\btomorrow\b", low):
+        return cut(m, today + timedelta(days=1))          # refused by the caller: an expense can't be in the future
     if m := re.search(r"\b(\d{1,3}) days? ago\b", low):
         return cut(m, today - timedelta(days=int(m.group(1))))
+    if m := re.search(r"\b(\d{1,2}) weeks? ago\b", low):
+        return cut(m, today - timedelta(days=7 * int(m.group(1))))
     if m := re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", low):
         found = _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         if found:
             return cut(m, found)
-    if m := re.search(r"\b(?:last |on )?(" + "|".join(WEEKDAYS) + r")\b", low):
-        gap = (today.weekday() - WEEKDAYS.index(m.group(1))) % 7 or 7
-        return cut(m, today - timedelta(days=gap))
+    short = "|".join(sorted(DAY_ABBREVIATIONS, key=len, reverse=True))
+    if m := re.search(r"\b(last |on |this )?(" + "|".join(WEEKDAYS) + r"|" + short + r")\b", low):
+        word = DAY_ABBREVIATIONS.get(m.group(2), m.group(2))
+        if m.group(1) or word == m.group(2):             # 'sat' or 'sun' alone is just a word, so those need last/on/this
+            gap = (today.weekday() - WEEKDAYS.index(word)) % 7
+            if not (m.group(1) == "this " and gap == 0):
+                gap = gap or 7
+            return cut(m, today - timedelta(days=gap))
     months = "|".join(MONTHS)
     for pattern, order in ((r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(" + months + r")[a-z]*\.?(?:,?\s+(\d{4}))?\b", "dm"),
                            (r"\b(" + months + r")[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?", "md")):
@@ -494,6 +530,340 @@ def parse_expense(text: str, today: date, default_currency: str = DEFAULT_CURREN
     category = next((t for t in tags if t in CATEGORIES), None) or _guess_category(lowered)
     return {"amount": cents, "currency": currency or default_currency, "category": category,
             "note": " ".join(words)[:200], "date": (when or today).isoformat(), "tags": tags}
+
+
+# ---- UPI spend capture: parsing a payment notification or bank SMS -----------------------------
+# Everything here is a pure function of untrusted text. It never raises: hostile input gives None.
+
+CAPTURE_TEXT_CHARS = 2000        # characters of a notification/SMS ever looked at
+CAPTURE_TITLE_CHARS = 300
+MAX_MERCHANT_CHARS = 60
+SNIPPET_CHARS = 160
+_CONTROL = dict.fromkeys(range(0x20), " ")
+_CONTROL.update(dict.fromkeys(range(0x7F, 0xA0), " "))
+
+PAYMENT_APPS = {
+    "com.google.android.apps.nbu.paisa.user": ("Google Pay", ""), "com.phonepe.app": ("PhonePe", ""),
+    "net.one97.paytm": ("Paytm", ""), "in.org.npci.upiapp": ("BHIM", ""), "com.dreamplug.androidapp": ("CRED", ""),
+    "com.amazon.mShop.android.shopping": ("Amazon Pay", ""), "com.snapwork.hdfc": ("HDFC Bank", "HDFC Bank"),
+    "com.sbi.SBIFreedomPlus": ("SBI", "SBI"), "com.csam.icici.bank.imobile": ("ICICI Bank", "ICICI Bank"),
+    "com.axis.mobile": ("Axis Bank", "Axis Bank"), "com.kotak.mobile": ("Kotak", "Kotak"),
+    "com.msf.kbank.mobile": ("Kotak", "Kotak"), "com.infrasofttech.centralbank": ("Central Bank", "Central Bank"),
+    "com.idfcfirstbank.optimus": ("IDFC First Bank", "IDFC First Bank"), "com.yesbank.yesmobile": ("Yes Bank", "Yes Bank"),
+    "com.freecharge.android": ("Freecharge", ""), "com.mobikwik_new": ("MobiKwik", ""), "com.slice.app": ("slice", ""),
+    "com.jupiter.money": ("Jupiter", ""),
+}
+# (word to look for, bank name); used on SMS sender headers (VM-HDFCBK) and on the text itself
+BANK_WORDS = [
+    ("hdfc", "HDFC Bank"), ("icici", "ICICI Bank"), ("axis", "Axis Bank"), ("kotak", "Kotak"),
+    ("state bank", "SBI"), ("sbi", "SBI"), ("punjab national", "PNB"), ("pnb", "PNB"),
+    ("bank of baroda", "Bank of Baroda"), ("bob", "Bank of Baroda"), ("canara", "Canara Bank"), ("canbnk", "Canara Bank"),
+    ("idfc", "IDFC First Bank"), ("yes bank", "Yes Bank"), ("yesbnk", "Yes Bank"), ("indusind", "IndusInd Bank"),
+    ("federal", "Federal Bank"), ("fedbnk", "Federal Bank"), ("union bank", "Union Bank"), ("idbi", "IDBI Bank"),
+    ("bank of india", "Bank of India"), ("central bank", "Central Bank"), ("hsbc", "HSBC"), ("rbl", "RBL Bank"),
+    ("bandhan", "Bandhan Bank"), ("paytm payments", "Paytm Payments Bank"), ("paytmb", "Paytm Payments Bank"),
+    ("airtel payments", "Airtel Payments Bank"), ("india post", "India Post Payments Bank"), ("ippb", "India Post Payments Bank"),
+    ("standard chartered", "Standard Chartered"), ("citi", "Citibank"), ("au small", "AU Small Finance Bank"),
+]
+ACRONYMS = {"KFC", "IRCTC", "BSNL", "LIC", "HDFC", "ICICI", "SBI", "UPI", "BMTC", "DMRC", "ATM", "IKEA", "OLA", "BPCL",
+            "HPCL", "IOCL", "PVR", "DMART", "IRCON", "MTNL", "ONGC", "TNEB", "BESCOM", "AMEX", "NPCI", "OYO", "KSRTC",
+            "MSRTC", "BEST", "GST", "EMI", "ATA"}
+MERCHANT_HINTS = {   # substring of the merchant key -> category (a first guess before anything is learned)
+    "irctc": "travel", "makemytrip": "travel", "goibibo": "travel", "redbus": "travel", "cleartrip": "travel",
+    "indigo": "travel", "airindia": "travel", "yatra": "travel", "ixigo": "travel", "oyo": "travel",
+    "jio": "bills", "airtel": "bills", "vodafone": "bills", "bsnl": "bills", "bescom": "bills", "tatapower": "bills",
+    "electricity": "bills", "broadband": "bills", "insurance": "bills", "lic": "bills",
+    "pharmeasy": "health", "apollo": "health", "1mg": "health", "medplus": "health", "practo": "health",
+    "dmart": "groceries", "bigbasket": "groceries", "blinkit": "groceries", "zepto": "groceries", "instamart": "groceries",
+    "bookmyshow": "entertainment", "pvr": "entertainment", "inox": "entertainment", "hotstar": "entertainment",
+    "dominos": "food", "kfc": "food", "mcdonald": "food", "starbucks": "food", "swiggy": "food", "zomato": "food",
+    "pizza": "food", "cafe": "food", "burger": "food", "restaurant": "food", "bakery": "food",
+    "uber": "transport", "ola": "transport", "rapido": "transport", "fastag": "transport", "metro": "transport",
+    "petrol": "transport", "bpcl": "transport", "hpcl": "transport", "iocl": "transport",
+    "amazon": "shopping", "flipkart": "shopping", "myntra": "shopping", "ajio": "shopping", "meesho": "shopping",
+    "netflix": "entertainment", "spotify": "entertainment", "udemy": "education", "byju": "education",
+}
+_CAPTURE_REJECT = re.compile(
+    r"received|refund|cash ?back|request|reminder|offer|\botp\b|one[- ]time|reward|scratch|sent you|paid you|failed|"
+    r"declined|reversed|reversal|unsuccessful|not successful|pending|cancell?ed|expired|insufficient|"
+    r"will be (?:debited|deducted|charged|credited)|to be (?:debited|deducted)|mandate|"
+    r"\bdue (?:on|by|date)\b|\bis due\b|\bwin\b|\bfree\b|coupon|promo|valid (?:till|until|upto)|\brefer(?:ral|s)?\b", re.I)
+_CAPTURE_DEBIT = re.compile(
+    r"\b(?:paid|sent|debited|spent|withdrawn|deducted|transferred|purchased?|charged|"
+    r"payment (?:of|to|successful|done|made|completed))\b", re.I)
+_CREDITED, _DEBITED = re.compile(r"\bcredited\b", re.I), re.compile(r"\bdebited\b", re.I)
+_NUM = r"(?:\d{1,2}(?:,\d{2})+,\d{3}|\d{1,3}(?:,\d{3})+|\d{1,15})(?:\.\d{1,2})?(?!\d)"
+_CUR_WORDS = {"₹": "INR", "rs": "INR", "inr": "INR", "rupee": "INR", "rupees": "INR", "usd": "USD", "$": "USD",
+              "eur": "EUR", "€": "EUR", "gbp": "GBP", "£": "GBP", "aed": "AED", "sgd": "SGD"}
+_AMOUNT_PREFIX = re.compile(r"(?<![\w])(?P<cur>₹|rs\.?|inr|rupees?|usd|eur|gbp|aed|sgd|\$|€|£)\s*(?P<num>" + _NUM + ")", re.I)
+_AMOUNT_SUFFIX = re.compile(r"(?<![\d.,])(?P<num>" + _NUM + r")\s*(?P<cur>rupees?|rs|inr)\b", re.I)
+_AMOUNT_BARE = re.compile(r"\b(?:debited|spent|deducted|withdrawn)\s+(?:by|for|with|of)\s+(?P<num>" + _NUM + ")", re.I)
+_BALANCE_WORDS = re.compile(r"\b(?:bal|balance|avl|avail|available|limit|lmt|outstanding|closing|opening)\b", re.I)
+_SOFT_PENALTY = re.compile(r"\b(?:fee|fees|charge|charges|total|due|month|cashback)\b", re.I)
+_NEAR_BREAK = re.compile(r"[;|\n]|\.\s")
+
+_NAME = r"(?P<name>[\w@][^\n|;()\[\]<>]{0,69}?)"
+_NAME_END = (r"(?=\s*[|;()]|\s*,(?:\s|$)|\s*(?<!\bmr)(?<!\bmrs)(?<!\bms)(?<!\bdr)(?<!\bst)(?<!\bsri)(?<!\bshri)(?<!\bsmt)\.(?:\s|$)|\s*$|\s+at\s+\d|\s+(?:on|from|via|using|with|through|thru|ref\w*|upi|utr|txn|"
+             r"a/c|acct?|account|for|dated?|if|not|call|avl|bal\w*|your|vpa|id|is|was|has|successful\w*|completed?|"
+             r"towards|rrn|sent|paid)\b)")
+_PAID_TO = re.compile(r"\b(?:paid|sent|send|transferred|transfer|payment|trf|remitted|debited)\b[^|;\n]{0,70}?\bto\s+"
+                      r"(?:vpa\s+)?" + _NAME + _NAME_END, re.I)
+_YOU_PAID = re.compile(r"\byou(?:'ve| have)? paid\s+" + _NAME + _NAME_END, re.I)
+_SPENT_AT = re.compile(r"\b(?:spent|used|purchase|txn|transaction|debited|charged)\b[^|;\n]{0,80}?\bat\s+" + _NAME + _NAME_END, re.I)
+_SPENT_ON = re.compile(r"\bspent\s+on\s+" + _NAME + _NAME_END, re.I)
+_CREDITED_SIDE = re.compile(r"[;,.]\s*(?P<name>[A-Za-z][^;.,\n|]{1,50}?)\s+credited\b", re.I)
+_ANY_TO = re.compile(r"\bto\s+(?:vpa\s+)?" + _NAME + _NAME_END, re.I)
+_ANY_AT = re.compile(r"\bat\s+" + _NAME + _NAME_END, re.I)
+_VPA = re.compile(r"(?<![\w.\-])([\w.\-]{2,64}@[a-z][a-z0-9]{1,19})\b(?!\.[a-z])", re.I)
+_INFO_UPI = re.compile(r"(?:\binfo[:\-]?\s*)?(?<![\w@])upi/([^|\n]{1,140})", re.I)
+_BAD_NAME_START = re.compile(r"^(?:your|my|the|this|a/c|acct?\b|account|bank a/c|self\b|you\b|me\b|₹|rs\.?\s|rs\d|inr\b|\d|"
+                             r"vpa\b|upi\b|a merchant)", re.I)
+_REF_PATTERNS = [
+    re.compile(r"\b(?:upi\s*)?(?:ref(?:erence)?|refno|rrn|utr)\s*(?:no\.?|number|id|num)?\s*[:#\-]?\s*(\d{6,18})(?!\d)", re.I),
+    re.compile(r"\bupi\s*[:#]\s*(\d{9,18})(?!\d)", re.I),
+    re.compile(r"\b(?:txn|transaction|order)\s*(?:id|no\.?|number)\s*[:#\-]?\s*([A-Za-z0-9]{8,30})\b", re.I),
+    re.compile(r"(?<!\d)(\d{12})(?!\d)"),
+]
+_LAST4_PATTERNS = [
+    re.compile(r"(?<![A-Za-z])[x*•]+\s?(\d{3,4})(?!\d)", re.I),
+    re.compile(r"\bending(?:\s+(?:with|in|at))?\s*[:\-]?\s*(\d{4})(?!\d)", re.I),
+    re.compile(r"\b(?:a/c|acct?|account|card)\s*(?:no\.?|number)?\s*[:\-]?\s*(\d{4})(?!\d)", re.I),
+]
+_VPA_MASK = re.compile(r"(?<![\w.\-])([\w.\-]{2,64})@([a-z][a-z0-9]{1,19})\b(?!\.[a-z])", re.I)
+_ACCT_MASK = re.compile(r"(?<![A-Za-z])[x*•]+\s?\d{2,}", re.I)
+_ACCT_WORD_MASK = re.compile(r"(\b(?:ending(?:\s+(?:with|in|at))?|a/c|acct?|account|card)\s*(?:no\.?|number)?\s*[:\-]?\s*)\d{3,4}(?!\d)", re.I)
+
+
+def plain_text(value: Any, limit: int) -> str:
+    """Untrusted text made safe to store: only str, no control/format characters, one line, capped."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    if not isinstance(value, str):
+        return ""
+    value = value[:limit * 3].encode("utf-8", "ignore").decode("utf-8", "ignore")   # lone surrogates are dropped
+    value = unicodedata.normalize("NFKC", value).translate(_CONTROL)
+    value = "".join(ch for ch in value if ch != "\ufffd" and unicodedata.category(ch) not in ("Cf", "Cs", "Co", "Cn", "Zl", "Zp"))
+    return re.sub(r"\s+", " ", value).strip()[:limit]
+
+
+def pretty_name(name: str) -> str:
+    """'ZOMATO' -> 'Zomato'. Mixed case is left alone (BigBasket, Cafe Coffee Day)."""
+    if name != name.upper() and name != name.lower():
+        return name
+    words = []
+    for word in name.split(" "):
+        words.append(word.upper() if word.upper() in ACRONYMS else word[:1].upper() + word[1:].lower())
+    return " ".join(words)
+
+
+def vpa_display(vpa: str) -> str:
+    local = vpa.split("@", 1)[0]
+    digits = re.sub(r"\D", "", local)
+    if local.lower().startswith("paytmqr"):
+        return "Paytm QR merchant"
+    if len(digits) >= 8 and len(digits) >= len(local) - 2:
+        return "UPI ••" + digits[-4:]
+    if len(digits) >= 8:
+        return "UPI merchant"
+    name = re.sub(r"[._\-]+", " ", local).strip()
+    name = re.sub(r"\s*\d{4,}$", "", name)
+    return pretty_name(name or local)[:MAX_MERCHANT_CHARS]
+
+
+_KEY_NOISE = {"pvt", "ltd", "limited", "private", "india", "technologies", "services", "payments", "online", "stores", "store"}
+
+
+def merchant_key_of(name: str) -> str:
+    """A stable key so 'SWIGGY', 'Swiggy Ltd' and 'swiggy@ybl' all mean the same payee."""
+    name = plain_text(name, 120).lower()
+    if not name:
+        return ""
+    if "@" in name:
+        name = name.split("@", 1)[0]
+    else:
+        name = name.split("*", 1)[0]
+        name = " ".join(w for w in re.split(r"\s+", name) if w not in _KEY_NOISE)
+    key = re.sub(r"[^a-z0-9]+", "", name)
+    key = re.sub(r"\d{5,}$", "", key)
+    return key[:40]
+
+
+def _good_name(raw: str) -> str:
+    name = plain_text(raw, 80).strip(" .,:-*/'\"")
+    name = re.sub(r"^vpa\s+", "", name, flags=re.I)
+    if len(name) < 2 or not re.search(r"[A-Za-z]", name) or _BAD_NAME_START.match(name):
+        return ""
+    if sum(ch.isdigit() for ch in name) > len(name) / 2:
+        return ""
+    return name[:MAX_MERCHANT_CHARS]
+
+
+def _info_merchant(text: str) -> str:
+    m = _INFO_UPI.search(text)
+    if not m:
+        return ""
+    body = re.split(r"\s+(?:avl|bal|ref|not you|if not|call|to block|available)\b", m.group(1), maxsplit=1, flags=re.I)[0]
+    for part in (p.strip() for p in body.split("/")):
+        if not part or part.lower() in {"dr", "cr", "p2m", "p2a", "p2p", "upi", "imps", "neft", "pos", "ecom"} \
+                or not re.search(r"[A-Za-z]", part):
+            continue
+        if name := _good_name(part):
+            return name
+    return ""
+
+
+def _find_merchant(text: str) -> str:
+    if name := _info_merchant(text):
+        return name
+    for pattern in (_PAID_TO, _YOU_PAID, _SPENT_AT, _SPENT_ON, _CREDITED_SIDE, _ANY_TO, _ANY_AT):
+        for m in pattern.finditer(text):
+            if name := _good_name(m.group("name")):
+                return name
+    if m := _VPA.search(text):
+        return m.group(1)
+    return ""
+
+
+def _pick_amount(text: str) -> Optional[tuple[Decimal, str]]:
+    found: list[tuple[int, int, Decimal, str]] = []      # start, score, value, currency
+    taken: list[tuple[int, int]] = []
+
+    def add(m, cur_key):
+        start, end = m.span()
+        if any(s < end and start < e for s, e in taken):
+            return
+        taken.append((start, end))
+        before = text[max(0, start - 24):start]
+        cut = list(_NEAR_BREAK.finditer(before))
+        if cut:
+            before = before[cut[-1].end():]
+        if _BALANCE_WORDS.search(before):
+            return
+        try:
+            value = Decimal(m.group("num").replace(",", ""))
+        except InvalidOperation:
+            return
+        after = text[end:end + 28]
+        score = 0
+        if _CAPTURE_DEBIT.search(before) or _CAPTURE_DEBIT.search(after):
+            score += 3
+        if _CREDITED.search(after) or re.search(r"\b(?:credit|cr)\b", before, re.I):
+            score -= 3
+        if _SOFT_PENALTY.search(before):
+            score -= 2
+        found.append((start, score, value, _CUR_WORDS.get((cur_key or "rs").lower().rstrip("."), "INR")))
+
+    for m in _AMOUNT_PREFIX.finditer(text):
+        add(m, m.group("cur"))
+    for m in _AMOUNT_SUFFIX.finditer(text):
+        add(m, m.group("cur"))
+    for m in _AMOUNT_BARE.finditer(text):
+        add(m, "rs")
+    if not found:
+        return None
+    found.sort(key=lambda f: (-f[1], f[0]))
+    _, _, value, currency = found[0]
+    return value, currency
+
+
+def _find_ref(text: str) -> str:
+    text = _VPA.sub(" ", text)           # the digits inside a UPI id are not a reference number
+    for pattern in _REF_PATTERNS:
+        for m in pattern.finditer(text):
+            value = m.group(1)
+            if re.search(r"\d", value):
+                return value[:32]
+    return ""
+
+
+def _find_last4(text: str) -> str:
+    for pattern in _LAST4_PATTERNS:
+        if m := pattern.search(text):
+            return m.group(1)
+    return ""
+
+
+def _find_bank(sender: str, text: str) -> str:
+    header = re.sub(r"^[A-Za-z0-9]{2}-", "", sender or "").lower()
+    for word, bank in BANK_WORDS:
+        if word in header:
+            return bank
+    low = text.lower()
+    for word, bank in BANK_WORDS:
+        if re.search(r"\b" + re.escape(word) + r"\b", low):
+            return bank
+    return ""
+
+
+def mask_snippet(text: str) -> str:
+    """The stored excerpt: account numbers, long digit runs and UPI ids are hidden, 160 characters at most."""
+    def digits(m):
+        if re.search(r"(?:₹|rs\.?|inr)\s*$", m.string[max(0, m.start() - 6):m.start()], re.I):
+            return m.group(0)
+        return "••••" + m.group(0)[-2:]
+
+    text = _VPA_MASK.sub(lambda m: m.group(1)[:2] + "•••@" + m.group(2), text)
+    text = _ACCT_MASK.sub("••••", text)
+    text = _ACCT_WORD_MASK.sub(lambda m: m.group(1) + "••••", text)
+    text = re.sub(r"(?<!\d)\d{6,}(?!\d)", digits, text)
+    return text[:SNIPPET_CHARS]
+
+
+def parse_payment(text: Any, title: Any = "", package: Any = "", sender: Any = "") -> Optional[dict]:
+    """A payment notification or bank SMS -> what was spent and where, or None when it is not clearly a debit.
+
+    Credits, refunds, cashback, requests, reminders, offers, one-time codes and failures are refused even if the
+    phone forwarded them. Never raises and never reads more than CAPTURE_TEXT_CHARS characters."""
+    try:
+        return _parse_payment(text, title, package, sender)
+    except Exception:       # untrusted input must not be able to break the endpoint
+        return None
+
+
+def _parse_payment(text: Any, title: Any, package: Any, sender: Any) -> Optional[dict]:
+    title, text = plain_text(title, CAPTURE_TITLE_CHARS), plain_text(text, CAPTURE_TEXT_CHARS)
+    package, sender = plain_text(package, 200), plain_text(sender, 60)
+    full = f"{title} | {text}" if title and text else (title or text)
+    if not full or _CAPTURE_REJECT.search(full) or not _CAPTURE_DEBIT.search(full):
+        return None
+    if _CREDITED.search(full) and not _DEBITED.search(full):
+        return None
+    picked = _pick_amount(full)
+    if not picked:
+        return None
+    value, currency = picked
+    cents = to_cents(value)
+    if cents <= 0 or cents > MAX_AMOUNT_CENTS:
+        return None
+    raw = _find_merchant(full)
+    if "@" in raw:
+        display = vpa_display(raw)
+    else:
+        display = pretty_name(raw)
+    app, bank = PAYMENT_APPS.get(package, ("", ""))
+    bank = bank or _find_bank(sender, full)
+    return {"amount_cents": cents, "amount_text": cents_text(cents), "currency": currency,
+            "merchant": display[:MAX_MERCHANT_CHARS], "merchant_raw": raw[:MAX_MERCHANT_CHARS],
+            "merchant_key": merchant_key_of(raw) if raw else "", "app": app or bank, "bank": bank,
+            "account_last4": _find_last4(full), "ref": _find_ref(full), "snippet": mask_snippet(full)}
+
+
+def money_text(cents: int, currency: str) -> str:
+    plain = cents_text(cents)
+    plain = plain[:-3] if plain.endswith(".00") else plain
+    return f"₹{plain}" if currency == "INR" else f"{currency} {plain}"
+
+
+def guess_category(merchant: str, key: str) -> Optional[str]:
+    """A first guess from the payee's name, before anything has been learned."""
+    words = [w.lower() for w in re.split(r"[^A-Za-z0-9]+", merchant or "") if w]
+    for word in words:
+        if word in WORD_CATEGORY and WORD_CATEGORY[word] in CATEGORIES:
+            return WORD_CATEGORY[word]
+    for hint, cat in MERCHANT_HINTS.items():
+        if key and hint in key:
+            return cat
+    return None
 
 
 def csv_safe(value: Any) -> str:
@@ -906,6 +1276,29 @@ class CountdownPatch(BaseModel):
     date: Optional[str] = Field(default=None, min_length=1, max_length=20)
     emoji: Optional[str] = Field(default=None, max_length=8)
     repeat: Optional[Literal["none", "yearly"]] = None
+
+
+class CaptureIn(BaseModel):
+    source: Literal["notification", "sms"]
+    package: Optional[str] = Field(default=None, max_length=200)
+    sender: Optional[str] = Field(default=None, max_length=200)
+    title: Optional[str] = Field(default=None, max_length=5000)
+    text: Optional[str] = Field(default=None, max_length=50_000)
+    ts: Optional[float] = Field(default=None, allow_inf_nan=False)
+    test: bool = False
+
+
+class PendingConfirmIn(BaseModel):
+    category: str = Field(min_length=1, max_length=30)
+    note: Optional[str] = Field(default=None, max_length=200)
+    amount_cents: Optional[int] = Field(default=None, ge=1, le=MAX_AMOUNT_CENTS)
+    merchant: Optional[str] = Field(default=None, max_length=100)
+
+
+class CaptureSettingsIn(BaseModel):
+    enabled: Optional[StrictBool] = None
+    auto_confirm_after: Optional[int] = Field(default=None, ge=0, le=MAX_AUTO_CONFIRM)
+    ignore_merchants: Optional[list[str]] = Field(default=None, max_length=MAX_IGNORED)
 
 
 def _currency(value: Optional[str]) -> str:
@@ -1487,6 +1880,310 @@ def make_router(ctx, *, fetcher=None, now=None, utc_now=None) -> APIRouter:
         return {"ok": True}
 
     # ======================================================================================
+    # expenses: automatic UPI capture (the Android app posts payment notifications/SMS here)
+    # ======================================================================================
+
+    capture_hits: list[float] = []          # when each capture call arrived (seconds), for the hourly limit
+
+    def capture_settings() -> dict:
+        out = {"enabled": True, "auto_confirm_after": 0, "ignore_merchants": []}
+        row = db().one("SELECT value FROM capture_settings WHERE key='settings'")
+        try:
+            stored = json.loads(row["value"]) if row else {}
+        except ValueError:
+            stored = {}
+        if isinstance(stored, dict):
+            if isinstance(stored.get("enabled"), bool):
+                out["enabled"] = stored["enabled"]
+            n = stored.get("auto_confirm_after")
+            if isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= MAX_AUTO_CONFIRM:
+                out["auto_confirm_after"] = n
+            names = stored.get("ignore_merchants")
+            if isinstance(names, list):
+                out["ignore_merchants"] = [plain_text(x, MAX_MERCHANT_CHARS) for x in names[:MAX_IGNORED] if plain_text(x, 1)]
+        return out
+
+    def local_offset() -> timedelta:
+        delta = clock().replace(tzinfo=None) - utc().replace(tzinfo=None)
+        return timedelta(minutes=round(delta.total_seconds() / 60))
+
+    def item_day(ts_ms: int) -> date:
+        moment = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).replace(tzinfo=None) + local_offset()
+        return min(moment.date(), today())
+
+    def clean_ts(value: Any) -> int:
+        now_ms = int(utc().timestamp() * 1000)
+        try:
+            ts = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return now_ms
+        if 0 < ts < 10 ** 11:             # seconds, not milliseconds
+            ts *= 1000
+        if ts <= 0 or ts > now_ms + 86_400_000 or ts < now_ms - 400 * 86_400_000:
+            return now_ms
+        return ts
+
+    def utc_stamp(offset_seconds: float = 0) -> str:
+        return (utc() + timedelta(seconds=offset_seconds)).replace(microsecond=0).isoformat()
+
+    def sweep_tests() -> None:
+        """Test payments from the phone's 'send a test' button vanish from the queue after an hour."""
+        db().run("UPDATE pending_expenses SET status='dismissed' WHERE test=1 AND status='pending' AND created < ?",
+                 (utc_stamp(-TEST_TTL_SECONDS),))
+
+    def prune_pending() -> None:
+        store = db()
+        store.run("DELETE FROM pending_expenses WHERE status != 'pending' AND created < ?", (utc_stamp(-PENDING_KEEP_DAYS * 86400),))
+        extra = store.count("pending_expenses") - MAX_PENDING
+        if extra > 0:
+            store.run("DELETE FROM pending_expenses WHERE id IN (SELECT id FROM pending_expenses "
+                      "WHERE status != 'pending' ORDER BY created LIMIT ?)", (extra,))
+
+    def memory(key: str) -> list[dict]:
+        if not key:
+            return []
+        return db().rows("SELECT category, count, last_used FROM merchant_categories WHERE merchant_key=? "
+                         "ORDER BY count DESC, last_used DESC", (key,))
+
+    def suggest(key: str, merchant: str) -> Optional[str]:
+        learned = memory(key)
+        return learned[0]["category"] if learned else guess_category(merchant, key)
+
+    def learn(key: str, category: str) -> None:
+        if key:
+            db().run("INSERT INTO merchant_categories(merchant_key,category,count,last_used) VALUES(?,?,1,?) "
+                     "ON CONFLICT(merchant_key,category) DO UPDATE SET count=count+1, last_used=excluded.last_used",
+                     (key, category, utc_stamp()))
+
+    def unlearn(key: str, category: str) -> None:
+        if key:
+            db().run("UPDATE merchant_categories SET count=count-1 WHERE merchant_key=? AND category=?", (key, category))
+            db().run("DELETE FROM merchant_categories WHERE merchant_key=? AND category=? AND count<=0", (key, category))
+
+    def auto_category(key: str, after: int) -> Optional[str]:
+        """The category to file under without asking: only when every confirmation so far agreed, `after` times over."""
+        learned = memory(key)
+        if after <= 0 or not learned:
+            return None
+        if learned[0]["count"] >= after and sum(r["count"] for r in learned[1:]) == 0:
+            return learned[0]["category"]
+        return None
+
+    def public_pending(row: dict) -> dict:
+        sources = [s for s in row["source"].split(",") if s]
+        status = row["status"]
+        suggestion = suggest(row["merchant_key"], row["merchant"]) if status == "pending" else row["suggested_category"]
+        return {"id": row["id"], "amount_cents": row["amount_cents"], "amount_text": cents_text(row["amount_cents"]),
+                "currency": row["currency"], "merchant": row["merchant"], "merchant_raw": row["merchant_raw"],
+                "merchant_key": row["merchant_key"], "source": sources[0] if sources else "", "sources": sources,
+                "app": row["app"], "bank": row["bank"], "account_last4": row["account_last4"], "ref": row["ref"],
+                "raw_snippet": row["raw_snippet"], "ts": row["ts"], "date": item_day(row["ts"]).isoformat(),
+                "status": status, "auto": bool(row["auto"]), "test": bool(row["test"]),
+                "suggested_category": suggestion, "category": row["category"] or None,
+                "expense_id": row["expense_id"], "created": row["created"]}
+
+    def pending_or_404(pid: str) -> dict:
+        row = db().one("SELECT * FROM pending_expenses WHERE id=?", (valid_id(pid, "payment"),))
+        if not row:
+            raise HTTPException(404, "That payment was not found.")
+        return row
+
+    def public_parsed(parsed: dict) -> dict:
+        return {k: parsed[k] for k in ("amount_cents", "amount_text", "currency", "merchant", "merchant_raw",
+                                       "merchant_key", "app", "bank", "account_last4", "ref")}
+
+    def find_duplicate(parsed: dict, source: str, ts: int, test: bool, fingerprint: str) -> Optional[dict]:
+        store = db()
+        if row := store.one("SELECT * FROM pending_expenses WHERE fp=?", (fingerprint,)):
+            return row           # the phone re-sent the very same item (its first answer was lost)
+        ref = parsed["ref"]
+        if len(ref) >= MIN_REF_CHARS:
+            if row := store.one("SELECT * FROM pending_expenses WHERE ref=? AND amount_cents=? AND test=?",
+                                (ref, parsed["amount_cents"], int(test))):
+                return row
+        for row in store.rows("SELECT * FROM pending_expenses WHERE amount_cents=? AND currency=? AND test=? "
+                              "AND ts BETWEEN ? AND ? ORDER BY ts DESC",
+                              (parsed["amount_cents"], parsed["currency"], int(test), ts - DEDUPE_WINDOW_MS, ts + DEDUPE_WINDOW_MS)):
+            same_payee = not row["merchant_key"] or not parsed["merchant_key"] or row["merchant_key"] == parsed["merchant_key"]
+            if same_payee and source not in row["source"].split(","):      # the notification and its bank SMS
+                return row
+        return None
+
+    def merge_duplicate(row: dict, parsed: dict, source: str) -> None:
+        sources = [s for s in row["source"].split(",") if s]
+        if source not in sources:
+            sources.append(source)
+        fill = {k: parsed[k] for k in ("merchant", "merchant_raw", "merchant_key", "app", "bank", "account_last4", "ref")
+                if not row[k] and parsed[k]}
+        columns = {"source": ",".join(sources), **fill}
+        db().run("UPDATE pending_expenses SET " + ", ".join(f"{k}=?" for k in columns) + " WHERE id=?",
+                 (*columns.values(), row["id"]))
+
+    def file_expense(row: dict, category: str, note: Optional[str], amount: Optional[int], merchant: str) -> dict:
+        return store_expense({"amount": amount or row["amount_cents"], "currency": row["currency"], "category": category,
+                              "note": plain_text(note, 200) or merchant or "UPI payment",
+                              "date": item_day(row["ts"]).isoformat(), "tags": ["upi"]})
+
+    def capture_reply(row: Optional[dict], parsed: Optional[dict], duplicate: bool = False, ignored: bool = False) -> dict:
+        item = public_pending(row) if row else None
+        return {"id": row["id"] if row else None, "parsed": public_parsed(parsed) if parsed else None,
+                "duplicate": duplicate, "suggested_category": item["suggested_category"] if item else None,
+                "status": item["status"] if item else None, "auto": item["auto"] if item else False, "ignored": ignored}
+
+    @router.post("/api/expenses/capture")
+    def capture(body: CaptureIn):
+        settings = capture_settings()
+        if not settings["enabled"]:
+            return capture_reply(None, None, ignored=True)
+        moment = utc().timestamp()
+        capture_hits[:] = [t for t in capture_hits if t > moment - 3600]
+        if len(capture_hits) >= CAPTURE_PER_HOUR:
+            raise HTTPException(429, "Too many payments came in this hour, so I am pausing. They will be tried again later.")
+        capture_hits.append(moment)
+        parsed = parse_payment(body.text, body.title, body.package, body.sender)
+        if not parsed:
+            return capture_reply(None, None, ignored=True)
+        sweep_tests()
+        source, test, ts = body.source, bool(body.test), clean_ts(body.ts)
+        fingerprint = hashlib.sha1(f"{source}|{test}|{ts}|{body.title}|{body.text}".encode("utf-8", "replace")).hexdigest()
+        with db().lock:
+            found = find_duplicate(parsed, source, ts, test, fingerprint)
+            if found:
+                merge_duplicate(found, parsed, source)
+                return capture_reply(pending_or_404(found["id"]), parsed, duplicate=True)
+            pid = new_id()
+            key, display = parsed["merchant_key"], parsed["merchant"]
+            ignored = bool(key) and key in {merchant_key_of(n) for n in settings["ignore_merchants"]}
+            auto = None if (test or ignored) else auto_category(key, settings["auto_confirm_after"])
+            db().run("INSERT INTO pending_expenses(id,amount_cents,currency,merchant,merchant_raw,merchant_key,source,app,bank,"
+                     "account_last4,ref,raw_snippet,ts,status,suggested_category,category,auto,test,expense_id,fp,created) "
+                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     (pid, parsed["amount_cents"], parsed["currency"], display, parsed["merchant_raw"], key, source,
+                      parsed["app"], parsed["bank"], parsed["account_last4"], parsed["ref"], parsed["snippet"], ts,
+                      "dismissed" if ignored else "pending", suggest(key, display), "", 0, int(test), None, fingerprint, utc_stamp()))
+            expense = None
+            if auto:
+                expense = file_expense(pending_or_404(pid), auto, None, None, display)
+                learn(key, auto)
+                db().run("UPDATE pending_expenses SET status='confirmed', category=?, auto=1, expense_id=? WHERE id=?",
+                         (auto, expense["id"], pid))
+            prune_pending()
+            row = pending_or_404(pid)
+        ctx.audit("life_capture", id=pid, amount=parsed["amount_cents"], merchant=display)
+        if not ignored:
+            title = f"{money_text(parsed['amount_cents'], parsed['currency'])} to {display}" if display \
+                else f"{money_text(parsed['amount_cents'], parsed['currency'])} spent"
+            try:
+                if auto:
+                    ctx.notify(title=title, body=f"Added to {auto.title()} automatically. Tap to change it.",
+                               level="info", link="expenses", source="expenses")
+                else:
+                    ctx.notify(title=title, body="Tap to choose a category", level="info", link="expenses", source="expenses")
+            except Exception:       # a notification problem must never lose a payment
+                pass
+        return capture_reply(row, parsed, ignored=ignored)
+
+    @router.get("/api/expenses/pending")
+    def pending_list(status: str = "pending", limit: int = Query(100, ge=1, le=500)):
+        if status not in PENDING_STATUSES:
+            raise HTTPException(400, "Status has to be pending, confirmed, dismissed, auto or all.")
+        sweep_tests()
+        where = {"pending": "status='pending'", "confirmed": "status='confirmed'", "dismissed": "status='dismissed'",
+                 "auto": "status='confirmed' AND auto=1", "all": "1=1"}[status]
+        rows = db().rows(f"SELECT * FROM pending_expenses WHERE {where} ORDER BY ts DESC, rowid DESC LIMIT ?", (limit,))
+        return {"status": status, "items": [public_pending(r) for r in rows], "pending_count": pending_count()}
+
+    def pending_count() -> int:
+        sweep_tests()
+        return db().rows("SELECT COUNT(*) AS n FROM pending_expenses WHERE status='pending' AND test=0")[0]["n"]
+
+    @router.get("/api/expenses/categories")
+    def expense_categories():
+        used = [r["category"] for r in db().rows("SELECT DISTINCT category FROM expenses ORDER BY category LIMIT 200")]
+        used += [r["category"] for r in db().rows("SELECT DISTINCT category FROM merchant_categories ORDER BY category LIMIT 200")]
+        names = list(CATEGORIES) + sorted({c for c in used if c and c not in CATEGORIES})
+        return {"categories": [{"id": c, "label": c.title()} for c in names], "default": "other"}
+
+    @router.post("/api/expenses/pending/dismiss-all")
+    def pending_dismiss_all(body: Optional[ConfirmIn] = None, confirm: bool = False):
+        if not confirmed(body, confirm):
+            raise HTTPException(409, "Say confirm: true to clear every waiting payment.")
+        sweep_tests()
+        count = db().run("UPDATE pending_expenses SET status='dismissed' WHERE status='pending'")
+        ctx.audit("life_capture_dismiss_all", count=count)
+        return {"ok": True, "dismissed": count}
+
+    @router.post("/api/expenses/pending/{pid}/dismiss")
+    def pending_dismiss(pid: str):
+        with db().lock:
+            row = pending_or_404(pid)
+            if row["status"] == "confirmed":
+                raise HTTPException(409, "That payment is already in your expenses. Delete the expense instead.")
+            db().run("UPDATE pending_expenses SET status='dismissed' WHERE id=?", (row["id"],))
+        ctx.audit("life_capture_dismiss", id=row["id"], amount=row["amount_cents"], merchant=row["merchant"])
+        return {"ok": True, "item": public_pending(pending_or_404(pid))}
+
+    @router.post("/api/expenses/pending/{pid}/confirm")
+    def pending_confirm(pid: str, body: PendingConfirmIn):
+        category = _category(body.category)
+        merchant = plain_text(body.merchant, MAX_MERCHANT_CHARS)
+        with db().lock:
+            row = pending_or_404(pid)
+            name = merchant or row["merchant"]
+            if row["status"] == "confirmed" and not row["auto"]:
+                raise HTTPException(409, "That payment is already in your expenses.")
+            expense, store = None, db()
+            if row["test"]:
+                pass                  # a test payment proves the pipe works; it never becomes an expense or a lesson
+            elif row["status"] == "confirmed":          # fixing something that was filed automatically
+                old = store.one("SELECT * FROM expenses WHERE id=?", (row["expense_id"] or "",))
+                if old:
+                    store.run("UPDATE expenses SET category=?, amount=?, note=? WHERE id=?",
+                              (category, body.amount_cents or old["amount"],
+                               plain_text(body.note, 200) or (name if merchant else old["note"]), old["id"]))
+                    expense = public_expense(expense_or_404(old["id"]))
+                else:
+                    expense = file_expense(row, category, body.note, body.amount_cents, name)
+                unlearn(row["merchant_key"], row["category"])
+                learn(row["merchant_key"], category)
+            else:
+                expense = file_expense(row, category, body.note, body.amount_cents, name)
+                learn(row["merchant_key"], category)
+            store.run("UPDATE pending_expenses SET status='confirmed', category=?, auto=0, expense_id=?, merchant=? WHERE id=?",
+                      (category, expense["id"] if expense else None, name, row["id"]))
+        ctx.audit("life_capture_confirm", id=row["id"], amount=(body.amount_cents or row["amount_cents"]), merchant=name)
+        return {"ok": True, "item": public_pending(pending_or_404(pid)), "expense": expense}
+
+    def settings_reply() -> dict:
+        return capture_settings()
+
+    @router.get("/api/expenses/capture/settings")
+    def capture_settings_get():
+        return settings_reply()
+
+    @router.post("/api/expenses/capture/settings")
+    def capture_settings_set(body: CaptureSettingsIn):
+        current = capture_settings()
+        changes = body.model_dump(exclude_unset=True)
+        if changes.get("enabled") is not None:
+            current["enabled"] = changes["enabled"]
+        if changes.get("auto_confirm_after") is not None:
+            current["auto_confirm_after"] = changes["auto_confirm_after"]
+        if changes.get("ignore_merchants") is not None:
+            seen, names = set(), []
+            for raw in changes["ignore_merchants"]:
+                name = plain_text(raw, MAX_MERCHANT_CHARS)
+                if name and merchant_key_of(name) not in seen:
+                    seen.add(merchant_key_of(name))
+                    names.append(name)
+            current["ignore_merchants"] = names
+        db().run("INSERT INTO capture_settings(key,value) VALUES('settings',?) "
+                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(current),))
+        ctx.audit("life_capture_settings", enabled=current["enabled"], auto_confirm_after=current["auto_confirm_after"],
+                  ignored=len(current["ignore_merchants"]))
+        return current
+
+    # ======================================================================================
     # countdowns
     # ======================================================================================
 
@@ -1597,6 +2294,7 @@ def make_router(ctx, *, fetcher=None, now=None, utc_now=None) -> APIRouter:
         code = pick_currency(rows, None)
         upcoming = next((c for c in all_countdowns() if not c["past"]), None)
         return {"bookmarks_unread": unread, "month_spend": spent_in(start, nxt, code), "currency": code,
+                "pending_count": pending_count(),
                 "next_countdown": ({k: upcoming[k] for k in ("id", "title", "emoji", "date", "next_date", "days_remaining")}
                                    if upcoming else None)}
 

@@ -37,6 +37,8 @@ const KIND = {
   cards: { label: "Flashcards", icon: "layers", tone: "violet" },
   automation: { label: "Automations", icon: "zap", tone: "warn" },
   inbox: { label: "Inbox", icon: "inbox", tone: "info" },
+  routine: { label: "Routines", icon: "zap", tone: "violet" },
+  journal_entry: { label: "Journal", icon: "book", tone: "orange" },
 };
 const kindInfo = (k) => KIND[k] || { label: k ? k[0].toUpperCase() + k.slice(1) : "Other", icon: "circle", tone: "gray" };
 
@@ -118,14 +120,14 @@ export function openSearch(ctx, initial = "") {
     const recents = readRecent();
     const jumps = ctx.views.filter((v) => !v.dynamic).slice(0, 12).map((v) =>
       el("button", { type: "button", onclick: () => go(() => ctx.open(v.id)) }, ui.tile(v.icon, v.nav ? "accent" : "gray"), v.label));
-    body.replaceChildren(
+    body.replaceChildren(...[
       recents.length ? el("section", { class: "ob-group" }, el("h3", { class: "ui-caps" }, "Recent"),
         el("div", { class: "ob-recents" }, recents.map((q) => el("button", { type: "button", class: "ui-chip",
           onclick: () => { input.value = q; update(); } }, ui.icon("history"), q)))) : null,
       el("section", { class: "ob-group" }, el("h3", { class: "ui-caps" }, "Quick actions"),
         el("div", { class: "ui-hscroll" }, QUICK_ACTIONS.map((a) => el("button", { type: "button", class: "ui-chip",
           onclick: () => go(() => runQuickAction(a, ctx)) }, ui.icon(a.icon), a.label)))),
-      el("section", { class: "ob-group" }, el("h3", { class: "ui-caps" }, "Jump to"), el("div", { class: "ob-jump" }, jumps)));
+      el("section", { class: "ob-group" }, el("h3", { class: "ui-caps" }, "Jump to"), el("div", { class: "ob-jump" }, jumps))].filter(Boolean));
   }
 
   async function update() {

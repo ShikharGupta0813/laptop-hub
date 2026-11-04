@@ -38,6 +38,7 @@ SOURCES = (   # (name, routes tried in order until one exists, default kind)
     ("cards", ("/api/cards/search",), "card"),
     ("automations", ("/api/automations/search",), "automation"),
     ("inbox", ("/api/inbox/search",), "inbox"),
+    ("watch", ("/api/watch/search",), "alert"),
 )
 BUILTIN_SOURCES = ("notes", "apps", "settings")
 MIN_Q, MAX_Q = 2, 200

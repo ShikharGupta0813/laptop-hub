@@ -30,6 +30,8 @@ export const VIEWS = [
   { id: "automations", label: "Automations", icon: "zap", path: "./automations.js", under: "apps" },
   { id: "kb", label: "Knowledge", icon: "book-open", path: "./kb.js", under: "learn" },
 ];
+// Screens that ship with the app; any other module is checked before it is imported.
+const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
 const byId = new Map(VIEWS.map((v) => [v.id, v]));
 const NAV = VIEWS.filter((v) => v.nav);
 
@@ -93,12 +95,22 @@ async function mount(v) {
   mounting[v.id] = (async () => {
     const timer = setTimeout(() => { if (!handles[v.id]) container.replaceChildren(ui.el("div", { class: "sh-loading" }, ui.skeleton("card", 1), ui.skeleton("list", 4))); }, 120);
     let mod;
+    const url = new URL(v.path, import.meta.url);
     try {
+      // Ask first so a screen that isn't installed costs one quiet 404, not a failed module load.
+      // A network error (offline) falls through to import(), which the service worker can answer.
+      if (!CORE.has(v.id)) {
+        let head = null;
+        try { head = await fetch(url, { method: "HEAD", cache: "no-store" }); } catch (_) { /* offline */ }
+        if (head && head.status === 404) throw Object.assign(new Error("not installed"), { notInstalled: true });
+      }
       mod = await import(v.path);
     } catch (error) {
       clearTimeout(timer);
-      let installed = true;
-      try { installed = (await fetch(new URL(v.path, import.meta.url), { method: "HEAD" })).ok; } catch (_) { installed = false; }
+      let installed = !error.notInstalled;
+      if (installed && !CORE.has(v.id)) {
+        try { installed = (await fetch(url, { method: "HEAD" })).status !== 404; } catch (_) { /* keep */ }
+      }
       if (installed) console.error(v.id, error);
       if (!installed && v.id === "settings") return mountFallbackSettings(container);
       missing(container, v, error, installed);

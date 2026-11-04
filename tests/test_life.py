@@ -404,7 +404,7 @@ class ParserTest(unittest.TestCase):
         ("＄5 coffee", 500, "USD", "food", "coffee", "2026-11-04"),       # full-width dollar sign
         ("coffee 12.50 usd", 1250, "USD", "food", "coffee", "2026-11-04"),
         ("1,200 groceries 2026-11-01", 120000, "INR", "groceries", "groceries", "2026-11-01"),
-        ("₹1,25,000 rent", None, None, None, None, None),                 # Indian digit grouping: refused, not misread
+        ("₹1,25,000 rent", 12500000, "INR", "bills", "rent", "2026-11-04"),   # Indian digit grouping (lakh)
         ("1.2k rent", 120000, "INR", "bills", "rent", "2026-11-04"),
         ("200 dinner last friday", 20000, "INR", "food", "dinner", "2026-10-30"),
         ("80 bus 2 days ago", 8000, "INR", "transport", "bus", "2026-11-02"),
@@ -787,7 +787,8 @@ class UnitsTest(Base):
 class SummaryTest(Base):
     def test_empty_summary(self):
         self.assertEqual(self.client.get("/api/life/summary").json(),
-                         {"bookmarks_unread": 0, "month_spend": 0, "currency": "INR", "next_countdown": None})
+                         {"bookmarks_unread": 0, "month_spend": 0, "currency": "INR", "pending_count": 0,
+                          "next_countdown": None})
 
     def test_summary_numbers(self):
         a = self.add_bookmark("https://bees.example/a")

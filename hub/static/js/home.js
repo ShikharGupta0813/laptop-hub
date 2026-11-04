@@ -300,7 +300,7 @@ export function init(container, ctx) {
     const sub = quiz ? [quiz.percent != null ? `Last score ${Math.round(quiz.percent)}%` : "", quiz.date ? ui.relTime(quiz.date) : ""].filter(Boolean).join(" · ")
       : "Turn any note, PDF or topic into a quick quiz.";
     const pct = quiz?.percent != null ? Math.max(0, Math.min(100, quiz.percent)) / 100 : null;
-    learnCard.replaceChildren(
+    learnCard.replaceChildren(...[
       el("p", { class: "hm-learn-kicker" }, ui.icon("learn"), "Continue learning"),
       el("h2", { class: "hm-learn-title" }, title),
       el("p", { class: "hm-learn-sub" }, sub),
@@ -308,7 +308,7 @@ export function init(container, ctx) {
       el("div", { class: "hm-learn-actions" },
         el("button", { type: "button", class: "ui-btn hm-learn-go", onclick: () => ctx.open("learn", "quiz") }, ui.icon(quiz ? "play" : "plus"), quiz ? "Resume" : "New quiz"),
         el("button", { type: "button", class: "ui-btn ui-btn--ghost hm-learn-alt", onclick: () => ctx.open("learn", "chat") }, "Study chat")),
-      chips);
+      chips].filter(Boolean));
   }
 
   function renderNotifications(list) {
