@@ -14,7 +14,7 @@ import secrets
 import time
 from typing import Callable, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..common import Ctx, ask_json, http_from
@@ -240,7 +240,7 @@ def make_router(ctx: Ctx, *, asana=None, today: Callable[[], dt.date] | None = N
     # ---- calendar ------------------------------------------------------------------------
 
     @router.get("/calendar")
-    async def calendar(day: str | None = None, days: int = Field(1, ge=1, le=31)):
+    async def calendar(day: str | None = None, days: int = Query(1, ge=1, le=31)):
         try:
             start = dt.date.fromisoformat(day) if day else today()
         except ValueError:
