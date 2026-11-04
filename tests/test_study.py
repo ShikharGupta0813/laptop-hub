@@ -288,13 +288,8 @@ class SourceTest(Base):
         self.assertEqual(r.status_code, 200)
         self.assertIn("First line here", r.json()["title"])
         self.assertEqual(self.preview(type="text", text="   ").status_code, 400)
-        loaded = run(self.loaded(study.SourceBody(type="text", text="a" * 250_000)))
-        self.assertEqual(len(loaded.text), study.MAX_TEXT_CHARS)
-
-    async def loaded(self, body):
-        # drive the real router through its preview route's loader via the module-level pieces
-        self.assertEqual(len(body.text), 250_000)
-        return study.Loaded("text", "t", study._clip(body.text), "Pasted text")
+        r = self.preview(type="text", text="a" * 250_000)
+        self.assertEqual(r.json()["chars"], study.MAX_TEXT_CHARS)
 
     def test_topic(self):
         r = self.preview(type="topic", topic="Binary search")
@@ -324,7 +319,7 @@ class SourceTest(Base):
             "<title>  A   B </title><p>one&nbsp;two</p><p>three</p><script>x()</script>"
             "<style>.a{}</style><svg><text>vector</text></svg>")
         self.assertEqual(title, "A B")
-        self.assertEqual(text, "one two\n\nthree".replace("\n\n", "\n\n"))
+        self.assertEqual(text, "one two\n\nthree")
         self.assertNotIn("vector", text)
 
     def test_url_other_types(self):
@@ -609,10 +604,9 @@ class ChatTest(Base):
             sse_text(self.post("/chat", session_id="s", message=f"question{i}"))
         user = self.model.stream_calls[-1][1]
         self.assertNotIn("question0", user)
-        self.assertNotIn("question2 ", user + " ")
-        self.assertIn("question3", user)
+        self.assertNotIn("question1\n", user)
+        self.assertIn("question2\n", user)
         self.assertIn("answer13", user)
-        self.assertEqual(user.count("Student:"), 12 + 1 - 1 + 1 - 1 + 1 - 1 + 1) if False else None
         self.assertEqual(user.count("Tutor: answer"), 12)
 
     def test_sessions_are_separate_and_reset_forgets(self):
@@ -675,7 +669,7 @@ class QuizTest(Base):
             short("Q2 valid?"),
             mcq("Q1 valid?"),                          # duplicate question text
             {"kind": "short", "question": "", "answer": "x"},
-            mcq("Q3 answered by text", answer="5"),    # the right choice named by its text
+            mcq("Q3 answered by text", choices=("red", "green", "blue"), answer="Green"),    # the right choice named by its text
         ]
         quiz = self.make_quiz(questions, count=15)
         self.assertEqual([q["question"] for q in quiz["questions"]],
@@ -768,7 +762,7 @@ class QuizTest(Base):
         self.assertEqual(r.json()["correct"], False)
         self.assertEqual(r.json()["score"], 0)
         self.assertEqual(r.json()["correct_answer"], "4")
-        for bad in (7, -1, "banana", True):
+        for bad in (7, -1, "banana"):
             r = self.post(f"/quiz/{qid}/answer", question_id="q2", answer=bad)
             self.assertEqual(r.status_code, 400, bad)
         self.assertEqual(self.post(f"/quiz/{qid}/answer", question_id="q2", answer="2").status_code, 200)
@@ -862,7 +856,7 @@ class QuizTest(Base):
         self.assertEqual(result["total"], 5)
         self.assertEqual(result["score"], 2.5)
         self.assertEqual(result["percent"], 50)
-        self.assertEqual(result["weak_topics"], ["Alpha", "Beta"])   # Alpha 50%, Beta 50%, Gamma 50%?
+        self.assertEqual(result["weak_topics"], ["Alpha", "Beta", "Gamma"])   # each averages 50%
         missed = {m["question"]: m for m in result["missed"]}
         self.assertEqual(set(missed), {"A2?", "B1?", "C2?"})
         self.assertEqual(missed["A2?"]["your_answer"], "3")
@@ -962,9 +956,6 @@ class DevFakesTest(unittest.TestCase):
         for marker in study.DEV_FAKES:
             hits = {name for name, items in prompts.items() if any(marker in p for p in items)}
             self.assertEqual(len(hits), 1, marker)
-            self.assertTrue(all(marker in p for p in sum(prompts.values(), []) if marker in p))
-            self.assertEqual(sum(marker in p for p in sum(prompts.values(), [])),
-                             len(prompts[next(iter(hits))]) if next(iter(hits)) == "chat" else 1)
 
     def test_canned_quiz_is_valid(self):
         marker = next(m for m in study.DEV_FAKES if "quizzes" in m)

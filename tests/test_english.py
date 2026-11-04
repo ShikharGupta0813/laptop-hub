@@ -464,7 +464,7 @@ class RoleplayTest(Base):
             self.post(f"message{i}")
         user_prompt = [c for c in self.model.calls if c[0] == "stream"][-1][2]
         lines = [l for l in user_prompt.splitlines() if l.startswith(("Learner:", "You:"))]
-        self.assertEqual(len(lines), 12 - 0 if lines[-1].startswith("Learner:") else 12)
+        self.assertEqual(len(lines), 12)
         self.assertEqual(lines[-1], "Learner: message9")
         self.assertIn("You: reply8", user_prompt)
         self.assertNotIn("message0", user_prompt)

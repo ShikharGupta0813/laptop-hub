@@ -110,10 +110,10 @@ A **source** is one of: `{type:"note", id}`, `{type:"file", root, path}`, `{type
 
 - `GET /api/english/scenarios` → `{scenarios:[{id,title,description}]}`
 - `GET /api/english/overview` → `{streak_days, sessions_total, last_session|null, trend:[{date,wpm,fillers_per_100,overall}], vocab_due:int}`
-- `POST /api/english/practice-prompt` `{scenario, provider}` → `{prompt}` (what to talk about)
-- `POST /api/english/speak` multipart `file` (audio) + fields `scenario?`, `prompt?`, `provider?` → `{transcript, duration_s, words, wpm, fillers:{count,items:{um:3}}, long_pauses, low_confidence_words:[{word,prob}], feedback:{summary, grammar:[{said,better,why}], vocabulary:[{said,better}], rewrite, scores:{fluency,grammar,vocabulary,overall}, tips:[..]}}` (scores 1-10; saved to history; `low_confidence_words` is a hint about unclear pronunciation, not a grade)
+- `POST /api/english/practice-prompt` `{scenario, provider}` → `{prompt, source}` (`source` is `model` or `builtin`: a built-in prompt is used when the model is unavailable)
+- `POST /api/english/speak` multipart `file` (audio) + fields `scenario?`, `prompt?`, `provider?` → `{transcript, duration_s, words, wpm, fillers:{count,items:{um:3}}, long_pauses, low_confidence_words:[{word,prob}], feedback:{summary, grammar:[{said,better,why}], vocabulary:[{said,better}], rewrite, scores:{fluency,grammar,vocabulary,overall}, tips:[..]}}` (scores 1-10; saved to history; `low_confidence_words` is a hint about unclear pronunciation, not a grade). Also returns `rate` (`slow|good|fast`), `rate_advice` (text), `fillers_per_100` (number); `long_pauses` is a count. A recording with only fillers, or an unknown scenario, is `422`.
 - `POST /api/english/roleplay` `{session_id, scenario, message|null, provider}` → SSE: `{"t":".."}` pieces of the partner's reply, then `{"correction":{"said","better","why"}|null}`, then `[DONE]`; `message:null` makes the partner open the conversation; `POST /api/english/roleplay/reset` `{session_id}`
 - `POST /api/english/correct` `{text, provider}` → `{corrected, changes:[{from,to,why}], tone_note}`
-- `GET /api/english/vocab/today` → `{new_words:[{id,word,meaning,example,level}], due:[{id,word,meaning,example,level}]}`
+- `GET /api/english/vocab/today[?provider=]` → `{new_words:[{id,word,meaning,example,level}], due:[{id,word,meaning,example,level}]}`
 - `POST /api/english/vocab/add` `{word, provider}` → `{id,word,meaning,example,level}`
 - `POST /api/english/vocab/{id}/review` `{rating:"again|hard|good|easy"}` → `{next_due}`
