@@ -76,7 +76,7 @@ Key decisions and why:
 | Jarvis control (start/stop one process, log, remote command queue) + screen | `tests/test_jarvis.py` + UI run |
 | Apps directory (47 entries, search, favourites, recents), navigation Talk/Work/Learn/Notes/Apps | browser run |
 | Security review (Opus) and fixes, with regression tests | `tests/test_security.py` |
-| Android shell (Capacitor) in `mobile/` | `npm run sync` verified; **no APK built** |
+| Android shell (Capacitor) in `mobile/`, launcher icon, cloud build workflow | see the Actions tab; not installed on a phone |
 
 416 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
 
@@ -85,15 +85,17 @@ Key decisions and why:
 1. **Run it on the real laptop** (nothing below was ever run on Windows or with real models): follow README.md,
    then `python -m hub doctor`. Fix whatever the first real run shows; expect small Windows fixes (terminal ConPTY,
    process kill, lock/volume/screenshot calls, Jarvis launch).
-2. **Build the APK** on the laptop: `mobile/README.md`.
+2. **Get the APK**: GitHub builds it in the cloud. Repo > Actions > "Build Android APK" > Run workflow > paste the hub's
+   https address (`tailscale serve status`) > download the `laptop-hub-debug-apk` artifact. Details: `mobile/README.md`.
+   Install it on the phone (uninstall any older build first: each build has a fresh debug signing key).
 3. **Apply the optional Jarvis patch** (`docs/jarvis-remote-inbox.md`) so the phone can send Jarvis text commands. Untested.
 4. Remaining items from the security review (all lower priority): server-side **session revocation** (a generation
    counter in hub.json; today `python -m hub token` rotates the secret and logs everyone out, sessions last 14 days);
    **pin dependencies with hashes**; close the DNS-rebinding gap in the quiz URL fetch (connect to the vetted IP);
    consider blocking "read sensitive file then send email" in one assistant turn; check whether `tailscale serve`
    forwards `X-Forwarded-Proto` (the cookie's `Secure` flag depends on it) and what `Host` it sends.
-5. Native extras: background wake word ("Hey Jarvis") plugin, push notifications for approvals, app icon/splash,
-   signed release build.
+5. Native extras: background wake word ("Hey Jarvis") plugin, push notifications for approvals, splash screen,
+   a release-signed build (keystore in GitHub secrets) so updates install over the old app.
 6. Optional: read-only inbox via IMAP, Learn streak should count from yesterday like English does, assistant-made
    notes are not auto-titled, "Log out everywhere" button.
 
@@ -103,7 +105,7 @@ Key decisions and why:
   Windows laptop, real Ollama, real Whisper, real Claude API, real Asana/Gmail/iCal, real Android.
 - Windows-only code (ConPTY terminal, process kill, lock/sleep/volume keys, screenshot, Jarvis launch, UNC path
   behaviour) has never run on Windows.
-- **No APK has been built.** `mobile/` is configured and syncs; the Gradle build needs the Android SDK.
+- The APK has **never been installed on a real phone**. The build runs in GitHub Actions (`.github/workflows/android-apk.yml`); see the Actions tab for its last result.
 - Pronunciation feedback is only Whisper word confidence (a hint, not a grade).
 - Quiz "from the internet" = a web page you give (SSRF-guarded) or a topic from the model's own knowledge. No live web search.
 - `run_command` (assistant) can still touch the hub's own config once the owner approves it.
