@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import secrets
+import sys
 import tempfile
 from pathlib import Path
 
@@ -120,6 +121,83 @@ class FakeAssistant:
         pass
 
 
+class DemoSystem:
+    """A stand-in for the operating system, so the phone UI can be tried without locking, killing,
+    shutting down or opening anything on the machine running the dev server."""
+
+    platform = "win32"  # so every action shows as available
+
+    def __init__(self):
+        from .laptop import System
+        self._real = System()
+        self.log: list[tuple] = []
+
+    def which(self, name):
+        return f"C:\\demo\\{name}.exe"
+
+    def has_pillow(self):
+        return True
+
+    def has_display(self):
+        return True
+
+    def run(self, argv, input_text=None, timeout=20, cwd=None):
+        self.log.append(("run", argv))
+        if any("Get-Clipboard" in a for a in argv):
+            return 0, "demo clipboard text\n", ""
+        return 0, "", ""
+
+    def launch(self, argv):
+        self.log.append(("launch", argv))
+
+    def open_default(self, path):
+        self.log.append(("open", path))
+
+    def open_url(self, url):
+        self.log.append(("url", url))
+        return True
+
+    def start_app(self, target, args):
+        self.log.append(("app", target, args))
+
+    def grab_screen(self):
+        from PIL import Image, ImageDraw
+        image = Image.new("RGB", (1280, 720), (24, 32, 48))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((40, 40, 1240, 80), fill=(60, 80, 120))
+        draw.text((60, 52), "Demo screenshot (nothing real is captured)", fill=(255, 255, 255))
+        return image
+
+    def press_media_key(self, name, times=1):
+        self.log.append(("media", name, times))
+
+    def protected_pids(self):
+        return self._real.protected_pids()
+
+    def terminate_process(self, pid):
+        self.log.append(("terminate", pid))
+        return "terminated"
+
+
+def _patch_for_demo(root: Path) -> Path:
+    """Use the demo operating system, and a fake Jarvis that only sleeps."""
+    from . import jarvis, laptop
+
+    original_laptop = laptop.make_router
+    laptop.make_router = lambda ctx, system=None: original_laptop(ctx, system=DemoSystem())
+    folder = root / "jarvis"
+    folder.mkdir()
+    (folder / "jarvis.py").write_text(
+        "import time\nprint('demo jarvis running', flush=True)\n"
+        "with open('jarvis.log', 'a') as f:\n    f.write('Jarvis started (demo)\\n')\n"
+        "time.sleep(3600)\n", encoding="utf-8")
+    (folder / "remote_inbox.py").write_text("# demo: marks Jarvis as able to take remote commands\n", encoding="utf-8")
+    original_jarvis = jarvis.make_router
+    jarvis.make_router = lambda ctx, command=None, launcher=None: original_jarvis(
+        ctx, command=lambda d: [sys.executable, "jarvis.py"], launcher=launcher)
+    return folder
+
+
 def build(port: int):
     os.environ.setdefault("HUB_WORK_DEMO", "1")  # Work tab shows sample tasks, meetings and contacts
     root = Path(tempfile.mkdtemp(prefix="hub-dev-"))
@@ -133,12 +211,14 @@ def build(port: int):
     (root / "docs" / "pic.png").write_bytes(bytes.fromhex(
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001"
         "0d0a2db40000000049454e44ae426082"))
+    jarvis_folder = _patch_for_demo(root)
     config = cfg.Config(
         token_hash=hash_token(DEV_TOKEN), session_secret=secrets.token_bytes(32),
         roots={"docs": str(root / "docs"), "notes": str(root / "notes"), "inbox": str(root / "inbox")},
         notes_dir=str(root / "notes"), inbox_dir=str(root / "inbox"),
         data_dir=str(root / "data"),  # never the real ~/.laptop-hub/data
-        port=port,
+        port=port, jarvis_dir=str(jarvis_folder),
+        apps={"Notepad": {"target": "notepad.exe", "args": []}, "Calculator": {"target": "calc.exe", "args": []}},
         scripts={"hello": {"label": "Say hello", "argv": ["echo", "hello from a button"]}})
     deps = Deps(llm=FakeLLM(), claude=FakeLLM(), transcriber=FakeTranscriber(),
                 assistant=FakeAssistant())

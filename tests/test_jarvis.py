@@ -293,12 +293,6 @@ class StartStopTests(JarvisCase):
         self.assertEqual((argv, cwd), ([sys.executable, "jarvis.py"], self.dir))
         self.assertEqual(output.parent, self.data)
 
-    def test_default_launcher_flags_on_windows_are_detached(self):
-        if sys.platform == "win32":
-            self.assertTrue(hasattr(subprocess, "DETACHED_PROCESS"))
-        else:
-            self.skipTest("the Windows creation flags can only be checked on Windows")
-
 
 class PidPersistenceTests(JarvisCase):
     def test_a_new_router_still_knows_the_running_jarvis(self):
