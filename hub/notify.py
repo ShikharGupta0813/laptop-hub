@@ -86,10 +86,10 @@ class NotifyCenter:
     # ---- storage ---------------------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.db_path, timeout=5.0)
         db.row_factory = sqlite3.Row
         if not self._ready:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             db.execute("CREATE TABLE IF NOT EXISTS notifications ("
                        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, title TEXT NOT NULL, "
                        "body TEXT NOT NULL DEFAULT '', level TEXT NOT NULL, link TEXT, "

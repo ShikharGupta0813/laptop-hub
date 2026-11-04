@@ -269,6 +269,8 @@ VAGUE = [
     (_rx(r"\bnext\s+(week|month|year)\b"), "I cannot tell which day you mean by 'next {0}'. Say a day, like 'next Monday 9am'."),
     (_rx(r"\b(?:this\s+|next\s+|every\s+|on\s+the\s+)?(weekends?)\b"), "Which day, Saturday or Sunday? Please say the day."),
     (_rx(r"\bend\s+of\s+(?:the\s+)?(week|month|year)\b"), "Please give a date for the end of the {0}, like '30 nov'."),
+    (_rx(r"\b(yesterday|last\s+(?:night|week|month|year)|\d+\s*\w+\s+ago)\b"),
+     "That sounds like the past. I can only set reminders for the future."),
     (_rx(r"\b(sometime|someday|eventually|at some point|in a while|a bit later|later on|whenever|asap)\b"),
      "I need an actual time, like 'in 2 hours' or 'tomorrow at 9am'."),
 ]

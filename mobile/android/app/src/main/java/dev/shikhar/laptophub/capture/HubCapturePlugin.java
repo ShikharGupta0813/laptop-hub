@@ -120,8 +120,8 @@ public class HubCapturePlugin extends Plugin {
     /** setWatch({ mail, chat }): independent of payment capture; a key that is left out keeps its value. */
     @PluginMethod
     public void setWatch(PluginCall call) {
-        Boolean mail = call.getBoolean("mail");
-        Boolean chat = call.getBoolean("chat");
+        Boolean mail = call.getBoolean("mail", null);
+        Boolean chat = call.getBoolean("chat", null);
         if (mail != null) HubStore.setWatchMail(getContext(), mail);
         if (chat != null) HubStore.setWatchChat(getContext(), chat);
         if (HubStore.watchMail(getContext()) || HubStore.watchChat(getContext())) {

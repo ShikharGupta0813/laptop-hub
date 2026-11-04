@@ -314,13 +314,6 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                             filename=target.name if (attach or download) else None,
                             content_disposition_type="attachment" if (attach or download) else "inline")
 
-    @api.get("/search")
-    def search(root: str, q: str, path: str = ""):
-        try:
-            return {"results": files.search(config.roots, root, q, path)}
-        except files.FileError as exc:
-            raise fail(exc)
-
     @api.post("/upload")
     async def upload(file: UploadFile = File(...)):
         inbox = Path(config.inbox_dir)
@@ -500,7 +493,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         return claude if provider == "claude" else llm
 
     ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
-              need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file)
+              need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file,
+              config_path=config_path)
     for name in FEATURE_MODULES:
         try:
             module = importlib.import_module(f".{name}", __package__)

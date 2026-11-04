@@ -25,6 +25,7 @@ class Ctx:
     get_app: Callable[[], Any] | None = None       # the FastAPI app, for InProcessClient
     notify: Callable[..., Any] = lambda *a, **k: None   # notify(title, body="", level="info", link=None, source="")
     audit_path: Any = None            # where the audit log is (a Path), for the audit viewer
+    config_path: Any = None           # where hub.json lives (a Path), so Settings can save changes
 
 
 def http_from(exc: Exception) -> HTTPException:

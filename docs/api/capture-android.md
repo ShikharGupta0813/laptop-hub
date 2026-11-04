@@ -31,10 +31,11 @@ The plugin is registered in `MainActivity.java` (`registerPlugin(HubCapturePlugi
 
 | Call | Result | What it does |
 |---|---|---|
-| `HubCapture.status()` | `{ listenerEnabled, smsGranted, enabled, queued, hubOrigin }` | `listenerEnabled`: Android "Notification access" is on for the app. `smsGranted`: RECEIVE_SMS granted. `enabled`: the in-app switch (default `true`). `queued`: items waiting to be sent. `hubOrigin`: the `https://host[:port]` the app was built for, or `null`. |
+| `HubCapture.status()` | `{ listenerEnabled, smsGranted, enabled, watchMail, watchChat, queued, hubOrigin }` | `listenerEnabled`: Android "Notification access" is on for the app. `smsGranted`: RECEIVE_SMS granted. `enabled`: the in-app switch (default `true`). `watchMail` / `watchChat`: Gmail / Google Chat watching (default `false`, see below). `queued`: items waiting to be sent (payments and watch items). `hubOrigin`: the `https://host[:port]` the app was built for, or `null`. |
 | `HubCapture.openListenerSettings()` | `{}` | Opens Android's Notification access screen. The user switches **Laptop Hub** on. |
 | `HubCapture.requestSms()` | `{ granted }` | Shows Android's SMS permission dialog (RECEIVE_SMS only, never READ_SMS). Optional. |
 | `HubCapture.setEnabled({ enabled: true })` | same as `status()` | Turns capture on or off without touching Android settings. |
+| `HubCapture.setWatch({ mail, chat })` | same as `status()` | Turns Gmail (`mail`) and Google Chat (`chat`) watching on or off, independently of payment capture and of each other. A key that is left out keeps its current value. Both are **off** until the hub page turns them on. Needs the same Notification access as payment capture. |
 | `HubCapture.flush()` | `{ sent, queued, error }` | Tries to send everything in the queue now. |
 | `HubCapture.test()` | `{ sent, queued, error }` | Fakes one payment (`Paid ₹1 to Laptop Hub Test`, `test: true`) and sends it through the full path. |
 
@@ -89,3 +90,36 @@ rest). Redirects are not followed.
   capture, when the app comes to the foreground, and on `flush()`. HTTPS only, 10 second timeouts, nothing is logged.
 
 The regex table lives in `CaptureFilter.java` and is mirrored and checked by `mobile/scripts/test-capture-filter.js`.
+
+## Mail and chat watching (`POST /api/watch/ingest`)
+
+The same notification listener can also forward message notifications from **Google Chat**
+(`com.google.android.apps.dynamite`) and **Gmail** (`com.google.android.gm`) to a second endpoint. It is separate
+from payment capture: its own allow-list (`WatchFilter`), its own flags, and nothing is read or sent for an app
+whose flag is off. The hub front end calls `HubCapture.setWatch({ mail: true, chat: true })` when the user enables
+monitoring. Slack and WhatsApp are not watched.
+
+`POST <hub origin>/api/watch/ingest`, same headers and cookie as above. One item per request:
+
+```json
+{ "source": "chat", "app": "com.google.android.apps.dynamite", "title": "Team space",
+  "text": "Alice: standup moved to 11", "ts": 1767225600000 }
+```
+```json
+{ "source": "mail", "app": "com.google.android.gm", "title": "Alice <alice@example.com>",
+  "text": "Invoice due - Please pay by Friday", "sender": "Alice <alice@example.com>", "ts": 1767225600000 }
+```
+
+* `source` is `"chat"` or `"mail"`; `app` is the package. `ts` is epoch milliseconds. `sender` is only sent for mail
+  (Gmail puts the sender in the notification title); for chat the title is the space or person and the sender, if
+  any, is inside `text`.
+* Mail `text` is the subject plus the snippet. `title` is trimmed to 200 characters and `text` to 1000.
+* Dropped on the phone: group-summary notifications ("3 new messages"), ongoing notifications, this app's own
+  notifications, and anything with an empty title and text.
+* The same (package, title, text) within 2 minutes is sent once. A message dropped because its flag was off does not
+  count as seen.
+* Delivery uses the same queue and retry rules as payments (response handling above). Each queued entry remembers its
+  path, and entries queued by older app versions (no path) are sent to `/api/expenses/capture`. When the 200-item
+  cap is exceeded the oldest watch item is dropped before any payment item.
+
+The routing rules live in `WatchFilter.java` and are mirrored and checked by `mobile/scripts/test-watch-filter.js`.

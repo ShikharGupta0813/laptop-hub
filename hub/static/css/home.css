@@ -1,0 +1,112 @@
+/* Home dashboard. Every rule is scoped under #view-home (plus the screenshot sheet, which lives in <body>). */
+#view-home { padding-top: 0; }
+#view-home .hm { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-5); padding-top: var(--sp-1); min-width: 0; }
+#view-home .hm > * { min-width: 0; }
+
+/* hero */
+#view-home .hm-hero { display: grid; gap: var(--sp-3); padding-top: var(--sp-2); }
+#view-home .hm-date { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--c-accent-text); letter-spacing: .01em; }
+#view-home .hm-hello { margin: 2px 0 0; font-size: 34px; line-height: 1.08; font-weight: var(--fw-bold); letter-spacing: -0.035em; }
+#view-home .hm-wave { background: var(--c-accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+#view-home .hm-status { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; }
+#view-home .hm-chip { min-height: 32px; padding: 0 12px; gap: 7px; background: var(--c-glass); border-color: var(--c-line); font-size: var(--fs-sm);
+  -webkit-backdrop-filter: blur(var(--blur-sm)); backdrop-filter: blur(var(--blur-sm)); }
+#view-home .hm-chip .ui-icon { width: 16px; height: 16px; color: var(--c-text-2); }
+#view-home .hm-chip--warn, #view-home .hm-chip--warn .ui-icon { color: var(--c-warn); }
+
+/* jump to anything */
+#view-home .hm-jump {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 12px 0 16px;
+  border-radius: var(--r-lg); border: 1px solid var(--c-line-strong); background: var(--c-surface-1); color: var(--c-text-3);
+  font-size: var(--fs-base); text-align: left; cursor: text; box-shadow: var(--shadow-1);
+  transition: border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+#view-home .hm-jump:active { transform: scale(.99); border-color: var(--c-accent); }
+#view-home .hm-jump .ui-icon { width: 20px; height: 20px; color: var(--c-text-2); }
+#view-home .hm-kbd { font-family: var(--font-mono); font-size: 12px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--c-line-strong); color: var(--c-text-3); }
+
+/* quick actions */
+#view-home .hm-section { display: grid; gap: 2px; }
+#view-home .hm-quick { gap: 6px; padding-bottom: 4px; }
+#view-home .hm-qa {
+  width: 80px; display: grid; justify-items: center; align-content: start; gap: 8px; padding: 4px 0 6px;
+  border: 0; background: none; color: var(--c-text); cursor: pointer; border-radius: var(--r-lg);
+}
+#view-home .hm-qa .ui-tile { width: 58px; height: 58px; border-radius: 19px; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--_tone) 22%, transparent);
+  transition: transform var(--dur-fast) var(--ease-spring); }
+#view-home .hm-qa .ui-tile .ui-icon { width: 26px; height: 26px; }
+#view-home .hm-qa:active .ui-tile { transform: scale(.9); }
+#view-home .hm-qa-label { font-size: var(--fs-xs); font-weight: var(--fw-medium); line-height: 1.25; text-align: center; color: var(--c-text-2); }
+
+/* cards */
+#view-home .hm-card { padding: var(--sp-4) var(--sp-4) var(--sp-2); }
+#view-home .hm-card .ui-card__head { margin-bottom: var(--sp-2); }
+#view-home .hm-card .ui-card__head .ui-link { margin: -10px -4px -10px 0; }
+#view-home .hm-card-body { min-width: 0; padding-bottom: var(--sp-2); }
+#view-home .hm-card .ui-row { padding-left: 0; padding-right: 0; min-height: 54px; }
+#view-home .hm-card .ui-list > .ui-row + .ui-row::before { left: 52px; }
+#view-home .hm-card .ui-list:not(.ui-list--icons) > .ui-row + .ui-row::before { left: 36px; }
+#view-home .hm-count { margin-left: -2px; }
+
+/* today */
+#view-home .hm-block { display: grid; gap: 2px; }
+#view-home .hm-block + .hm-block { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--c-line); }
+#view-home .hm-block > .ui-caps { margin: 0 0 4px; }
+#view-home .hm-timeline { display: grid; gap: 4px; }
+#view-home .hm-event { display: grid; grid-template-columns: 62px 3px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 48px; }
+#view-home .hm-event-time { font-size: var(--fs-sm); color: var(--c-text-2); text-align: right; font-weight: var(--fw-medium); }
+#view-home .hm-event-bar { align-self: stretch; margin: 6px 0; border-radius: 2px; background: var(--c-accent); opacity: .8; }
+#view-home .hm-event-body { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#view-home .hm-event-title { font-size: var(--fs-md); font-weight: var(--fw-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-home .hm-event.is-live .hm-event-bar { background: var(--c-good); box-shadow: 0 0 10px var(--c-good); }
+#view-home .hm-event.is-past { opacity: .5; }
+#view-home .hm-join { min-height: 34px; }
+#view-home .hm-check { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 2px solid var(--c-line-strong); display: grid; place-items: center; color: transparent; margin-right: -2px; }
+#view-home .hm-check .ui-icon { width: 14px; height: 14px; stroke-width: 3; }
+#view-home .hm-check.is-done { background: var(--c-good); border-color: var(--c-good); color: #fff; }
+
+/* streak rings + learn */
+#view-home .hm-pair { display: grid; gap: var(--sp-5); }
+@media (min-width: 560px) { #view-home .hm-pair { grid-template-columns: 1fr 1fr; } }
+#view-home .hm-rings { display: flex; justify-content: space-around; gap: var(--sp-2); padding: var(--sp-1) 0 var(--sp-2); }
+#view-home .hm-ring { display: grid; justify-items: center; gap: 8px; }
+#view-home .hm-ring-label { font-size: var(--fs-xs); color: var(--c-text-2); font-weight: var(--fw-medium); }
+#view-home .hm-rings--empty .ui-ring__big { color: var(--c-text-3); }
+#view-home .hm-rings-hint { margin: 0; text-align: center; font-size: var(--fs-sm); color: var(--c-text-2); }
+
+#view-home .hm-learn { display: grid; gap: 6px; align-content: start; min-height: 200px; }
+#view-home .hm-learn .ui-skel { background-image: linear-gradient(100deg, rgb(255 255 255 / .14) 30%, rgb(255 255 255 / .26) 50%, rgb(255 255 255 / .14) 70%); }
+#view-home .hm-learn-kicker { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: rgb(255 255 255 / .85); }
+#view-home .hm-learn-kicker .ui-icon { width: 16px; height: 16px; }
+#view-home .hm-learn-title { margin: 4px 0 0; font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: -0.02em; color: #fff; overflow-wrap: anywhere; }
+#view-home .hm-learn-sub { margin: 0; font-size: var(--fs-sm); color: rgb(255 255 255 / .85); }
+#view-home .hm-learn-bar .ui-bar { background: rgb(255 255 255 / .22); margin: 6px 0 2px; }
+#view-home .hm-learn-bar .ui-bar > i { background: #fff; }
+#view-home .hm-learn-actions { display: flex; gap: 8px; margin-top: var(--sp-2); }
+#view-home .hm-learn-go { --_bg: #fff; --_fg: #14112a; --_bd: transparent; font-weight: var(--fw-semibold); box-shadow: 0 6px 16px -6px rgb(0 0 0 / .4); }
+#view-home .hm-learn-go:hover { background: #f1f0ff; }
+#view-home .hm-learn-alt { --_fg: #fff; }
+#view-home .hm-learn-alt:hover { background: rgb(255 255 255 / .14); }
+#view-home .hm-learn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
+#view-home .hm-learn-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: var(--r-full); cursor: pointer;
+  border: 1px solid rgb(255 255 255 / .22); background: rgb(255 255 255 / .12); color: #fff; font-size: var(--fs-sm); font-weight: var(--fw-medium);
+}
+#view-home .hm-learn-chip .ui-icon { width: 16px; height: 16px; }
+
+#view-home .hm-foot { margin: 0; text-align: center; font-size: var(--fs-xs); color: var(--c-text-3); }
+@media (hover: hover) { #view-home .hm-foot { display: none; } }
+
+/* screenshot sheet (appended to <body>) */
+.hm-shot { display: block; width: 100%; height: auto; border-radius: var(--r-lg); border: 1px solid var(--c-line-strong); box-shadow: var(--shadow-2); }
+.hm-shot-meta { margin: 8px 2px 0; }
+
+/* for you (rule-based suggestions from /api/home) */
+#view-home .hm-foryou {
+  display: grid; gap: 6px; padding: 12px 14px; border-radius: var(--r-lg);
+  background: linear-gradient(135deg, var(--c-accent-soft), transparent 80%); border: 1px solid color-mix(in oklab, var(--c-accent), transparent 78%);
+}
+#view-home .hm-foryou-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--c-accent-text); }
+#view-home .hm-foryou-head .ui-icon { width: 15px; height: 15px; }
+#view-home .hm-foryou-item { margin: 0; font-size: var(--fs-sm); color: var(--c-text); padding-left: 21px; position: relative; }
+#view-home .hm-foryou-item::before { content: ""; position: absolute; left: 6px; top: .6em; width: 5px; height: 5px; border-radius: 50%; background: var(--c-accent); }

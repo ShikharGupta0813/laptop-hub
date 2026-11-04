@@ -69,7 +69,7 @@ already show (GPay, PhonePe, Paytm, BHIM, CRED, Amazon and common bank apps) and
 
 **What is captured.** Only notifications from that fixed list of apps, and only when the text looks like money
 you spent (for example "Paid Rs 250 to ..."). Money you received, refunds, cashback, payment requests, reminders,
-offers and OTPs are ignored on the phone and never sent. Notifications from every other app are never read.
+offers and OTPs are ignored on the phone and never sent. Notifications from every other app are never read (apart from the optional Gmail / Google Chat watching below).
 
 **Privacy.** Only payment-app notifications and bank SMS that pass those checks are forwarded, and only to your own
 laptop hub, over HTTPS, using the login you already have inside the app. Nothing goes to any other server, no new
@@ -96,6 +96,17 @@ anything that was captured and could not be sent is retried when you next open t
 Developers: the JS calls are documented in `docs/api/capture-android.md`. The filter rules are in
 `android/app/src/main/java/dev/shikhar/laptophub/capture/CaptureFilter.java`, and `node scripts/test-capture-filter.js`
 checks them against sample notifications and confirms the Java and JS copies match.
+
+## Watching Gmail and Google Chat (optional)
+
+The same Notification access can also pass **Gmail** and **Google Chat** message notifications to your hub, so it can
+tell you about things you might miss. This is off until you switch on monitoring in the hub page (mail and chat are
+separate switches, and independent of payment capture). When a switch is off the app does not read those
+notifications at all. When on, it forwards the sender or space, the message text (a Gmail subject and snippet),
+and the time, only to your own hub over HTTPS. Summary ("3 new messages") and ongoing notifications are skipped,
+repeats within 2 minutes are sent once, and Slack, WhatsApp and every other app are never read. Turning it on needs
+the same Notification access steps as above. Developers: see `docs/api/capture-android.md` and
+`node scripts/test-watch-filter.js`.
 
 ## Changing the hub address later
 

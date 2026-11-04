@@ -27,6 +27,16 @@ const KIND = {
   action: { label: "Laptop actions", icon: "zap", tone: "warn" },
   app: { label: "Apps", icon: "grid", tone: "gray" },
   setting: { label: "Settings", icon: "settings", tone: "gray" },
+  todo: { label: "To-dos", icon: "task", tone: "good" },
+  journal: { label: "Journal", icon: "book", tone: "orange" },
+  button: { label: "Quick buttons", icon: "zap", tone: "warn" },
+  bookmark: { label: "Bookmarks", icon: "bookmark", tone: "info" },
+  snippet: { label: "Snippets", icon: "code", tone: "gray" },
+  expense: { label: "Expenses", icon: "chart", tone: "teal" },
+  card: { label: "Flashcards", icon: "layers", tone: "violet" },
+  cards: { label: "Flashcards", icon: "layers", tone: "violet" },
+  automation: { label: "Automations", icon: "zap", tone: "warn" },
+  inbox: { label: "Inbox", icon: "inbox", tone: "info" },
 };
 const kindInfo = (k) => KIND[k] || { label: k ? k[0].toUpperCase() + k.slice(1) : "Other", icon: "circle", tone: "gray" };
 
@@ -132,10 +142,19 @@ export function openSearch(ctx, initial = "") {
     firstRun = (actions[0] || screens[0])?.run || null;
     const remote = el("div", { class: "ui-stack ui-stack--lg" }, ui.skeleton("list", 3));
     body.replaceChildren(remote, ...local);
+    if (q.length < 2) { remote.replaceChildren(); if (!local.length) remote.append(el("p", { class: "ob-status" }, ui.icon("search"), "Keep typing…")); return; }
     timer = setTimeout(async () => {
       controller = new AbortController();
+      const signal = controller.signal;
       try {
-        const data = await api(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        let data;
+        try {
+          data = await api(`/api/search?q=${encodeURIComponent(q)}`, { signal });
+        } catch (error) {
+          // An older hub only has the file-name search at /api/search (it wants ?root=): use /api/search/all.
+          if (!(error instanceof ApiError) || ![400, 404, 422].includes(error.status)) throw error;
+          data = await api(`/api/search/all?q=${encodeURIComponent(q)}`, { signal });
+        }
         const results = Array.isArray(data?.results) ? data.results.filter((r) => r && (r.title || r.name)) : [];
         const groups = new Map();
         for (const r of results) {
@@ -158,7 +177,7 @@ export function openSearch(ctx, initial = "") {
           return;
         }
         const first = [...groups.values()][0].items[0];
-        if (!firstRun || first) firstRun = first.run;
+        firstRun = first.run;
         remote.replaceChildren(...[...groups.values()].map(({ info, items }) => group(info.label, items.slice(0, 8).map((m) => row(m, q)), info.icon)));
       } catch (error) {
         if (error.name === "AbortError") return;

@@ -265,7 +265,7 @@ def like(text: str) -> str:
 def data_block(text: str) -> str:
     """Text for a prompt, inside <data> tags. Anything in `text` that looks like our tags is defanged,
     so it cannot close the block and pose as instructions."""
-    safe = text
+    safe = re.sub(r"<\s*(/?)\s*data\b", r"[\1data", text, flags=re.I)
     return f"<data>\n{safe}\n</data>"
 
 

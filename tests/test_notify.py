@@ -6,6 +6,7 @@ import logging
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
@@ -146,7 +147,7 @@ class ListTest(Base):
             self.push(f"n{i}")
         items = self.center.list(limit=200)
         self.assertEqual(items[0]["title"], "n509")
-        with self.center._connect() as db:
+        with closing(self.center._connect()) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications").fetchone()[0], 500)
             self.assertEqual(db.execute("SELECT MIN(id) FROM notifications").fetchone()[0], 11)
         self.clock.ts += 61 * 86400
