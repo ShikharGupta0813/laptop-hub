@@ -22,6 +22,9 @@ class Ctx:
     notes: Any                        # hub.notes.NoteStore
     need_auth: Callable               # FastAPI dependency; pass as dependencies=[Depends(ctx.need_auth)]
     audit: Callable[..., None]        # audit("event", key=value...)
+    get_app: Callable[[], Any] | None = None       # the FastAPI app, for InProcessClient
+    notify: Callable[..., Any] = lambda *a, **k: None   # notify(title, body="", level="info", link=None, source="")
+    audit_path: Any = None            # where the audit log is (a Path), for the audit viewer
 
 
 def http_from(exc: Exception) -> HTTPException:
@@ -72,3 +75,43 @@ class JsonFile:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
+
+
+class InProcessClient:
+    """Calls the hub's own routes from inside the process, as the signed-in owner.
+
+    Lets one feature (the assistant, global search, Home) use another feature's routes without importing its
+    internals, so every check, draft and audit entry of that route still applies. Each call carries a fresh
+    session cookie, so it never expires while the hub runs.
+    """
+
+    def __init__(self, get_app, config, base_url: str = "http://hub.internal"):
+        self._get_app, self._config, self._base = get_app, config, base_url
+        self._client = None
+
+    def _http(self):
+        if self._client is None:
+            import httpx
+            self._client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self._get_app()),
+                                             base_url=self._base, headers={"X-Hub": "1"}, timeout=120.0)
+        return self._client
+
+    async def call(self, method: str, path: str, *, params: dict | None = None, body: dict | None = None):
+        """(ok, json) on success; (False, a plain sentence) when the route said no."""
+        import httpx
+        from . import auth
+        try:
+            cookie = f"{auth.COOKIE}={auth.make_session(self._config.session_secret)}"
+            response = await self._http().request(method, path, params=params, json=body, headers={"Cookie": cookie})
+        except httpx.HTTPError as exc:
+            return False, f"The hub could not be reached from inside ({exc})."
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        if response.status_code >= 400:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            if response.status_code == 404 and not detail:
+                return False, "That feature is not available on this hub."
+            return False, str(detail or f"The hub answered {response.status_code}.")
+        return True, data

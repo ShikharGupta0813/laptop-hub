@@ -43,6 +43,11 @@ class Config:
     jarvis_dir: str = ""  # folder of the jarvis-voice-assistant repo (email, calendar, chat helpers)
     shells: dict[str, list[str]] = field(default_factory=dict)
     scripts: dict[str, dict] = field(default_factory=dict)
+    embed_model: str = "nomic-embed-text"   # Ollama model that turns text into vectors ("Ask my files")
+    kb_roots: list[str] = field(default_factory=list)   # which shared folders "Ask my files" reads (empty = all)
+    writable_roots: list[str] = field(default_factory=lambda: ["notes", "inbox"])  # roots the file manager may change
+    ntfy_server: str = "https://ntfy.sh"    # optional phone push notifications through ntfy
+    ntfy_topic: str = ""                    # a long random topic name you subscribe to in the ntfy app
     # Apps the phone may launch on the laptop: {"Chrome": {"target": "chrome.exe", "args": []}}
     apps: dict[str, dict] = field(default_factory=dict)
 
@@ -90,7 +95,9 @@ def save(config: Config, path: Path) -> None:
         "chat_model": config.chat_model, "whisper_model": config.whisper_model,
         "claude_model": config.claude_model, "assistant_model": config.assistant_model,
         "allowed_origins": config.allowed_origins, "allowed_hosts": config.allowed_hosts, "shells": config.shells,
-        "scripts": config.scripts, "apps": config.apps,
+        "scripts": config.scripts, "apps": config.apps, "embed_model": config.embed_model,
+        "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,
+        "ntfy_server": config.ntfy_server, "ntfy_topic": config.ntfy_topic,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

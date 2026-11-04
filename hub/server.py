@@ -6,6 +6,7 @@ session cookie. The server listens on 127.0.0.1 only; Tailscale puts HTTPS in fr
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import json
 import os
@@ -40,6 +41,9 @@ STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
+# Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
+FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
+                   "screen", "productivity", "cards", "settings", "search")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -124,7 +128,23 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p],
         extra_tools=assistant_tools.build(lambda: app, config))
 
-    app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None)
+    modules: list = []   # feature modules that were found; filled in below
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        """A module may export `async def start(ctx)` (background work, e.g. the reminder clock) that
+        returns an optional `async def stop()`."""
+        stops = []
+        for module in modules:
+            start = getattr(module, "start", None)
+            if start is not None:
+                stops.append(await start(ctx))
+        yield
+        for stop in reversed(stops):
+            if stop is not None:
+                await stop()
+
+    app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     def hostname_of(value: str | None) -> str:
         value = (value or "").strip().lower()
@@ -480,15 +500,17 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         return claude if provider == "claude" else llm
 
     ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
-              need_auth=need_auth, audit=audit)
-    for name in ("work", "study", "english", "laptop", "jarvis"):
+              need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file)
+    for name in FEATURE_MODULES:
         try:
             module = importlib.import_module(f".{name}", __package__)
         except ModuleNotFoundError as exc:
             if exc.name != f"{__package__}.{name}":
                 raise
             continue
-        app.include_router(module.make_router(ctx))
+        modules.append(module)
+        if hasattr(module, "make_router"):
+            app.include_router(module.make_router(ctx))
 
     # ---- terminal ---------------------------------------------------------------------------------
 

@@ -13,8 +13,8 @@ from typing import Any, Callable
 
 import httpx
 
-from . import auth
 from .assistant import ExtraTool
+from .common import InProcessClient
 
 MAX_LINES = 40
 
@@ -39,40 +39,7 @@ def _s(description: str = "") -> dict:
     return {"type": "string", "description": description} if description else {"type": "string"}
 
 
-class Hub:
-    """Calls the hub's own routes in-process with an owner session cookie."""
-
-    def __init__(self, get_app: Callable[[], Any], config, base_url: str = "http://hub.internal"):
-        self._get_app, self._config, self._base = get_app, config, base_url
-        self._client: httpx.AsyncClient | None = None
-
-    def _http(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=self._get_app()), base_url=self._base,
-                headers={"X-Hub": "1"}, timeout=120.0)
-        return self._client
-
-    async def call(self, method: str, path: str, *, params: dict | None = None,
-                   body: dict | None = None) -> tuple[bool, Any]:
-        """(ok, json) on success; (False, a plain sentence) when the route said no."""
-        try:
-            # A fresh session cookie per call, so it never expires while the hub keeps running.
-            cookie = f"{auth.COOKIE}={auth.make_session(self._config.session_secret)}"
-            response = await self._http().request(method, path, params=params, json=body,
-                                                  headers={"Cookie": cookie})
-        except httpx.HTTPError as exc:
-            return False, f"The hub could not be reached from inside ({exc})."
-        try:
-            data = response.json()
-        except ValueError:
-            data = None
-        if response.status_code >= 400:
-            detail = data.get("detail") if isinstance(data, dict) else None
-            if response.status_code == 404 and not detail:
-                return False, "That feature is not available on this hub."
-            return False, str(detail or f"The hub answered {response.status_code}.")
-        return True, data
+Hub = InProcessClient  # kept under its old name
 
 
 # ---- formatting: short plain text, because the answer is read on a phone -----------------------------

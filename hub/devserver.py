@@ -199,6 +199,7 @@ def _patch_for_demo(root: Path) -> Path:
 
 
 def build(port: int):
+    os.environ.setdefault("HUB_DEMO", "1")  # feature modules fill themselves with sample data
     os.environ.setdefault("HUB_WORK_DEMO", "1")  # Work tab shows sample tasks, meetings and contacts
     root = Path(tempfile.mkdtemp(prefix="hub-dev-"))
     (root / "docs" / "sub").mkdir(parents=True)
