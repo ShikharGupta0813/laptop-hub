@@ -75,5 +75,5 @@ Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address
 
 ## Not tested
 
-The APK has **not been installed on a real phone yet**. If the app opens to a blank or error page, check that
+The cloud build has run successfully (about 2 minutes, producing a 3.7 MB debug APK), but that test build used a placeholder address, so build your own with your real one. The APK has **not been installed on a real phone yet**. If the app opens to a blank or error page, check that
 Tailscale is on, the hub is running, and the address you built with is exactly the one from `tailscale serve status`.

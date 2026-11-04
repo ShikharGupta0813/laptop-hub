@@ -76,7 +76,7 @@ Key decisions and why:
 | Jarvis control (start/stop one process, log, remote command queue) + screen | `tests/test_jarvis.py` + UI run |
 | Apps directory (47 entries, search, favourites, recents), navigation Talk/Work/Learn/Notes/Apps | browser run |
 | Security review (Opus) and fixes, with regression tests | `tests/test_security.py` |
-| Android shell (Capacitor) in `mobile/`, launcher icon, cloud build workflow | see the Actions tab; not installed on a phone |
+| Android shell (Capacitor) in `mobile/`, launcher icon, cloud build workflow | cloud build verified (run #2, 3.7 MB APK, placeholder address); not installed on a phone |
 
 416 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
 
@@ -105,7 +105,7 @@ Key decisions and why:
   Windows laptop, real Ollama, real Whisper, real Claude API, real Asana/Gmail/iCal, real Android.
 - Windows-only code (ConPTY terminal, process kill, lock/sleep/volume keys, screenshot, Jarvis launch, UNC path
   behaviour) has never run on Windows.
-- The APK has **never been installed on a real phone**. The build runs in GitHub Actions (`.github/workflows/android-apk.yml`); see the Actions tab for its last result.
+- The APK has **never been installed on a real phone**. The build runs in GitHub Actions (`.github/workflows/android-apk.yml`) and has succeeded once with a placeholder address.
 - Pronunciation feedback is only Whisper word confidence (a hint, not a grade).
 - Quiz "from the internet" = a web page you give (SSRF-guarded) or a topic from the model's own knowledge. No live web search.
 - `run_command` (assistant) can still touch the hub's own config once the owner approves it.
