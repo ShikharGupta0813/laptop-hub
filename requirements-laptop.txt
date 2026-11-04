@@ -1,0 +1,2 @@
+# Laptop screenshots (the phone's Laptop tab) use Pillow's ImageGrab.
+pillow>=10
