@@ -40,6 +40,7 @@ STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
+INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
 @dataclass
@@ -125,8 +126,29 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None)
 
+    def hostname_of(value: str | None) -> str:
+        value = (value or "").strip().lower()
+        if value.startswith("["):
+            return value[1:].split("]")[0]
+        return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+    allowed_hosts = {"127.0.0.1", "localhost", "::1", INTERNAL_HOST, *(h.lower() for h in config.allowed_hosts)}
+
+    def host_ok(headers) -> bool:
+        """Only our own names: a page on another name pointed at this laptop (DNS rebinding) is refused."""
+        host = hostname_of(headers.get("host"))
+        return host in allowed_hosts or host.endswith(".ts.net")
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        if not host_ok(request.headers):
+            return JSONResponse({"detail": "This address is not allowed. Open the hub by its Tailscale address."},
+                                status_code=421)
+        # A plain HTML form (for example one injected into rendered text) cannot add a custom header.
+        if (request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/")
+                and request.headers.get("x-hub") != "1"):
+            return JSONResponse({"detail": "Requests must come from the app (missing X-Hub header)."},
+                                status_code=403)
         response = await call_next(request)
         for key, value in {
             "X-Content-Type-Options": "nosniff",
@@ -156,7 +178,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             raise HTTPException(401, "Log in first.")
 
     def client_id(request: Request) -> str:
-        return request.client.host if request.client else "unknown"
+        """Who a failed login counts against. Behind `tailscale serve` every request comes from
+        127.0.0.1, so use the tailnet identity it forwards, or the forwarded address."""
+        return (request.headers.get("tailscale-user-login")
+                or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                or (request.client.host if request.client else "unknown"))
 
     # ---- login -------------------------------------------------------------------------
 
@@ -475,7 +501,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     async def terminal_socket(ws: WebSocket):
         if not auth.session_valid(config.session_secret, ws.cookies.get(auth.COOKIE), deps.clock()):
             return await refuse(ws, 4401)
-        if not origin_ok(ws.headers):
+        if not origin_ok(ws.headers) or not host_ok(ws.headers):
             return await refuse(ws, 4403)
         table = config.shell_table()
         shell = ws.query_params.get("shell") or next(iter(table))

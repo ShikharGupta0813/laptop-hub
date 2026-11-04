@@ -506,13 +506,21 @@ def builtin_actions(system: System) -> list[Action]:
             raise ActionError("The laptop could not open a browser for that address.")
         return done("Opened the address on the laptop.")
 
+    PROGRAM_EXTENSIONS = {".exe", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+                          ".hta", ".lnk", ".msi", ".msc", ".reg", ".cpl", ".scr", ".pif", ".jar", ".dll", ".sh", ".appx"}
+
     async def open_path(params):
         raw = params["path"].strip().strip('"')
+        if raw.startswith(("\\\\", "//")):
+            raise BadParams("Network paths are not allowed.")
         path = Path(os.path.expandvars(os.path.expanduser(raw)))
         if not path.is_absolute():
             raise BadParams("Give the full path, for example C:\\Users\\you\\Documents\\notes.txt.")
         if not path.exists():
             raise BadParams("That file or folder does not exist on the laptop.")
+        if path.is_file() and path.suffix.lower() in PROGRAM_EXTENSIONS:
+            raise BadParams("This opens documents and folders, not programs. To start a program, add it to "
+                            "'apps' in hub.json and use it from there.")
         await blocking(system.open_default, str(path))
         return done(f"Opened {path.name or str(path)} on the laptop.")
 
@@ -667,6 +675,7 @@ def builtin_actions(system: System) -> list[Action]:
                open_url, params=[Param("url", "Web address", placeholder="https://example.com", max_length=2000)]),
         Action("open_path", "Open a file or folder", "launch",
                "Opens an existing file or folder on the laptop with its default app.", open_path,
+               risk="confirm",
                params=[Param("path", "Full path", placeholder="C:\\Users\\you\\Documents", max_length=1000)]),
 
         Action("screenshot", "Screenshot", "screen", "A picture of what is on the laptop screen now.", screenshot,

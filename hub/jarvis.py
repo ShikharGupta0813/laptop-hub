@@ -316,7 +316,7 @@ def make_router(ctx: Ctx, *, command: Command | None = None, launcher: Launcher 
         tmp = inbox / f".{item}.tmp"           # Jarvis only reads *.txt, so it never sees half a file
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, inbox / f"{item}.txt")
-        ctx.audit("jarvis_say", id=item, chars=len(text))
+        ctx.audit("jarvis_say", id=item, chars=len(text), text=text[:200])  # Jarvis can act on this text
         return {"queued": True, "id": item}
 
     return router

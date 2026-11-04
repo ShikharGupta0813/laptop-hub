@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import time
 
-SESSION_SECONDS = 30 * 24 * 3600
+SESSION_SECONDS = 14 * 24 * 3600
 COOKIE = "hub_session"
 MAX_FAILS = 5
 WINDOW_SECONDS = 60

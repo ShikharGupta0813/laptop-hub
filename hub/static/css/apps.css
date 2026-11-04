@@ -151,6 +151,8 @@
 #view-apps .ap-table th, #view-apps .ap-table td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 #view-apps .ap-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 #view-apps .ap-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); font-weight: 600; }
+#view-apps .ap-table .ap-act { position: sticky; right: 0; background: var(--bg); box-shadow: -8px 0 8px -8px #0008; padding: 2px 6px; }
+#view-apps .ap-table thead th.ap-act { background: var(--surface-2); z-index: 2; }
 #view-apps .ap-kill { min-height: 44px; padding: 0 14px; color: var(--bad); }
 #view-apps .ap-card-info, #view-apps .ap-card-error {
   display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 12px; border: 1px solid var(--line);
@@ -219,8 +221,6 @@
 #view-apps .ap-open:focus-visible, #view-apps .ap-star:focus-visible { outline-offset: -2px; }
 @media (max-width: 380px) {
   #view-apps .ap-bigrow { grid-template-columns: 1fr; }
-  #view-apps .ap-card.featured .ap-open { grid-template-columns: 1fr; }
-  #view-apps .ap-card.featured .ap-ico-wrap { grid-row: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   #view-apps * { animation-duration: .01ms !important; transition: none !important; }

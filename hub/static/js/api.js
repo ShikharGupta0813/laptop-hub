@@ -16,7 +16,8 @@ function problem(status, body) {
 
 // api("/api/notes") -> parsed JSON. Options: method, json (object body), form (FormData), signal.
 export async function api(path, { method = "GET", json, form, signal } = {}) {
-  const init = { method, signal, credentials: "same-origin", headers: {} };
+  // X-Hub marks a request as sent by this app's own code. A plain HTML form cannot add it.
+  const init = { method, signal, credentials: "same-origin", headers: { "X-Hub": "1" } };
   if (json !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(json);
@@ -46,7 +47,7 @@ export async function* sse(path, json, signal) {
   try {
     response = await fetch(path, {
       method: "POST", credentials: "same-origin", signal,
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify(json),
+      headers: { "Content-Type": "application/json", "X-Hub": "1" }, body: JSON.stringify(json),
     });
   } catch (error) {
     if (error.name === "AbortError") return;
@@ -95,7 +96,13 @@ export function fileUrl(root, path, download = false) {
 // Turn markdown into safe HTML. Notes come from files, so they are never trusted.
 export function renderMarkdown(text) {
   const html = window.marked.parse(text, { gfm: true, breaks: false });
-  return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+  // Forms and buttons are removed: injected text could otherwise put an invisible full-screen form
+  // on the page that posts to the hub's own routes. Inline styles go too (they hide such traps).
+  return window.DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ["form", "button", "input", "textarea", "select", "option", "style", "link", "meta"],
+    FORBID_ATTR: ["style", "formaction", "form"],
+  });
 }
 
 export function el(tag, attrs = {}, ...children) {

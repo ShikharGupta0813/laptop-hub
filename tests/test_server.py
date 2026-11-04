@@ -28,7 +28,7 @@ class Base(unittest.TestCase):
         deps = Deps(llm=FakeLLM(), claude=FakeLLM(), transcriber=FakeTranscriber(),
                     assistant=FakeAssistant(), terminal=terminal)
         self.client = TestClient(create_app(self.config, deps, audit_path=self.audit),
-                                 base_url="http://testserver")
+                                 base_url="http://testserver", headers={"X-Hub": "1"})
         self.addCleanup(self.client.close)
 
     def login(self):
@@ -155,7 +155,7 @@ class NotesTest(Base):
             def transcribe(self, path):
                 return "  "
         deps = Deps(llm=FakeLLM(), transcriber=Silent(), assistant=FakeAssistant())
-        client = TestClient(create_app(self.config, deps, audit_path=self.audit))
+        client = TestClient(create_app(self.config, deps, audit_path=self.audit), headers={"X-Hub": "1"})
         client.post("/api/login", json={"token": TOKEN})
         response = client.post("/api/notes/voice", files={"file": ("rec.webm", b"audio")})
         self.assertEqual(response.status_code, 422)
@@ -215,7 +215,8 @@ class AskAndAssistantTest(Base):
 
             def reset(self, *args):
                 pass
-        client = TestClient(create_app(self.config, Deps(assistant=Broken()), audit_path=self.audit))
+        client = TestClient(create_app(self.config, Deps(assistant=Broken()), audit_path=self.audit),
+                            headers={"X-Hub": "1"})
         client.post("/api/login", json={"token": TOKEN})
         response = client.post("/api/assistant/message", json={"session_id": "s", "text": "x"})
         kinds = [e["type"] for e in self.events(response)]

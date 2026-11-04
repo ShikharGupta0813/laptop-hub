@@ -426,19 +426,35 @@ class LaunchTests(LaptopCase):
     def test_open_path_refuses_a_missing_or_relative_path(self):
         client = self.build()
         missing = self.tmp / "nope.txt"
-        r = self.run_action(client, "open_path", {"path": str(missing)})
+        r = self.run_action(client, "open_path", {"path": str(missing)}, confirm=True)
         self.assertEqual(r.status_code, 400)
         self.assertIn("does not exist", r.json()["detail"])
-        self.assertEqual(self.run_action(client, "open_path", {"path": "relative/file.txt"}).status_code, 400)
+        self.assertEqual(self.run_action(client, "open_path", {"path": "relative/file.txt"}, confirm=True).status_code, 400)
         self.assertEqual(self.system.of("open_default"), [])
 
     def test_open_path_opens_an_existing_file_and_folder(self):
         client = self.build()
         file = self.tmp / "notes.txt"
         file.write_text("x")
-        self.assertEqual(self.run_action(client, "open_path", {"path": str(file)}).status_code, 200)
-        self.assertEqual(self.run_action(client, "open_path", {"path": f'"{self.tmp}"'}).status_code, 200)
+        # Opening a file can start a program, so it asks first like the other risky actions.
+        self.assertEqual(self.run_action(client, "open_path", {"path": str(file)}).status_code, 409)
+        self.assertEqual(self.run_action(client, "open_path", {"path": str(file)}, confirm=True).status_code, 200)
+        self.assertEqual(self.run_action(client, "open_path", {"path": f'"{self.tmp}"'}, confirm=True).status_code, 200)
         self.assertEqual([c[1] for c in self.system.of("open_default")], [str(file), str(self.tmp)])
+
+    def test_open_path_refuses_programs_and_network_paths(self):
+        client = self.build()
+        for name in ("setup.exe", "run.bat", "x.ps1", "evil.lnk", "page.hta", "tool.JS", "app.msi"):
+            program = self.tmp / name
+            program.write_text("x")
+            r = self.run_action(client, "open_path", {"path": str(program)}, confirm=True)
+            self.assertEqual(r.status_code, 400, name)
+            self.assertIn("not programs", r.json()["detail"])
+        for unc in ("\\\\attacker.example\\share\\x.txt", "//attacker.example/share/x.txt"):
+            r = self.run_action(client, "open_path", {"path": unc}, confirm=True)
+            self.assertEqual(r.status_code, 400, unc)
+            self.assertIn("Network paths", r.json()["detail"])
+        self.assertEqual(self.system.of("open_default"), [])
 
     def test_open_app_uses_only_the_configured_target_and_args(self):
         client = self.build()

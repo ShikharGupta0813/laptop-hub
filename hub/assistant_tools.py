@@ -48,17 +48,19 @@ class Hub:
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
-            cookie = auth.make_session(self._config.session_secret)
             self._client = httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=self._get_app()), base_url=self._base,
-                cookies={auth.COOKIE: cookie}, timeout=120.0)
+                headers={"X-Hub": "1"}, timeout=120.0)
         return self._client
 
     async def call(self, method: str, path: str, *, params: dict | None = None,
                    body: dict | None = None) -> tuple[bool, Any]:
         """(ok, json) on success; (False, a plain sentence) when the route said no."""
         try:
-            response = await self._http().request(method, path, params=params, json=body)
+            # A fresh session cookie per call, so it never expires while the hub keeps running.
+            cookie = f"{auth.COOKIE}={auth.make_session(self._config.session_secret)}"
+            response = await self._http().request(method, path, params=params, json=body,
+                                                  headers={"Cookie": cookie})
         except httpx.HTTPError as exc:
             return False, f"The hub could not be reached from inside ({exc})."
         try:
@@ -131,9 +133,9 @@ def fmt_result(data: dict) -> str:
 def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
     hub = Hub(get_app, config)
 
-    def tool(name, description, props, required, run, needs_approval=False):
+    def tool(name, description, props, required, run, needs_approval=False, preview=None):
         return ExtraTool({"name": name, "description": description,
-                          "input_schema": _schema(props, required)}, run, needs_approval)
+                          "input_schema": _schema(props, required)}, run, needs_approval, preview)
 
     async def asana_tasks(a):
         ok, d = await hub.call("GET", "/api/work/asana/tasks", params={"filter": a.get("filter") or "today"})
@@ -164,12 +166,26 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         ok, d = await hub.call("POST", f"/api/work/asana/tasks/{a['gid']}/complete")
         return ok, "Task marked complete." if ok else d
 
-    async def send_email(a):
+    drafts: dict[tuple, str] = {}  # the draft shown to the owner is the one that gets sent
+
+    async def email_preview(a):
+        """Resolve the recipient and keep the draft, so the approval card shows the real address."""
         ok, d = await hub.call("POST", "/api/work/email/draft",
                                body={"to": a["to"], "subject": a["subject"], "body": a["body"]})
         if not ok:
             return False, d
-        ok, sent = await hub.call("POST", "/api/work/email/send", body={"draft_id": d["draft_id"]})
+        drafts[(a["to"], a["subject"], a["body"])] = d["draft_id"]
+        return True, {"resolved_to": d["to"]}
+
+    async def send_email(a):
+        draft_id = drafts.pop((a["to"], a["subject"], a["body"]), None)
+        if draft_id is None:  # approved without a preview (auto-approve): create the draft now
+            ok, d = await hub.call("POST", "/api/work/email/draft",
+                                   body={"to": a["to"], "subject": a["subject"], "body": a["body"]})
+            if not ok:
+                return False, d
+            draft_id = d["draft_id"]
+        ok, sent = await hub.call("POST", "/api/work/email/send", body={"draft_id": draft_id})
         return ok, f"Email sent to {sent['to']}." if ok else sent
 
     async def chat_send(a):
@@ -232,7 +248,8 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
              {"gid": _s()}, ["gid"], asana_complete, needs_approval=True),
         tool("send_email", "Send an email from the owner's account. 'to' is a contact name, 'me' or an address. The owner "
                            "sees the whole email and is asked first.",
-             {"to": _s(), "subject": _s(), "body": _s()}, ["to", "subject", "body"], send_email, needs_approval=True),
+             {"to": _s(), "subject": _s(), "body": _s()}, ["to", "subject", "body"], send_email, needs_approval=True,
+             preview=email_preview),
         tool("chat_send", "Post a message to one of the owner's Google Chat spaces. The owner is asked first.",
              {"space": _s(), "text": _s()}, ["space", "text"], chat_send, needs_approval=True),
         tool("laptop_action", "Do something on the laptop through its action list (lock, open a link or app, volume, "

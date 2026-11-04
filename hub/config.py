@@ -38,6 +38,8 @@ class Config:
     # The assistant does many small tool calls, so it uses the faster, cheaper Sonnet.
     assistant_model: str = "claude-sonnet-5-5"
     allowed_origins: list[str] = field(default_factory=list)
+    # Host names the hub answers to besides localhost and *.ts.net (blocks DNS-rebinding pages)
+    allowed_hosts: list[str] = field(default_factory=list)
     jarvis_dir: str = ""  # folder of the jarvis-voice-assistant repo (email, calendar, chat helpers)
     shells: dict[str, list[str]] = field(default_factory=dict)
     scripts: dict[str, dict] = field(default_factory=dict)
@@ -87,7 +89,7 @@ def save(config: Config, path: Path) -> None:
         "host": config.host, "port": config.port, "ollama_host": config.ollama_host,
         "chat_model": config.chat_model, "whisper_model": config.whisper_model,
         "claude_model": config.claude_model, "assistant_model": config.assistant_model,
-        "allowed_origins": config.allowed_origins, "shells": config.shells,
+        "allowed_origins": config.allowed_origins, "allowed_hosts": config.allowed_hosts, "shells": config.shells,
         "scripts": config.scripts, "apps": config.apps,
     }
     tmp = path.with_suffix(".tmp")

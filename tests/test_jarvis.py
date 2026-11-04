@@ -449,7 +449,8 @@ class SayTests(JarvisCase):
         client.post("/api/jarvis/say", json={"text": "my secret plan"})
         says = [a for a in self.audits if a[0] == "jarvis_say"]
         self.assertEqual([a[1]["chars"] for a in says], [2000, 14])
-        self.assertNotIn("secret", json.dumps(self.audits))
+        # Jarvis can act on what it is told (send mail, open things), so the start of it is on record.
+        self.assertEqual([a[1]["text"] for a in says], ["x" * 200, "my secret plan"])
         self.stop(client)
 
     def test_the_inbox_is_cleared_of_nothing_by_the_hub(self):

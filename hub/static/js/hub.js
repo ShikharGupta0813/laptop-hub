@@ -276,6 +276,7 @@ export function init(container, ctx) {
         };
         xhr.open("POST", "/api/upload");
         xhr.withCredentials = true;
+        xhr.setRequestHeader("X-Hub", "1");
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             bar.value = (e.loaded / e.total) * 100;

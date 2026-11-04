@@ -131,13 +131,13 @@ export function createRunner(container, ctx, { getAction } = {}) {
     const runButton = el("button", { type: "submit", class: "btn primary ap-run" }, "Run");
 
     const needsForm = params.length > 0 || action.risk === "confirm";
+    container.append(head);
+    if (needsForm) container.append(form);
+    container.append(confirmBox, status, result);
     if (opts.returnTo) {
       container.append(el("button", { type: "button", class: "btn ap-linkbtn", onclick: () => open(opts.returnTo) },
         icon("back", 18), `Back to ${opts.returnTo.title}`));
     }
-    container.append(head);
-    if (needsForm) container.append(form);
-    container.append(confirmBox, status, result);
 
     // -- form fields from params
     for (const param of params) {
@@ -276,12 +276,12 @@ export function createRunner(container, ctx, { getAction } = {}) {
       const cancel = el("button", { type: "button", class: "btn", onclick: () => hideConfirm() }, "Cancel");
       const yes = el("button", { type: "button", class: "btn danger", onclick: () => { hideConfirm(false); send(values, true); } },
         "Yes, do it");
-      confirmBox.replaceChildren(
+      confirmBox.replaceChildren(...[
         el("h3", { id: titleId }, ask),
         sentence ? el("p", {}, sentence) : null,
         action.description ? el("p", { class: "muted" }, action.description) : null,
         values && Object.keys(values).length ? el("dl", { class: "ap-kvs" }, describeValues(values)) : null,
-        el("div", { class: "ap-row ap-confirm-row" }, cancel, yes));
+        el("div", { class: "ap-row ap-confirm-row" }, cancel, yes)].filter(Boolean));
       confirmBox.hidden = false;
       runButton.disabled = true;
       cancel.focus();
@@ -368,10 +368,6 @@ export function createRunner(container, ctx, { getAction } = {}) {
         again = "Refresh";
       }
       actions.append(runAgainButton(values, again));
-      if (opts.returnTo) {
-        actions.append(el("button", { type: "button", class: "btn", onclick: () => open(opts.returnTo) },
-          icon("back", 18), `Back to ${opts.returnTo.title}`));
-      }
       if (kind !== "text") parts.push(actions);
       result.replaceChildren(...parts);
     }
@@ -387,13 +383,13 @@ export function createRunner(container, ctx, { getAction } = {}) {
       if (nameCol < 0) nameCol = 1;
       if (!rows.length) return el("p", { class: "muted" }, "Nothing to show.");
       const head = el("tr", {}, columns.map((c) => el("th", { scope: "col" }, String(c))),
-        canKill ? el("th", { scope: "col" }, el("span", { class: "sr-only" }, "Actions")) : null);
+        canKill ? el("th", { scope: "col", class: "ap-act" }, el("span", { class: "sr-only" }, "Actions")) : null);
       const body = rows.map((row) => {
         const cells = row.map((cell) => el("td", { class: typeof cell === "number" ? "num" : "" }, cell == null ? "" : String(cell)));
         if (canKill) {
           const pid = row[pidCol];
           const label = row[nameCol] != null ? String(row[nameCol]) : "";
-          cells.push(el("td", {}, el("button", { type: "button", class: "btn ap-kill",
+          cells.push(el("td", { class: "ap-act" }, el("button", { type: "button", class: "btn ap-kill",
             "aria-label": `End ${label || "program"} (process id ${pid})`,
             onclick: () => open(killer, { prefill: { pid }, ask: true, label, returnTo: action }) }, "Kill")));
         }

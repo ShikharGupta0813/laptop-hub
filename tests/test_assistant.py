@@ -149,10 +149,12 @@ class ReadOnlyTools(Base):
                             reply(tool_block("t2", "search_notes", {"tag": "shop"}),
                                   tool_block("t3", "system_status", {})),
                             reply("ok")])
-        events = await collect(svc.run("s", "note", "claude", False))
+        events = await collect(svc.run("s", "note", "claude", False),
+                               on_approval=lambda e: svc.resolve("s", e["id"], True))
         results = of(events, "tool_result")
         self.assertTrue(all(r["ok"] for r in results), results)
-        self.assertFalse(of(events, "approval_needed"))
+        # Writing a note asks first: hostile text could otherwise plant instructions for later sessions.
+        self.assertEqual([e["name"] for e in of(events, "approval_needed")], ["add_note"])
         self.assertIn("buy milk", results[1]["output"])
         self.assertIn("memory", results[2]["output"])
 

@@ -149,7 +149,7 @@
 #view-assistant .as-approval { padding: 4px 12px 14px; }
 #view-assistant .as-approval-title { display: flex; gap: 8px; align-items: center; font-weight: 700; margin-bottom: 2px; }
 #view-assistant .as-approval-title .as-ico { color: var(--warn); }
-#view-assistant .as-code { font-size: 14px; border-color: var(--warn); }
+#view-assistant .as-code { font-size: 14px; border-color: var(--warn); max-height: 38vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 #view-assistant .as-approval-status { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-weight: 600; }
 #view-assistant .as-inline-err { color: var(--bad); font-weight: 500; }
 #view-assistant .as-approval-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }

@@ -104,15 +104,25 @@ function toolIcon(name) {
 }
 
 // What exactly will run, as label/text pairs for the approval card.
+// The approval card must show EVERYTHING that will happen, so the owner is never approving text they
+// cannot see: every field, in full, in the order that reads best.
+const FIELD_LABELS = {
+  to: "To", resolved_to: "Sends to (resolved address)", subject: "Subject", body: "Message", space: "Chat space",
+  text: "Text", gid: "Task id", command: "Command", shell: "Shell", cwd: "Folder", path: "File", content: "Content",
+  append: "Append", name: "Name", action: "Action", params: "Settings", id: "Id", tags: "Tags", timeout_seconds: "Timeout (s)",
+};
+const FIELD_ORDER = ["to", "resolved_to", "subject", "space", "gid", "action", "name", "shell", "cwd", "command",
+  "path", "append", "params", "body", "text", "content"];
+
 function approvalParts(input) {
   const parts = [];
   if (input && typeof input === "object") {
-    if (typeof input.command === "string") {
-      parts.push({ label: input.shell ? `Command (${input.shell})` : "Command", text: input.command });
-    }
-    if (typeof input.path === "string") parts.push({ label: "File", text: input.path });
-    for (const key of ["content", "text", "body", "new_text"]) {
-      if (typeof input[key] === "string") parts.push({ label: "Content (first lines)", text: firstLines(input[key], 8) });
+    const keys = [...FIELD_ORDER.filter((k) => k in input), ...Object.keys(input).filter((k) => !FIELD_ORDER.includes(k))];
+    for (const key of keys) {
+      const value = input[key];
+      const text = typeof value === "string" ? value : pretty(value);
+      const label = key === "command" && input.shell ? `Command (${input.shell})` : FIELD_LABELS[key] || key;
+      parts.push({ label, text });
     }
   }
   if (!parts.length) parts.push({ label: "Details", text: pretty(input) });

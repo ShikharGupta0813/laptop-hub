@@ -137,7 +137,7 @@ export function createJarvis(container, ctx) {
     if (status && loadError) {
       nodes.push(el("p", { class: "ap-form-error" }, `Can't reach the laptop right now. Showing the last known state. ${loadError}`));
     }
-    stateCard.replaceChildren(...nodes);
+    stateCard.replaceChildren(...nodes.filter(Boolean));
   }
 
   function renderControls() {
@@ -327,10 +327,13 @@ export function createJarvis(container, ctx) {
   }
 
   // ---- say ----------------------------------------------------------------------------------------
+  let sayTimer = null;
   function sayMessageShow(text, bad) {
+    clearTimeout(sayTimer);
     sayMessage.textContent = text || "";
     sayMessage.hidden = !text;
     sayMessage.classList.toggle("bad", !!bad);
+    if (text && !bad) sayTimer = setTimeout(() => { sayMessage.hidden = true; }, 8000);
   }
 
   function renderSent() {
@@ -377,7 +380,7 @@ export function createJarvis(container, ctx) {
     const recording = phase === "recording";
     micBtn.classList.toggle("recording", recording);
     micBtn.setAttribute("aria-label", recording ? "Stop recording" : "Record a command");
-    micBtn.replaceChildren(icon(recording ? "stop" : "assistant", 22), recording ? el("span", { class: "ap-mic-time" }, "0:00") : null);
+    micBtn.replaceChildren(...[icon(recording ? "stop" : "assistant", 22), recording ? el("span", { class: "ap-mic-time" }, "0:00") : null].filter(Boolean));
     micCancel.hidden = !recording;
     micBtn.disabled = phase === "uploading" || !canSay();
     if (phase === "idle") micStatus.textContent = micStatus.dataset.keep === "1" ? micStatus.textContent : "";

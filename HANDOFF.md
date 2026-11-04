@@ -7,7 +7,7 @@ Use the new repo from now on.)
 Read this first when starting a new chat. It says what the project is, what is finished, what is
 still to do, how it was built, and the exact words to paste to continue.
 
-_Last updated: 2026-11-04 (round 3 in progress)._
+_Last updated: 2026-11-04 (all planned features built; security review fixed)._
 
 ## 1. What this is
 
@@ -58,7 +58,7 @@ Key decisions and why:
   hard work. The assistant uses `claude-sonnet-5-5`; "Ask Claude" uses `claude-opus-5-5`.
 - **The model never decides safety.** Approval gating, path limits and protected files are code.
 
-## 3. Status: finished (tested with fake models in a Linux container)
+## 3. Status: finished (tested with fake models and a fake operating system, in a Linux container)
 
 | Part | Evidence |
 |---|---|
@@ -67,51 +67,50 @@ Key decisions and why:
 | Notes: voice + text, background title/tags, edit | `tests/test_notes.py` + UI run |
 | Ask (Explain/Summarise/Quiz) over SSE | `tests/test_llm.py` + UI run |
 | Terminal (POSIX pty) + Terminal tab | server tests + UI run |
-| Assistant backend (tools, approvals, limits), Talk tab | `tests/test_assistant.py` + UI run |
-| Hub tab (status, buttons, upload, setup check) | UI run |
-| **Work backend**: Asana (direct REST), calendar/email/chat via Jarvis helper modules, demo mode | `tests/test_work.py` (54) |
-| **Learn backend**: sources (note/file/PDF/URL with SSRF guard/text/topic), chat, quizzes, history | `tests/test_study.py` (76) |
-| **English backend**: speaking analysis (code-computed fillers/WPM/pauses), role-play, correction, vocabulary SRS, progress | `tests/test_english.py` (67) |
-| Navigation: Talk, Work, Learn, Notes, Apps; Files/Terminal/Hub under Apps | browser run |
+| Assistant backend (tools, approvals, limits) + Talk tab | `tests/test_assistant*.py` + UI run |
+| Assistant tools for Work, laptop actions, Jarvis, English, quizzes (call the hub's own routes in-process) | `tests/test_assistant_tools.py` |
+| Work: Asana, calendar, email (draft then send once), Google Chat; Work screens | `tests/test_work.py` + UI run |
+| Learn: sources (note/file/PDF/URL with SSRF guard/text/topic), chat, quizzes, history; screens | `tests/test_study.py` + UI run |
+| English coach: speaking analysis (fillers/WPM/pauses computed in code), role-play, correction, vocabulary SRS, progress; screens | `tests/test_english.py` + UI run |
+| Laptop actions (26: lock, screenshot, processes, open url/app, clipboard, media keys, power...) + generic runner | `tests/test_laptop.py` + UI run |
+| Jarvis control (start/stop one process, log, remote command queue) + screen | `tests/test_jarvis.py` + UI run |
+| Apps directory (47 entries, search, favourites, recents), navigation Talk/Work/Learn/Notes/Apps | browser run |
+| Security review (Opus) and fixes, with regression tests | `tests/test_security.py` |
 | Android shell (Capacitor) in `mobile/` | `npm run sync` verified; **no APK built** |
 
-301 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
+416 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
 
-## 4. Status: in progress / still to do (in this order)
+## 4. Still to do (in this order)
 
-In progress when this was written (round 3, parallel agents, files owned separately):
-- Work screens `js/work.js`; Learn Chat+Quiz+source picker `js/studychat.js quiz.js sourcepicker.js`;
-  English screens `js/english.js`; backend `hub/laptop.py` (registry of laptop actions) and `hub/jarvis.py`
-  (start/stop Jarvis, queue commands) plus `docs/jarvis-remote-inbox.md` (optional Jarvis patch).
-
-Then:
-1. **Apps directory UI** (`js/apps.js`, `js/laptop.js`, `js/jarvis.js`): searchable list of every feature
-   (built-in screens, laptop actions from `/api/laptop/actions`, the owner's `apps`/`scripts`, Jarvis),
-   favourites and recents, a generic action runner (form from the param schema, risk confirmation,
-   image/table/text results) and the Jarvis screen. Contract: `docs/UI.md`, `docs/API.md` (last section).
-2. **Assistant tools** for Work, Learn and Laptop actions ("what's on my Asana today", "lock my laptop"):
-   extend `hub/assistant.py` (`tool_specs`) with read-only Work/notes tools and a `run_laptop_action` tool
-   that goes through the same approval rule as `run_command`.
-3. **Integration pass**: full-app browser run over every tab with the dev server, fix seams.
-4. **Security review** (Opus): auth, path jail, SSRF guard, laptop actions, Jarvis inbox, approvals.
-5. Windows hardening: terminal (`pywinpty`), process-tree kill, laptop actions on real Windows, Jarvis start/stop.
-6. Native extras: background wake word ("Hey Jarvis") plugin, push notifications, app icon/splash,
-   signed release build. Build the debug APK on the laptop (`mobile/README.md`).
-7. Optional: read-only inbox via IMAP, Learn streak should count from yesterday like English does,
-   assistant-created notes are not auto-titled.
+1. **Run it on the real laptop** (nothing below was ever run on Windows or with real models): follow README.md,
+   then `python -m hub doctor`. Fix whatever the first real run shows; expect small Windows fixes (terminal ConPTY,
+   process kill, lock/volume/screenshot calls, Jarvis launch).
+2. **Build the APK** on the laptop: `mobile/README.md`.
+3. **Apply the optional Jarvis patch** (`docs/jarvis-remote-inbox.md`) so the phone can send Jarvis text commands. Untested.
+4. Remaining items from the security review (all lower priority): server-side **session revocation** (a generation
+   counter in hub.json; today `python -m hub token` rotates the secret and logs everyone out, sessions last 14 days);
+   **pin dependencies with hashes**; close the DNS-rebinding gap in the quiz URL fetch (connect to the vetted IP);
+   consider blocking "read sensitive file then send email" in one assistant turn; check whether `tailscale serve`
+   forwards `X-Forwarded-Proto` (the cookie's `Secure` flag depends on it) and what `Host` it sends.
+5. Native extras: background wake word ("Hey Jarvis") plugin, push notifications for approvals, app icon/splash,
+   signed release build.
+6. Optional: read-only inbox via IMAP, Learn streak should count from yesterday like English does, assistant-made
+   notes are not auto-titled, "Log out everywhere" button.
 
 ## 5. Known gaps and honest limits
 
-- Everything above was tested **in a Linux container with fake models and fake OS calls**. Not tested on:
-  the real Windows laptop, real Ollama, real Whisper, real Claude API, real Asana/Gmail/iCal, real Android.
-- Windows-only code (ConPTY terminal, process kill, lock/sleep/volume keys, screenshot, Jarvis launch) has
-  never run on Windows. Expect small fixes on first real use.
+- Everything was tested **in a Linux container with fake models and a fake OS layer**. Not tested on: the real
+  Windows laptop, real Ollama, real Whisper, real Claude API, real Asana/Gmail/iCal, real Android.
+- Windows-only code (ConPTY terminal, process kill, lock/sleep/volume keys, screenshot, Jarvis launch, UNC path
+  behaviour) has never run on Windows.
 - **No APK has been built.** `mobile/` is configured and syncs; the Gradle build needs the Android SDK.
 - Pronunciation feedback is only Whisper word confidence (a hint, not a grade).
-- Quiz "from the internet" means: a web page you give (SSRF-guarded) or a topic from the model's own
-  knowledge. There is no live web search.
+- Quiz "from the internet" = a web page you give (SSRF-guarded) or a topic from the model's own knowledge. No live web search.
 - `run_command` (assistant) can still touch the hub's own config once the owner approves it.
-- Jarvis remote commands need the optional patch in `docs/jarvis-remote-inbox.md`, untested (needs Windows).
+- **Full access is deliberate**: the terminal, assistant and laptop actions can do anything the owner can. The safeguards
+  are the login token, Tailscale-only access, the host allow-list, the `X-Hub` header on every changing request,
+  approval cards that show the whole action, and the audit log. Turning on "run commands without asking"
+  removes the approval step for that session.
 
 ## 6. How it was built (so you can continue the same way)
 
