@@ -1,0 +1,71 @@
+# Builds the Android app (an APK) in the cloud, so you do not need Android Studio on your laptop.
+#
+# Run it: GitHub > Actions > "Build Android APK" > Run workflow > paste your hub's https address.
+# Then open the finished run and download the artifact "laptop-hub-debug-apk" (a zip holding app-debug.apk).
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      hub_url:
+        description: "Your hub's https address from `tailscale serve status`, e.g. https://yourlaptop.tail1234.ts.net"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the address
+        env:
+          HUB_URL: ${{ inputs.hub_url }}
+        run: |
+          # The address is passed through the environment, never pasted into the script text.
+          if ! printf '%s' "$HUB_URL" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$'; then
+            echo "::error::hub_url must look like https://yourlaptop.tail1234.ts.net"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install the Capacitor tools
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Point the app at your hub
+        working-directory: mobile
+        env:
+          HUB_URL: ${{ inputs.hub_url }}
+        run: npm run sync
+
+      - name: Build the debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: laptop-hub-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
