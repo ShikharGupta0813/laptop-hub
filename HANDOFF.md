@@ -7,7 +7,7 @@ Use the new repo from now on.)
 Read this first when starting a new chat. It says what the project is, what is finished, what is
 still to do, how it was built, and the exact words to paste to continue.
 
-_Last updated: 2026-11-04 (all planned features built; security review fixed)._
+_Last updated: 2026-11-04. **Checkpoint mid-way through round 2**: all round-2 backends, the new design system and shell are done; the phone SCREENS for the new features are NOT built yet (see section 4a)._
 
 ## 1. What this is
 
@@ -78,9 +78,66 @@ Key decisions and why:
 | Security review (Opus) and fixes, with regression tests | `tests/test_security.py` |
 | Android shell (Capacitor) in `mobile/`, launcher icon, cloud build workflow | cloud build verified (run #2, 3.7 MB APK, placeholder address); not installed on a phone |
 
-416 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
+1,337 unit tests passed on the last full run (416 before round 2) (`python -m unittest discover -s tests -t .`).
+
+## 3b. Round 2 (finished backends, design system, assistant tools) - 1,337 tests pass
+
+Conventions for every module: `docs/ROUND2_BRIEF.md`. Route docs: one file per module in `docs/api/*.md`.
+Each module is `hub/<name>.py` with `make_router(ctx)` (+ optional `start(ctx)` loop, `DEV_FAKES`), listed in
+`FEATURE_MODULES` in `hub/server.py`. Demo data is seeded when `HUB_DEMO=1` (the devserver sets it).
+
+| Module | What it does | Tests |
+|---|---|---|
+| `kb` | Ask my files: SQLite FTS5 + optional Ollama embeddings, cited streaming answers | `test_kb` |
+| `fileops` | Write side of Files (writable roots only, etag conflicts, trash, upload, zip) | `test_fileops` |
+| `notify` | Notification center + SSE + optional ntfy phone push; replaces `ctx.notify` | `test_notify` |
+| `reminders` | Reminders/alarms/timers, natural-language quick add, scheduler | `test_reminders` |
+| `inbox` | Read-only Gmail (IMAP), summaries, reply drafts (never sends), digest, daily briefing | `test_inbox` |
+| `watch` | Monitor Gmail + Google Chat with rules and AI "urgent" detection; chat arrives from the Android listener via `POST /api/watch/ingest` | `test_watch` |
+| `screen` | Live remote screen + opt-in remote control (armed for N minutes, allow-listed keys) | `test_screen` |
+| `productivity` | To-dos, focus timer, habits, journal | `test_productivity` |
+| `life` | Bookmarks, snippets/clipboard, expenses (+ UPI auto-capture), countdowns, calculator/units/world clock | `test_life`, `test_life_capture` |
+| `automations` | Routines of steps, manual or scheduled, dangerous steps gated | `test_automations` |
+| `cards` | Flashcards (SM-2), decks, import/export, AI roadmaps | `test_cards` |
+| `settings` | Settings (allow-listed keys only), models, diagnostics, audit viewer, backups | `test_settings` |
+| `search` | Global search fan-out + `GET /api/home` dashboard data | `test_search` |
+| `assistant_tools_more.py` | 18 assistant tools for the above (reads free, writes ask first, no deletes/sends, mail bodies never shown) | `test_assistant_tools_more` |
+
+UPI spend capture (the owner's request): the Android app (`mobile/android/.../capture/`, Java) reads payment-app
+notifications (GPay, PhonePe, Paytm, BHIM, CRED, bank apps) and optional bank SMS, filters debits locally, and POSTs
+to `/api/expenses/capture`. The hub parses it (`hub/life.py`), de-duplicates, stores a "pending" item, notifies, and the
+owner picks a category; it remembers merchant -> category. Same listener also forwards Gmail and Google Chat
+notifications to `/api/watch/ingest` once the owner turns monitoring on (`HubCapture.setWatch`). JS API on
+`window.Capacitor.Plugins.HubCapture`: `status, openListenerSettings, requestSms, setEnabled, setWatch, flush, test`
+(see `docs/api/capture-android.md`). **The Android code has never been compiled** (no SDK in the build container):
+the first GitHub Actions run is the real compile. Filter logic is checked by `node mobile/scripts/test-capture-filter.js`
+and `test-watch-filter.js`.
+
+Design system (done): `docs/DESIGN.md`, `hub/static/css/design.css` (tokens, 3 themes Midnight/Daylight/Aurora, 6
+accents), `js/ui.js` (sheet, toast, confirm, segmented, ring, ...), `js/icons.js` (127 icons), shell in `js/main.js`
+(bottom nav Home|Talk|Work|Learn|Apps, top bar with search/bell/settings, view registry `VIEWS`), new login,
+Home dashboard (`js/home.js`), global search overlay (`js/omnibox.js`).
 
 ## 4. Still to do (in this order)
+
+### 4a. NEXT: build the phone screens for round 2 (the backends exist, the screens do not)
+
+Registered in `VIEWS` (main.js) but the module file does not exist yet, so each opens a friendly "not installed" page:
+`notifications`, `settings`, `reminders`, `inbox`, `screen`, `focus`, `automations`, `kb`, `todos`, `habits`, `journal`,
+`expenses` (**including the "Needs a category" list for captured UPI payments**), `bookmarks`, `tools`, `cards`, `watch`.
+Also restyle the old screens to the new design (checklist in `docs/DESIGN.md`): Talk (+ hands-free voice mode), Work, Learn,
+English, Notes, Files (+ write UI, editor with etag conflict handling), Apps directory (add entries for every new feature),
+Terminal, Laptop, Jarvis. Each screen: `js/<id>.js` + `css/<id>.css` (new CSS is linked by the screen's own `init`), use only
+tokens and `ctx.ui`, implement `openSection`/`openItem`, test with Playwright at 390x844 against `python -m hub.devserver`.
+Suggested split (worked well before): one Sonnet agent per group above, each owning only its files; ask each to read the
+matching `docs/api/<module>.md`. Nine such agents were launched and stopped before writing any file, so nothing is half-done.
+After the screens: update `js/apps.js` directory, `sw.js` SHELL list + VERSION, README, docs/API.md index of `docs/api/*`,
+run a second security review (Opus) over all round-2 modules, rebuild the APK, then do the real-laptop run (item 1 below).
+Known small items from agent reports: `/api/home` suggestions are rule-based; `inbox` real IMAP path only tested against a
+scripted fake; `screen` real capture/input libs untested; expense parser has no relative-month phrases; `hub.json` locked keys
+(token, scripts, apps, shells, jarvis_dir, allowed hosts) are intentionally not editable from the phone.
+
+### 4b. Older items
 
 1. **Run it on the real laptop** (nothing below was ever run on Windows or with real models): follow README.md,
    then `python -m hub doctor`. Fix whatever the first real run shows; expect small Windows fixes (terminal ConPTY,
@@ -152,7 +209,7 @@ Working with the repo from scratch on a new machine:
 git clone https://github.com/ShikharGupta0813/laptop-hub && cd laptop-hub
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-work.txt -r requirements-laptop.txt
-python -m unittest discover -s tests -t .           # 400+ tests, no models or network needed
+python -m unittest discover -s tests -t .           # 1,300+ tests, no models or network needed
 python -m hub.devserver --port 8799                 # fake models and a harmless fake OS; token: devtoken
 ```
 
