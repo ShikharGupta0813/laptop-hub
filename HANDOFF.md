@@ -1,5 +1,9 @@
 # Laptop Hub: handoff
 
+**This project lives at https://github.com/ShikharGupta0813/laptop-hub (branch `main`).** (It was first built inside
+`ShikharGupta0813/AI-Task-Agent`, folder `laptop-hub/`, branch `claude/clever-dirac-r85yh2`, and split out with its history.
+Use the new repo from now on.)
+
 Read this first when starting a new chat. It says what the project is, what is finished, what is
 still to do, how it was built, and the exact words to paste to continue.
 
@@ -136,11 +140,20 @@ Then:
 
 ## 8. Resume in a new chat: paste this
 
-> I'm continuing the project in `laptop-hub/` of repo ShikharGupta0813/AI-Task-Agent (branch
-> `claude/clever-dirac-r85yh2`). Read `laptop-hub/HANDOFF.md` and `laptop-hub/README.md`, run the tests
-> (`python -m unittest discover -s tests -t .`), then continue with the first unfinished item in section 4.
-> Keep updating HANDOFF.md as you go and push often. I have given you permission to use my GitHub
-> account for pushes to that repo. Ask me before spending a lot of credit.
+> I'm continuing my project `ShikharGupta0813/laptop-hub` (branch `main`). Read `HANDOFF.md` and `README.md`,
+> run the tests (`python -m unittest discover -s tests -t .`), then continue with the first unfinished item in
+> section 4 of HANDOFF.md. Keep HANDOFF.md up to date and push often. I give you permission to use my GitHub
+> account to push to that repo. Don't ask me about credits.
+
+Working with the repo from scratch on a new machine:
+
+```bash
+git clone https://github.com/ShikharGupta0813/laptop-hub && cd laptop-hub
+python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-work.txt -r requirements-laptop.txt
+python -m unittest discover -s tests -t .           # 400+ tests, no models or network needed
+python -m hub.devserver --port 8799                 # fake models and a harmless fake OS; token: devtoken
+```
 
 ## 9. Related repos
 
