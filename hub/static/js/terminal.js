@@ -181,8 +181,10 @@ export function init(container, ctx) {
       }
     }, CONNECT_TIMEOUT_MS);
 
+    let opened = false;
     socket.onopen = () => {
       if (ws !== socket) return;
+      opened = true;
       clearTimeout(connectTimer);
       setStatus("connected", select.value || "");
       if (visible) term.focus();
@@ -213,6 +215,7 @@ export function init(container, ctx) {
       const kept = gotError ? statusDetail.textContent : "";
       let detail;
       let line;
+      let diagnosing = false;
       if (event.code === 4401) {
         detail = "You are signed out. Log in again.";
         line = "Signed out. Log in again, then press Reconnect.";
@@ -223,6 +226,13 @@ export function init(container, ctx) {
       } else if (event.code === 4400) {
         detail = "The laptop did not accept that shell or window size. Pick a shell and try again.";
         line = "The laptop rejected the request (unknown shell or bad size). Pick a shell and press Reconnect.";
+      } else if (!opened && !gotError) {
+        // The server rejects bad connections before the handshake finishes, so a browser reports
+        // them all as code 1006 with no reason. Ask the hub what is wrong.
+        detail = "The laptop did not accept the connection. Checking why\u2026";
+        line = "The connection was refused. Checking why\u2026";
+        diagnosing = true;
+        diagnose();
       } else if (event.code === 1006 || event.code === 1001 || event.code === 1011 || event.code === 1012) {
         detail = "Connection lost. Is the laptop awake and the hub running?";
         line = "Connection lost. Press Reconnect to start a new shell (the old shell's state is gone).";
@@ -232,8 +242,35 @@ export function init(container, ctx) {
       }
       setStatus("disconnected", kept || detail);
       if (kept) statusDetail.classList.add("is-error"); else statusDetail.classList.toggle("is-error", event.code !== 1000);
-      if (!gotError) note(line, event.code === 1000 || event.code === 1005 ? "33" : "31");
+      if (!gotError && !diagnosing) note(line, event.code === 1000 || event.code === 1005 ? "33" : "31");
     };
+  }
+
+  // A refused handshake carries no reason, so work out what it was: signed out, laptop
+  // unreachable, or (most likely) a shell/address problem.
+  async function diagnose() {
+    let detail;
+    let line;
+    try {
+      const session = await ctx.api("/api/session");
+      if (ws !== null || state !== "disconnected") return; // the user already started another attempt
+      if (!session.authenticated) {
+        detail = "You are signed out. Log in again.";
+        line = "Signed out. Log in again, then the terminal reconnects.";
+        lastClose = 4401;
+        window.dispatchEvent(new Event("hub:unauthorized"));
+      } else {
+        detail = "The laptop refused the connection. Pick a shell from the list, or open the hub from its usual address.";
+        line = "The laptop refused the connection (the shell name or the address was not accepted). Pick a shell and press Reconnect.";
+      }
+    } catch (error) {
+      if (ws !== null || state !== "disconnected") return;
+      detail = error.message || "Can't reach your laptop.";
+      line = detail;
+    }
+    setStatus("disconnected", detail);
+    statusDetail.classList.add("is-error");
+    note(line, "31");
   }
 
   function send(obj) {

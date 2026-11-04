@@ -276,7 +276,6 @@ export function init(container, ctx) {
     prefs.autoApprove = on;
     store.set("sessionStorage", "hub.assistant.autoapprove", on ? "1" : "0");
     syncControls();
-    ctx.toast(on ? "Commands will now run without asking." : "The assistant will ask before running commands.");
   }
 
   function onAutoApproveTap() {
@@ -501,7 +500,7 @@ export function init(container, ctx) {
     try {
       await postApprove(t.sid, card.id, approve);
       if (t.pending === card) t.pending = null;
-      resolveApprovalUi(card, approve ? "You approved this. Running…" : "You declined this.");
+      if (!card.done) resolveApprovalUi(card, approve ? "You approved this. Running…" : "You declined this.");
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         if (t.pending === card) t.pending = null;
@@ -658,9 +657,10 @@ export function init(container, ctx) {
     if (!t || !streaming) return;
     t.stopped = true;
     stopButton.disabled = true;
-    if (t.pending) {
-      const card = t.pending;
-      t.pending = null;
+    t.pending = null;
+    for (const card of t.cards.values()) {
+      if (!card.ui || card.done || card.answering) continue;
+      card.answering = true;
       try { await postApprove(t.sid, card.id, false); } catch (_) { /* the stream is closing anyway */ }
       setCardState(card, "denied", "Declined");
       resolveApprovalUi(card, "You stopped the assistant, so this was declined.");

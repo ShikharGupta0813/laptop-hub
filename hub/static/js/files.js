@@ -214,6 +214,9 @@ export function init(container, ctx) {
   const scroller = el("div", { class: "fl-scroll" }, docEl);
 
   const scopeLabel = el("span", { class: "fl-scope", "aria-live": "polite" }, "Whole page");
+  const clearSel = el("button", {
+    type: "button", class: "fl-clearsel", "aria-label": "Use the whole page instead of the selection", hidden: true,
+  }, icon("close"));
   const provLocal = el("button", { type: "button", class: "fl-seg", "data-p": "local" }, "Local");
   const provClaude = el("button", { type: "button", class: "fl-seg", "data-p": "claude" }, "Claude");
   const provBox = el("div", { class: "fl-prov", role: "group", "aria-label": "Model" }, provLocal, provClaude);
@@ -228,7 +231,7 @@ export function init(container, ctx) {
     ["explain", "Explain"], ["summarise", "Summarise"], ["quiz", "Quiz"], ["custom", "Ask..."],
   ].map(([mode, label]) => el("button", { type: "button", class: "btn fl-ai", "data-mode": mode }, label));
   const bar = el("div", { class: "fl-bar" },
-    el("div", { class: "fl-barhead" }, scopeLabel, provBox),
+    el("div", { class: "fl-barhead" }, el("div", { class: "fl-scopebox" }, scopeLabel, clearSel), provBox),
     askForm,
     el("div", { class: "fl-aibtns" }, aiButtons));
   const reader = el("div", { class: "fl-reader", hidden: true }, head, scroller, bar);
@@ -368,6 +371,7 @@ export function init(container, ctx) {
       browser.scrollTop = scrollKeep;
     } catch (error) {
       if (mine !== listToken || error.name === "AbortError") return;
+      if (silent && entries) { ctx.toast(error.message); return; } // keep what we already show
       entries = null;
       const top = path ? el("button", {
         type: "button", class: "btn", onclick: () => goTo(""),
@@ -699,6 +703,7 @@ export function init(container, ctx) {
     bar.hidden = !hasText;
     scopeLabel.textContent = currentText().scope;
     scopeLabel.classList.toggle("on", !!lastSelection);
+    clearSel.hidden = !lastSelection;
     for (const button of [provLocal, provClaude]) {
       button.setAttribute("aria-pressed", String(button.dataset.p === provider));
     }
@@ -706,11 +711,24 @@ export function init(container, ctx) {
 
   // ---- AI help -----------------------------------------------------------------------------
 
+  clearSel.addEventListener("click", () => {
+    lastSelection = "";
+    try { document.getSelection()?.removeAllRanges(); } catch (_) { /* ignore */ }
+    updateBar();
+  });
+  // A tap in the document with nothing selected means "no selection any more".
+  scroller.addEventListener("pointerup", () => {
+    setTimeout(() => {
+      const selection = document.getSelection();
+      if (lastSelection && (!selection || selection.isCollapsed)) { lastSelection = ""; updateBar(); }
+    }, 60);
+  });
+
   const touchPanel = () => { panelTouchedAt = Date.now(); };
   bar.addEventListener("pointerdown", touchPanel, true);
   sheet.addEventListener("pointerdown", touchPanel, true);
   // Keep the selection alive while a button is pressed (the text input still needs focus).
-  for (const button of [...aiButtons, provLocal, provClaude, stopBtn, copyBtn, saveBtn, closeBtn]) {
+  for (const button of [...aiButtons, provLocal, provClaude, clearSel, stopBtn, copyBtn, saveBtn, closeBtn]) {
     button.addEventListener("pointerdown", (event) => event.preventDefault());
   }
 
@@ -808,7 +826,8 @@ export function init(container, ctx) {
         askAbort = null;
         setRunning(false);
         if (controller.signal.aborted) sheetStatus.textContent = "Stopped";
-        else if (!got && sheetError.hidden) sheetStatus.textContent = "No answer came back.";
+        else if (!sheetError.hidden) sheetStatus.textContent = "Failed";
+        else if (!got) sheetStatus.textContent = "No answer came back.";
         else sheetStatus.textContent = `${scope} · done`;
       }
     }

@@ -52,7 +52,7 @@
 #view-files .fl-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px; -webkit-overflow-scrolling: touch; }
 #view-files .fl-doc { min-width: 0; overflow-wrap: anywhere; }
 #view-files .fl-doc.markdown { line-height: 1.6; }
-#view-files .fl-doc.markdown pre { overflow-wrap: normal; }
+#view-files .fl-doc.markdown pre, #view-files .fl-doc.markdown th, #view-files .fl-doc.markdown td { overflow-wrap: normal; }
 #view-files .fl-doc.markdown h1 { font-size: 1.6em; }
 #view-files .fl-doc.markdown h2 { font-size: 1.3em; margin-top: 1.2em; }
 #view-files .fl-pre { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: normal; max-width: 100%; }
@@ -71,6 +71,9 @@
   background: var(--surface); border-top: 1px solid var(--line);
 }
 #view-files .fl-barhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#view-files .fl-scopebox { display: flex; align-items: center; min-width: 0; }
+#view-files .fl-clearsel { width: 44px; height: 44px; display: grid; place-items: center; background: none; border: 0; color: var(--muted); cursor: pointer; }
+#view-files .fl-clearsel .fl-icon { width: 16px; height: 16px; }
 #view-files .fl-scope { font-size: 13px; color: var(--muted); padding-left: 4px; }
 #view-files .fl-scope.on { color: var(--accent); font-weight: 600; }
 #view-files .fl-prov { display: inline-flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
