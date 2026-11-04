@@ -43,7 +43,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
-                   "screen", "productivity", "life", "automations", "cards", "settings", "search")
+                   "screen", "productivity", "life", "automations", "watch", "cards", "settings", "search")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 

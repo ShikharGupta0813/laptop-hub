@@ -360,6 +360,18 @@ def _part_filename(part) -> str | None:
         return None
 
 
+def _leaf_parts(msg):
+    """The parts that hold content, depth-first. A forwarded message is one part: we don't read inside it."""
+    stack, seen = [msg], 0
+    while stack and seen < MAX_PARTS:
+        part = stack.pop()
+        seen += 1
+        if part.get_content_type() != "message/rfc822" and part.is_multipart():
+            stack.extend(reversed(part.get_payload()))
+        else:
+            yield part
+
+
 def parse_message(raw: RawMessage) -> ParsedMessage:
     """Turns raw bytes into safe, plain data. Never raises on hostile or broken input."""
     try:
@@ -382,18 +394,14 @@ def parse_message(raw: RawMessage) -> ParsedMessage:
     html_parts: list[str] = []
     attachments: list[Attachment] = []
     try:
-        for index, part in enumerate(msg.walk()):
-            if index >= MAX_PARTS:
-                break
-            if part.is_multipart():
-                continue
+        for part in _leaf_parts(msg):
             ctype = part.get_content_type()
             disposition = str(part.get("Content-Disposition") or "").split(";")[0].strip().lower()
             filename = _part_filename(part)
             if disposition == "attachment" or filename or ctype == "message/rfc822":
                 if len(attachments) < MAX_ATTACHMENTS:
                     try:
-                        size = len(part.get_payload(decode=True) or b"")
+                        size = len(part.as_bytes()) if part.is_multipart() else len(part.get_payload(decode=True) or b"")
                     except Exception:  # noqa: BLE001
                         size = 0
                     fallback = "forwarded message.eml" if ctype == "message/rfc822" else "attachment"
@@ -856,7 +864,7 @@ def _as_list(value: Any, item_limit: int, count: int) -> list[str]:
 
 
 def _plain(value: Any, limit: int) -> str:
-    return one_line(value, limit) if isinstance(value, (str, int, float)) else ""
+    return one_line(str(value), limit) if isinstance(value, (str, int, float)) and not isinstance(value, bool) else ""
 
 
 # ---- the router ---------------------------------------------------------------------------------
@@ -1102,30 +1110,37 @@ def make_router(ctx: Ctx, *, mailbox: MailBox | None = None, bridge: Bridge | No
         top = sorted(tally.values(), key=lambda e: -e["count"])[:5]     # stable: newest first among ties
         return {"unread": unread, "top_senders": top}
 
-    def due_today(value: Any, day: dt.date) -> bool:
-        """Is this reminder time on or before the end of `day`? Accepts ISO text or epoch seconds."""
+    def date_of(value: Any) -> dt.date | None:
+        """The calendar date of an ISO time or epoch seconds (None if it is neither)."""
         try:
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                when = dt.datetime.fromtimestamp(float(value)).date()
-            else:
-                when = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+                return dt.datetime.fromtimestamp(float(value)).date()
+            if isinstance(value, str):
+                return dt.datetime.fromisoformat(value.strip().replace("Z", "+00:00")).date()
         except (ValueError, OverflowError, OSError):
-            return False
-        return when <= day
+            pass
+        return None
+
+    # The reminders feature answers {"reminders": [{text, due, next_fire, snoozed_until, status, done, ...}]}.
+    # The key list is wider on purpose so a different shape degrades to "unavailable", not to a crash.
+    WHEN_KEYS = ("next_fire", "snoozed_until", "due", "due_at", "at", "fire_at", "time")
 
     async def part_reminders(day: dt.date) -> dict:
         data = await hub_call("/api/reminders")
-        if isinstance(data, dict):     # {"reminders": [...]} or similar
+        if isinstance(data, dict):
             data = next((v for v in data.values() if isinstance(v, list)), [])
-        rows = data if isinstance(data, list) else []
         out = []
-        for r in rows:
-            if not isinstance(r, dict) or any(r.get(k) is True for k in ("done", "completed", "fired")):
+        for r in data if isinstance(data, list) else []:
+            if not isinstance(r, dict) or r.get("status") == "done" or any(
+                    r.get(k) is True for k in ("done", "completed")):
                 continue
-            when = next((r[k] for k in ("due", "due_at", "at", "when", "time", "fire_at", "next_run") if r.get(k)), None)
-            if when is not None and due_today(when, day):
-                text = next((r[k] for k in ("text", "title", "message", "name") if r.get(k)), "")
-                out.append({"text": _plain(text, 160), "due": _plain(when, 40)})
+            for key in WHEN_KEYS:
+                when = date_of(r.get(key))
+                if when is not None:
+                    if when <= day:
+                        text = next((r[k] for k in ("text", "title", "message", "name") if r.get(k)), "")
+                        out.append({"text": _plain(text, 160), "due": _plain(r[key], 40)})
+                    break
         return {"reminders": out[:15]}
 
     async def guard(coro) -> dict:

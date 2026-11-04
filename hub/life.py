@@ -711,7 +711,8 @@ def safe_eval(expr: str) -> Any:
             if isinstance(op, ast.Pow):
                 if abs(b) > MAX_EXPONENT:
                     raise CalcError("That power is too large for me.")
-                if isinstance(a, int) and isinstance(b, int) and b > 0 and a.bit_length() * b > MAX_INT_BITS:
+                if isinstance(a, int) and isinstance(b, int) and b > 0 and abs(a) > 1 \
+                        and math.log2(abs(a)) * b > MAX_INT_BITS:
                     raise _TOO_BIG
                 if isinstance(a, float) and a != 0 and abs(b) * abs(math.log10(abs(a))) > 300:
                     raise _TOO_BIG

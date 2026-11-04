@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import tempfile
 import threading
 import unittest
 import zipfile
@@ -26,9 +27,7 @@ class Base(unittest.TestCase):
     config_overrides: dict = {}
 
     def setUp(self):
-        probe_cfg, probe_root = make_config()
-        self.tmp = probe_root
-        data = self.tmp / "hubdata"
+        data = Path(tempfile.mkdtemp(prefix="hub-data-"))
         self.config, self.tmp = make_config(data_dir=str(data), **self.config_overrides)
         self.audit = self.tmp / "audit.log"
         self.notes, self.inbox, self.docs = self.tmp / "notes", self.tmp / "inbox", self.tmp / "docs"
@@ -47,11 +46,11 @@ class Base(unittest.TestCase):
         self.assertEqual(client.post("/api/login", json={"token": TOKEN}).status_code, 200)
         return client
 
-    def post(self, path, **body):
-        return self.client.post(f"/api/fileops{path}", json=body)
+    def post(self, route, /, **body):
+        return self.client.post(f"/api/fileops{route}", json=body)
 
-    def get(self, path, **params):
-        return self.client.get(f"/api/fileops{path}", params=params)
+    def get(self, route, /, **params):
+        return self.client.get(f"/api/fileops{route}", params=params)
 
     def audit_events(self):
         if not self.audit.exists():
@@ -390,11 +389,13 @@ class MkdirRenameMoveCopyTest(Base):
         self.post("/mkdir", root="notes", path="d")
         self.post("/rename", root="notes", path="secret-note.txt", new_name="r.txt")
         self.post("/copy", root="notes", path="r.txt", dest_root="inbox", dest_dir="")
-        self.post("/move", root="notes", path="r.txt", dest_root="inbox", dest_dir="d" if False else "")
+        (self.inbox / "dest").mkdir()
+        self.post("/move", root="notes", path="r.txt", dest_root="inbox", dest_dir="dest")
         self.post("/delete", root="notes", path="d", confirm=True)
         events = {e["event"]: e for e in self.audit_events() if e["event"].startswith("fileops_")}
         self.assertEqual(set(events), {"fileops_write", "fileops_mkdir", "fileops_rename", "fileops_copy",
-                                       "fileops_delete"} | ({"fileops_move"} if "fileops_move" in events else set()))
+                                       "fileops_move", "fileops_delete"})
+        self.assertEqual(events["fileops_move"]["dest_path"], "dest/r.txt")
         self.assertEqual(events["fileops_write"]["root"], "notes")
         self.assertEqual(events["fileops_write"]["path"], "secret-note.txt")
         self.assertNotIn("TOP-SECRET-CONTENT", self.audit.read_text())
@@ -676,6 +677,7 @@ class LookingAroundTest(Base):
             path.write_text("x")
             os.utime(path, (1_700_000_000 - age, 1_700_000_000 - age))
 
+        make(self.docs / "a.md", 5000)
         make(self.notes / "new.txt", 0)
         make(self.inbox / "mid.txt", 100)
         make(self.docs / "old.md", 1000)

@@ -156,13 +156,13 @@ DEV_FAKES = {
 class DeckBody(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str = Field(default="", max_length=300)
-    color: Optional[str] = Field(default=None, max_length=20)
+    color: Optional[str] = Field(default=None, max_length=200)
 
 
 class DeckPatch(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     description: Optional[str] = Field(default=None, max_length=300)
-    color: Optional[str] = Field(default=None, max_length=20)
+    color: Optional[str] = Field(default=None, max_length=200)
 
 
 class CardIn(BaseModel):
@@ -495,8 +495,8 @@ def available(cards: list[dict], moment: datetime, deck: Optional[str] = None) -
             new.append(card)
         elif (parse_dt(card.get("due"), moment) or moment) <= moment:
             due.append(card)
-    due.sort(key=lambda c: (str(c.get("due")), str(c.get("id"))))
-    new.sort(key=lambda c: (str(c.get("created")), str(c.get("id"))))
+    due.sort(key=lambda c: str(c.get("due")))        # stable: equal times keep the order they were added
+    new.sort(key=lambda c: str(c.get("created")))
     return due, new
 
 
@@ -533,8 +533,10 @@ def parse_import(text: str, fmt: str = "auto", has_header: Optional[bool] = None
     while skip < len(lines) and (_HEADER_LINE.match(lines[skip]) or not lines[skip].strip()):
         skip += 1
     body = "".join(lines[skip:])
-    first = next((ln for ln in body.splitlines() if ln.strip()), "")
-    delimiter = "\t" if fmt == "tsv" or (fmt == "auto" and "\t" in first) else ","
+    sample = [ln for ln in body.splitlines() if ln.strip()][:200]
+    tabbed = sum(1 for ln in sample if "\t" in ln)
+    commas = sum(1 for ln in sample if "\t" not in ln and "," in ln)
+    delimiter = "\t" if fmt == "tsv" or (fmt == "auto" and tabbed and tabbed >= commas) else ","
     rows: list[list[str]] = []
     try:
         for row in csv.reader(io.StringIO(body), delimiter=delimiter, quotechar='"'):
@@ -652,10 +654,12 @@ def validate_roadmap(raw: Any, topic: str, weeks: int) -> tuple[str, list[dict]]
     if not isinstance(items, list):
         return "", []
     out: list[dict] = []
-    for item in items[:weeks]:
+    for item in items[:200]:                 # unusable entries are skipped; stop at the weeks asked for
         week = normalise_week(item, len(out) + 1)
         if week:
             out.append(week)
+        if len(out) >= weeks:
+            break
     return one_line(data.get("title"), 120) or one_line(f"Learn {topic}", 120), out
 
 
@@ -910,7 +914,7 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
             if needle and needle not in f"{c.get('front', '')}\n{c.get('back', '')}".casefold():
                 continue
             rows.append(c)
-        rows.sort(key=lambda c: (str(c.get("created")), str(c.get("id"))))
+        rows.sort(key=lambda c: str(c.get("created")))
         return {"total": len(rows), "cards": [public_card(c) for c in rows[offset:offset + limit]]}
 
     @router.post("/cards")
@@ -1272,7 +1276,7 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
         data = store().load()
         deck = find_deck(data, deck_id)
         mine = sorted((c for c in data["cards"] if c.get("deck_id") == deck_id),
-                      key=lambda c: (str(c.get("created")), str(c.get("id"))))
+                      key=lambda c: str(c.get("created")))
         name = file_slug(str(deck.get("name", "deck")))
         if format == "json":
             payload = {"deck": {k: deck.get(k, "") for k in ("id", "name", "description", "color", "created")},

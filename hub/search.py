@@ -26,17 +26,18 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from . import files
 from .common import InProcessClient, JsonFile, Ctx
 
-SOURCES = (   # (name, route, default kind)
-    ("kb", "/api/kb/search", "kb"),
-    ("fileops", "/api/fileops/search", "file"),
-    ("reminders", "/api/reminders/search", "reminder"),
-    ("todos", "/api/productivity/todos/search", "todo"),
-    ("journal", "/api/productivity/journal/search", "journal"),
-    ("bookmarks", "/api/life/bookmarks/search", "bookmark"),
-    ("expenses", "/api/life/expenses/search", "expense"),
-    ("cards", "/api/cards/search", "card"),
-    ("automations", "/api/automations/search", "automation"),
-    ("inbox", "/api/inbox/search", "inbox"),
+SOURCES = (   # (name, routes tried in order until one exists, default kind)
+    ("kb", ("/api/kb/search",), "kb"),
+    ("fileops", ("/api/fileops/search",), "file"),
+    ("reminders", ("/api/reminders/search",), "reminder"),
+    ("todos", ("/api/todos/search", "/api/productivity/todos/search"), "todo"),
+    ("journal", ("/api/journal/search", "/api/productivity/journal/search"), "journal"),
+    ("bookmarks", ("/api/bookmarks/search", "/api/life/bookmarks/search"), "bookmark"),
+    ("snippets", ("/api/snippets/search", "/api/life/snippets/search"), "snippet"),
+    ("expenses", ("/api/expenses/search", "/api/life/expenses/search"), "expense"),
+    ("cards", ("/api/cards/search",), "card"),
+    ("automations", ("/api/automations/search",), "automation"),
+    ("inbox", ("/api/inbox/search",), "inbox"),
 )
 BUILTIN_SOURCES = ("notes", "apps", "settings")
 MIN_Q, MAX_Q = 2, 200
@@ -144,12 +145,20 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
 
     # ---- search sources -------------------------------------------------------------------------------------------
 
-    async def ask_source(name: str, route: str, kind: str, q: str):
+    async def first_route(routes: tuple[str, ...], q: str):
+        ok, data = False, None
+        for route in routes:
+            ok, data = await client.call("GET", route, params={"q": q})
+            if ok:
+                break
+        return ok, data
+
+    async def ask_source(name: str, routes: tuple[str, ...], kind: str, q: str):
         """(results, timed_out). A missing route, an error or a slow answer gives no results."""
         if client is None:
             return [], False
         try:
-            ok, data = await asyncio.wait_for(client.call("GET", route, params={"q": q}), timeout)
+            ok, data = await asyncio.wait_for(first_route(routes, q), timeout)
         except asyncio.TimeoutError:
             return [], True
         except Exception:  # noqa: BLE001 - one broken feature must not break search
@@ -225,9 +234,9 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             return not wanted or any(n in wanted for n in names)
 
         jobs, order = [], []
-        for pos, (name, route, kind) in enumerate(SOURCES):
+        for pos, (name, routes, kind) in enumerate(SOURCES):
             if use(name, kind):
-                jobs.append(ask_source(name, route, kind, q))
+                jobs.append(ask_source(name, routes, kind, q))
                 order.append((pos, name))
         outcomes = await asyncio.gather(*jobs)
         groups: list[tuple[int, list[dict]]] = []
@@ -335,12 +344,14 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
                 raise SectionError(str(data))
             return data
 
-        async def try_get(self, path: str, params: dict | None = None) -> Any:
-            """The answer, or None when that route is missing or failing."""
-            try:
-                return await self.get(path, params)
-            except SectionError:
-                return None
+        async def try_get(self, *paths: str, params: dict | None = None) -> Any:
+            """The answer of the first of `paths` that works, or None when none does."""
+            for path in paths:
+                try:
+                    return await self.get(path, params)
+                except SectionError:
+                    continue
+            return None
 
     def items_of(data: Any, *keys: str) -> list:
         if isinstance(data, list):
@@ -375,8 +386,12 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
                 inner = {str(k)[:40]: v for k, v in list(value.items())[:12]
                          if isinstance(v, (int, float, bool)) or v is None or (isinstance(v, str) and len(v) <= 200)}
                 out[str(key)[:40]] = inner
-            elif isinstance(value, list) and len(value) <= 10 and all(isinstance(v, (str, int, float, bool)) for v in value):
-                out[str(key)[:40]] = value
+            elif isinstance(value, list) and len(value) <= 10:
+                kept = [v if not isinstance(v, dict) else {str(k)[:40]: x for k, x in list(v.items())[:8]
+                                                            if isinstance(x, (int, float, bool, str)) or x is None}
+                        for v in value if isinstance(v, (str, int, float, bool, dict))]
+                if len(kept) == len(value):
+                    out[str(key)[:40]] = kept
         return out
 
     async def s_greeting(memo: Memo):
@@ -410,8 +425,8 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         return out
 
     async def s_tasks(memo: Memo):
-        asana, todos = await asyncio.gather(memo.try_get("/api/work/asana/tasks", {"filter": "all"}),
-                                            memo.try_get("/api/productivity/todos"))
+        asana, todos = await asyncio.gather(memo.try_get("/api/work/asana/tasks", params={"filter": "all"}),
+                                            memo.try_get("/api/todos", "/api/productivity/todos", params={"done": "false"}))
         if asana is None and todos is None:
             raise SectionError("no task source")
         today = now().date().isoformat()
@@ -426,24 +441,30 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
                 due = (_clip(t.get("due") or t.get("due_on") or t.get("due_date"), 10)) or None
                 rows.append({"title": _clip(t.get("title") or t.get("text"), 140), "due": due, "source": "todo",
                              "overdue": bool(due and due < today),
-                             "open": {"view": "productivity", "section": "todos", "id": _clip(t.get("id"), 60)}})
+                             "open": {"view": "notes", "section": "todos", "id": _clip(t.get("id"), 60)}})
         rows.sort(key=lambda r: (r["due"] is None, r["due"] or ""))
         return rows[:5]
 
     async def s_reminders(memo: Memo):
         data = await memo.get("/api/reminders")
+        if isinstance(data, dict):   # {"reminders": [...]} or similar
+            data = next((v for v in data.values() if isinstance(v, list)), [])
         rows = []
-        for r in items_of(data, "reminders", "items"):
-            if not isinstance(r, dict) or r.get("done") or r.get("fired") or not (r.get("title") or r.get("text")):
+        for r in data if isinstance(data, list) else []:
+            if not isinstance(r, dict) or any(r.get(k) is True for k in ("done", "completed", "fired")):
                 continue
-            when = next((str(r[k]) for k in ("when", "at", "due", "fire_at", "remind_at", "time") if r.get(k)), "")
-            rows.append({"id": _clip(r.get("id"), 60), "title": _clip(r.get("title") or r.get("text"), 140), "when": when[:40],
-                         "open": {"view": "reminders", "id": _clip(r.get("id"), 60)}})
+            text = next((r[k] for k in ("title", "text", "message", "name") if r.get(k)), "")
+            when = next((str(r[k]) for k in ("when", "due", "due_at", "at", "fire_at", "remind_at", "next_run", "time") if r.get(k)), "")
+            if text:
+                rows.append({"id": _clip(r.get("id"), 60), "title": _clip(text, 140), "when": when[:40],
+                             "open": {"view": "reminders", "id": _clip(r.get("id"), 60)}})
         rows.sort(key=lambda r: (r["when"] == "", r["when"]))
         return rows[:5]
 
     async def s_notifications(memo: Memo):
-        data = await memo.get("/api/notify")
+        data = await memo.try_get("/api/notifications", "/api/notify")
+        if data is None:
+            raise SectionError("no notifications")
         items = [n for n in items_of(data, "notifications", "items") if isinstance(n, dict)]
         unread = int_or_none(data.get("unread")) if isinstance(data, dict) else None
         if unread is None:
@@ -453,24 +474,27 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
                    "read": bool(n.get("read"))} for n in items[:3]]
         return {"unread": unread, "latest": latest}
 
-    def streak_in(summary: Any, name: str) -> int | None:
+    def streak_in(summary: Any, name: str, *extra: str) -> int | None:
+        """A streak from a feature summary: {"streaks": {name: n}}, "<name>_streak", or one of the `extra` keys."""
         if not isinstance(summary, dict):
             return None
         streaks = summary.get("streaks")
         for candidate in (streaks.get(name) if isinstance(streaks, dict) else None, summary.get(f"{name}_streak"),
-                          (summary.get(name) or {}).get("streak") if isinstance(summary.get(name), dict) else None):
+                          *(summary.get(k) for k in extra)):
             if int_or_none(candidate) is not None:
                 return candidate
         return None
 
     async def s_streaks(memo: Memo):
-        learn, english, prod = await asyncio.gather(memo.try_get("/api/learn/history"), memo.try_get("/api/english/overview"),
-                                                    memo.try_get("/api/productivity/summary"))
-        if learn is None and english is None and prod is None:
+        learn, english, prod, focus = await asyncio.gather(
+            memo.try_get("/api/learn/history"), memo.try_get("/api/english/overview"),
+            memo.try_get("/api/productivity/summary"), memo.try_get("/api/focus/stats"))
+        if learn is None and english is None and prod is None and focus is None:
             raise SectionError("no streak source")
         return {"learn": int_or_none(learn.get("streak_days")) if isinstance(learn, dict) else None,
                 "english": int_or_none(english.get("streak_days")) if isinstance(english, dict) else None,
-                "habits": streak_in(prod, "habits"), "focus": streak_in(prod, "focus"), "journal": streak_in(prod, "journal")}
+                "habits": streak_in(prod, "habits", "best_streak"), "focus": streak_in(focus, "focus", "streak_days"),
+                "journal": streak_in(prod, "journal")}
 
     async def s_summaries(memo: Memo):
         prod, life, cards = await asyncio.gather(memo.try_get("/api/productivity/summary"), memo.try_get("/api/life/summary"),
@@ -479,6 +503,14 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             raise SectionError("no summaries")
         return {"productivity": scalars(prod) if prod is not None else None, "life": scalars(life) if life is not None else None,
                 "cards": scalars(cards) if cards is not None else None}
+
+    async def s_journal_today(memo: Memo):
+        """True when there is a journal entry today (None when that cannot be known). Not shown, only used for hints."""
+        data = await memo.get("/api/journal/stats", {"days": 1})
+        days = data.get("by_day") if isinstance(data, dict) else None
+        if isinstance(days, list) and days and isinstance(days[-1], dict) and int_or_none(days[-1].get("entries")) is not None:
+            return days[-1]["entries"] > 0
+        raise SectionError("unknown")
 
     async def s_jarvis(memo: Memo):
         data = await memo.get("/api/jarvis/status")
@@ -502,6 +534,7 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         ("summaries", s_summaries, lambda: {"productivity": None, "life": None, "cards": None}),
         ("jarvis", s_jarvis, lambda: {"running": False}),
         ("recent_notes", s_recent_notes, list),
+        ("_journal_today", s_journal_today, lambda: None),   # only feeds the hints; never reported
     )
 
     async def build_section(name: str, builder, default, memo: Memo):
@@ -515,7 +548,11 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         cache[name] = (clock(), value)
         return name, value, False
 
-    def suggestions(sections: dict) -> list[str]:
+    def first_positive(data: dict, *keys: str) -> int:
+        return next((data[k] for k in keys if int_or_none(data.get(k)) and data[k] > 0), 0)
+
+    def suggestions(sections: dict, journal_today: bool | None) -> list[str]:
+        """Up to four rule-based hints (no model): next meeting, overdue work, due cards, habits, journal, unread."""
         out: list[str] = []
         moment = now()
         for m in sections["agenda"]:
@@ -523,26 +560,26 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             if start and not m["all_day"] and timedelta(0) <= start - moment <= timedelta(minutes=60):
                 out.append(f"{m['title']} starts at {start:%H:%M}. Open the join link.")
                 break
+        prod = sections["summaries"].get("productivity") or {}
         overdue = [t for t in sections["tasks"] if t.get("overdue")]
+        count = max(len(overdue), first_positive(prod, "overdue"))
         if overdue:
-            more = f" and {len(overdue) - 1} more" if len(overdue) > 1 else ""
+            more = f" and {count - 1} more" if count > 1 else ""
             out.append(f"Finish the overdue task \"{overdue[0]['title']}\"{more}.")
+        elif count:
+            out.append(f"You have {count} overdue task{'s' if count != 1 else ''}.")
         cards = sections["summaries"].get("cards") or {}
-        due = next((cards[k] for k in ("due", "due_today", "due_count", "cards_due") if int_or_none(cards.get(k))), 0)
+        due = first_positive(cards, "due_today", "due", "due_count", "cards_due")
         if due:
             out.append(f"{due} flashcard{'s are' if due != 1 else ' is'} due for review.")
-        prod = sections["summaries"].get("productivity") or {}
-        left = next((prod[k] for k in ("habits_unchecked", "habits_remaining", "habits_pending", "habits_left")
-                     if int_or_none(prod.get(k))), 0)
-        if not left and isinstance(prod.get("habits"), dict):
-            total, done = int_or_none(prod["habits"].get("total")), int_or_none(prod["habits"].get("done"))
-            left = max(0, total - done) if total is not None and done is not None else 0
+        left = first_positive(prod, "habits_unchecked", "habits_remaining", "habits_pending", "habits_left")
+        total, done = int_or_none(prod.get("habits_total")), int_or_none(prod.get("habits_done_today"))
+        if not left and total is not None and done is not None:
+            left = max(0, total - done)
         if left:
             out.append(f"{left} habit{'s are' if left != 1 else ' is'} not checked off yet today.")
-        for key in ("journal_today", "journal_written_today", "journal_done"):
-            if key in prod and not prod[key]:
-                out.append("Write today's journal entry.")
-                break
+        if journal_today is False or prod.get("journal_today") is False:
+            out.append("Write today's journal entry.")
         if sections["notifications"]["unread"]:
             n = sections["notifications"]["unread"]
             out.append(f"You have {n} unread notification{'s' if n != 1 else ''}.")
@@ -554,13 +591,14 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         memo = Memo()
         built = await asyncio.gather(*(build_section(n, b, d, memo) for n, b, d in SECTIONS))
         sections = {name: value for name, value, _failed in built}
-        failed = [name for name, _value, was_failed in built if was_failed]
+        failed = [name for name, _value, was_failed in built if was_failed and not name.startswith("_")]
         moment = now()
         return {"greeting": sections["greeting"], "now": moment.strftime("%Y-%m-%dT%H:%M:%S"),
                 "laptop": sections["laptop"], "agenda": sections["agenda"], "tasks": sections["tasks"],
                 "reminders": sections["reminders"], "notifications": sections["notifications"],
                 "streaks": sections["streaks"], "summaries": sections["summaries"], "jarvis": sections["jarvis"],
-                "recent_notes": sections["recent_notes"], "suggestions": suggestions(sections),
+                "recent_notes": sections["recent_notes"],
+                "suggestions": suggestions(sections, sections["_journal_today"]),
                 "sections_failed": failed}
 
     return router

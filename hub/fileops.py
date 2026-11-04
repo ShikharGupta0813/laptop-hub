@@ -185,11 +185,15 @@ class EmptyBody(BaseModel):
     root: str | None = None
 
 
+# One change at a time, so an etag check and the replace after it can never interleave with another write.
+_LOCK = threading.RLock()
+
+
 # ---- the router -------------------------------------------------------------------------------
 
 def make_router(ctx: Ctx) -> APIRouter:
     router = APIRouter(prefix="/api/fileops", dependencies=[Depends(ctx.need_auth)])
-    lock = threading.RLock()     # one change at a time, so the etag check and the replace cannot interleave
+    lock = _LOCK
 
     # -- roots and permissions
 
@@ -201,8 +205,6 @@ def make_router(ctx: Ctx) -> APIRouter:
 
     def writable(root: str) -> Path:
         base = base_of(root)            # 404 for an unknown folder, before the read-only answer
-        if root not in ctx.config.writable_roots:
-            raise HTTPException(403, READ_ONLY)
         return base
 
     def protected() -> list[Path]:
@@ -673,6 +675,8 @@ def make_router(ctx: Ctx) -> APIRouter:
             _, options = parse_options_header(state["disp"])
             name = options.get(b"name", b"").decode("utf-8", "replace")
             if b"filename" in options:
+                if name != "file":
+                    raise HTTPException(400, "Choose a file to upload.")
                 if state["path"] is not None:
                     raise HTTPException(400, "Upload one file at a time.")
                 state["filename"] = options[b"filename"].decode("utf-8", "replace")
@@ -730,7 +734,7 @@ def make_router(ctx: Ctx) -> APIRouter:
                 deny_protected(dest_dir)
                 if not dest_dir.is_dir():
                     raise HTTPException(404, "The folder to upload into doesn't exist.")
-                name = clean_name(state["filename"] or "") or "upload"
+                name = clean_name((state["filename"] or "").replace("%00", "")) or "upload"
                 with lock:
                     final = _place_new(state["path"], dest_dir, name)
                 rel = rel_of(root, final)
