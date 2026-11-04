@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1217">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<title>Laptop Hub</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/css/assistant.css">
+<link rel="stylesheet" href="/css/files.css">
+<link rel="stylesheet" href="/css/notes.css">
+<link rel="stylesheet" href="/css/terminal.css">
+<link rel="stylesheet" href="/css/hub.css">
+</head>
+<body>
+<section id="login" hidden>
+  <form id="login-form" autocomplete="off">
+    <h1>Laptop Hub</h1>
+    <p class="muted">Paste the login token that <code>python -m hub init</code> printed on your laptop.</p>
+    <label for="token">Login token</label>
+    <input id="token" name="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+    <button class="btn primary" type="submit">Log in</button>
+    <p id="login-error" class="error" role="alert" hidden></p>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <main id="views">
+    <section id="view-assistant" class="view" hidden></section>
+    <section id="view-files" class="view" hidden></section>
+    <section id="view-notes" class="view" hidden></section>
+    <section id="view-terminal" class="view" hidden></section>
+    <section id="view-hub" class="view" hidden></section>
+  </main>
+  <nav id="tabs" aria-label="Sections"></nav>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/vendor/marked.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

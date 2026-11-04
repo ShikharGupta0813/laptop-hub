@@ -1,0 +1,73 @@
+/* terminal tab styles. Scope every rule under #view-terminal. */
+#view-terminal:not([hidden]) {
+  display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  background: var(--bg); overscroll-behavior: none;
+}
+/* The phone keyboard opened: the module pins the view to the visible area (inline top/left/width/height). */
+#view-terminal.kb-open { position: fixed; inset: auto; z-index: 40; }
+
+#view-terminal .term-toolbar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; flex: none;
+}
+#view-terminal .term-shell { flex: 1 1 90px; min-width: 0; width: auto; padding: 0 10px; height: 40px; font-size: 16px; }
+#view-terminal .term-session { min-height: 40px; padding: 0 12px; font-size: 15px; white-space: nowrap; flex: none; }
+#view-terminal .term-session[data-confirm] { background: var(--bad); color: #190503; border-color: transparent; font-weight: 600; }
+#view-terminal .term-font { display: flex; align-items: center; flex: none; }
+#view-terminal .term-font-btn { min-height: 40px; min-width: 40px; padding: 0 6px; font-weight: 600; }
+#view-terminal .term-font-size { min-width: 24px; text-align: center; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+#view-terminal .term-status {
+  display: flex; align-items: baseline; gap: 8px; flex: none; min-height: 24px;
+  padding: 0 12px 6px; font-size: 14px; line-height: 1.3;
+}
+#view-terminal .term-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; align-self: center;
+}
+#view-terminal .term-dot[data-state="connected"] { background: var(--good); }
+#view-terminal .term-dot[data-state="connecting"] { background: var(--warn); }
+#view-terminal .term-dot[data-state="disconnected"] { background: var(--bad); }
+#view-terminal .term-status-text { font-weight: 600; flex: none; }
+#view-terminal .term-status-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-terminal .term-status-detail.is-error { color: var(--bad); }
+
+#view-terminal .term-screen {
+  flex: 1; min-height: 0; position: relative; background: var(--bg);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 4px 0 0 6px;
+}
+#view-terminal .term-host { position: absolute; inset: 4px 0 0 6px; }
+#view-terminal .term-host .xterm { height: 100%; }
+#view-terminal .term-host .xterm-viewport { background-color: transparent !important; overscroll-behavior: contain; }
+#view-terminal .term-host .xterm-helper-textarea { font-size: 16px; } /* stops Android zooming on focus */
+#view-terminal .term-fatal { padding: 12px; }
+
+#view-terminal .term-paste { flex: none; padding: 8px 10px; background: var(--surface); border-top: 1px solid var(--line); display: grid; gap: 8px; }
+#view-terminal .term-paste[hidden] { display: none; }
+#view-terminal .term-paste-note { margin: 0; font-size: 14px; }
+#view-terminal .term-paste-box { font-family: ui-monospace, Menlo, Consolas, monospace; resize: none; }
+
+#view-terminal .term-keys {
+  flex: none; display: flex; gap: 6px; padding: 6px 8px; background: var(--surface);
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; touch-action: pan-x;
+}
+#view-terminal .term-keys::-webkit-scrollbar { display: none; }
+#view-terminal .term-key {
+  flex: none; min-width: 44px; min-height: 44px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+  font-size: 15px; font-family: ui-monospace, Menlo, Consolas, monospace; cursor: pointer;
+  user-select: none; -webkit-user-select: none; touch-action: pan-x; -webkit-touch-callout: none;
+}
+#view-terminal .term-key.sym { font-size: 18px; font-weight: 600; }
+#view-terminal .term-key.wide { font-family: inherit; min-width: 60px; }
+#view-terminal .term-key.down { background: var(--line); }
+#view-terminal .term-key.on, #view-terminal .term-key[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700;
+}
+
+.term-copy-scratch { position: fixed; left: -9999px; top: 0; opacity: 0; }
+
+@media (max-width: 380px) {
+  #view-terminal .term-session { padding: 0 8px; font-size: 14px; }
+  #view-terminal .term-toolbar { gap: 6px; padding-inline: 8px; }
+}
