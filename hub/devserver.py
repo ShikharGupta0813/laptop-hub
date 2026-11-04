@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import secrets
 import tempfile
 from pathlib import Path
@@ -120,6 +121,7 @@ class FakeAssistant:
 
 
 def build(port: int):
+    os.environ.setdefault("HUB_WORK_DEMO", "1")  # Work tab shows sample tasks, meetings and contacts
     root = Path(tempfile.mkdtemp(prefix="hub-dev-"))
     (root / "docs" / "sub").mkdir(parents=True)
     (root / "docs" / "week1.md").write_text(

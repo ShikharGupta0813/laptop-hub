@@ -81,7 +81,7 @@ developed without a real model.
 
 ## Work
 
-- `GET /api/work/status` → `{asana:{configured,user|null}, calendar:{configured}, email:{configured,address|null}, chat:{configured,spaces:[name]}}`
+- `GET /api/work/status` → `{asana:{configured,user|null}, calendar:{configured}, email:{configured,address|null}, chat:{configured,spaces:[name]}}`; each part that is not configured also has `reason` (one sentence saying how to set it up). Sending an email removes the draft first, so a retry can never send twice; a failed send is `502` and the draft must be written again. An Asana auth failure is `502` (never `401`, which means the hub login expired).
 - `GET /api/work/asana/tasks?filter=today|overdue|upcoming|all` → `{tasks:[{gid,name,due_on|null,project|null,completed,permalink_url}], counts:{overdue,today,upcoming}}` (my open tasks, soonest due first)
 - `GET /api/work/asana/tasks/{gid}` → `{task:{gid,name,due_on,project,completed,permalink_url,notes,subtasks:[{gid,name,completed}],comments:[{author,text,created_at}]}}`
 - `POST /api/work/asana/tasks/{gid}/comment` `{text}` → `{ok:true}` · `POST /api/work/asana/tasks/{gid}/complete` → `{ok:true}`

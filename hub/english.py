@@ -7,6 +7,7 @@ word was hard to recognise, which is not the same as being pronounced wrongly.
 """
 import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -202,7 +203,7 @@ def _text(value: Any, limit: int = 400) -> str:
 def _items(value: Any, keys: tuple[str, ...], required: tuple[str, ...], source: str, quoted: str,
            limit: int = 6) -> list[dict]:
     """Keep dict items that have every required key; `quoted` must really be in `source`."""
-    out = []
+    out, seen = [], set()
     for item in value if isinstance(value, list) else []:
         if not isinstance(item, dict):
             continue
@@ -213,6 +214,10 @@ def _items(value: Any, keys: tuple[str, ...], required: tuple[str, ...], source:
             continue  # "fixing" something into itself is noise
         if quoted and not appears_in(clean[quoted], source):
             continue  # the model quoted something the learner never said
+        key = tuple(_norm(clean[k]) for k in required)
+        if key in seen:
+            continue
+        seen.add(key)
         out.append(clean)
         if len(out) >= limit:
             break
@@ -225,6 +230,8 @@ def clamp_score(value: Any) -> Optional[int]:
             value = float(value)
         else:
             return None
+    if not math.isfinite(value):
+        return None
     return max(1, min(10, int(round(value))))
 
 
@@ -606,8 +613,8 @@ def make_router(ctx: Ctx) -> APIRouter:
                 raise HTTPException(503, str(exc))
             except HTTPException:
                 raise
-            except Exception:
-                raise HTTPException(422, "I couldn't read that recording. Try recording again.")
+            except Exception as exc:
+                raise HTTPException(503, f"Transcription failed: {exc}")
         finally:
             os.unlink(path)
 
@@ -660,9 +667,7 @@ def make_router(ctx: Ctx) -> APIRouter:
             raise HTTPException(422, "Say something first.")
         session = roleplays.get(body.session_id)
         if message is None or session is None or session["scenario"] != scenario["id"]:
-            session = {"scenario": scenario["id"], "turns": []}
-            if message is not None:
-                pass  # a first message without an opening still works
+            session = {"scenario": scenario["id"], "turns": []}  # an opening starts afresh
         roleplays[body.session_id] = session
         roleplays.move_to_end(body.session_id)
         while len(roleplays) > ROLEPLAY_SESSIONS:
