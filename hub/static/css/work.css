@@ -29,6 +29,8 @@
 #view-work .w-spread { justify-content: space-between; align-items: center; }
 #view-work .w-chips { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 #view-work .chip { min-height: 44px; padding: 0 14px; gap: 8px; font-size: 15px; }
+#view-work .w-chips.w-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+#view-work .w-filters .chip { flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; padding: 4px 2px; font-size: 14px; text-align: center; }
 #view-work .chip.w-static { cursor: default; min-height: 32px; padding: 0 12px; font-size: 14px; }
 #view-work .w-count {
   display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;

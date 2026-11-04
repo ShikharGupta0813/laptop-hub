@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, files
+from . import assistant_tools, auth, files
 from .assistant import AssistantService
 from .common import Ctx
 from .config import Config
@@ -117,8 +117,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             pass  # a full disk must not take the hub down
 
     # The assistant may never write the hub's own config or audit log, wherever they are.
+    # Work, laptop and Jarvis tools call this app's own routes (see assistant_tools.py); `app` is
+    # created just below, so it is looked up on first use.
     assistant = deps.assistant or AssistantService(
-        config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p])
+        config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p],
+        extra_tools=assistant_tools.build(lambda: app, config))
 
     app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None)
 

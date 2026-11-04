@@ -194,11 +194,13 @@ export function init(container, ctx) {
     let allCount = null;
     let token = 0;
 
-    const chipBar = el("div", { class: "w-chips", role: "group", "aria-label": "Task filter" });
-    const refreshBtn = el("button", { type: "button", class: "btn", "aria-label": "Refresh tasks", onclick: () => loadList() }, "Refresh");
+    const chipBar = el("div", { class: "w-chips w-filters", role: "group", "aria-label": "Task filter" });
+    const refreshBtn = el("button", { type: "button", class: "btn", "aria-label": "Refresh tasks", onclick: () => loadList() }, "↻ Refresh");
+    const summary = el("span", { class: "muted", "aria-live": "polite" });
     const listBox = el("div", { class: "w-list" });
     const listView = el("div", { class: "w-stack" },
-      el("div", { class: "row w-bar" }, chipBar, refreshBtn),
+      chipBar,
+      el("div", { class: "row w-bar" }, summary, refreshBtn),
       listBox,
     );
     const detailView = el("div", { class: "w-stack", hidden: true });
@@ -209,7 +211,7 @@ export function init(container, ctx) {
         const n = id === "all" ? allCount : counts ? counts[id] : null;
         const chip = el("button", { type: "button", class: "chip w-chip", "aria-pressed": String(filter === id),
           onclick: () => { filter = id; renderChips(); loadList(); } },
-          label, n != null ? el("span", { class: "w-count" }, String(n)) : null);
+          el("span", {}, label), n != null ? el("span", { class: "w-count" }, String(n)) : null);
         if (n != null) chip.setAttribute("aria-label", `${label}, ${n} tasks`);
         return chip;
       }));
@@ -229,6 +231,7 @@ export function init(container, ctx) {
     async function loadList() {
       const mine = ++token;
       refreshBtn.disabled = true;
+      summary.textContent = "";
       listBox.replaceChildren(loadingBlock("Loading tasks…"));
       try {
         const data = await api(`/api/work/asana/tasks?filter=${filter}`);
@@ -236,6 +239,7 @@ export function init(container, ctx) {
         counts = data.counts || counts;
         if (filter === "all") allCount = data.tasks.length;
         renderChips();
+        summary.textContent = `${data.tasks.length} ${data.tasks.length === 1 ? "task" : "tasks"}`;
         if (!data.tasks.length) {
           listBox.replaceChildren(emptyBlock(filter === "all" ? "No open tasks. Nice." : `No ${filter} tasks.`));
         } else {
@@ -550,7 +554,7 @@ export function init(container, ctx) {
             const unsure = error.status === 0;
             const note = unsure
               ? "The laptop did not answer, so it is unknown whether the email went out. Check your Sent folder before trying again. The draft was discarded and must be reviewed again."
-              : `${message(error)} The email was not sent. The draft was discarded and must be reviewed again.`;
+              : `${message(error)}${/not sent|n't sent/i.test(message(error)) ? "" : " The email was not sent."} The draft was discarded and must be reviewed again.`;
             showForm(note);
           }
         });

@@ -136,7 +136,9 @@ def build(port: int):
     config = cfg.Config(
         token_hash=hash_token(DEV_TOKEN), session_secret=secrets.token_bytes(32),
         roots={"docs": str(root / "docs"), "notes": str(root / "notes"), "inbox": str(root / "inbox")},
-        notes_dir=str(root / "notes"), inbox_dir=str(root / "inbox"), port=port,
+        notes_dir=str(root / "notes"), inbox_dir=str(root / "inbox"),
+        data_dir=str(root / "data"),  # never the real ~/.laptop-hub/data
+        port=port,
         scripts={"hello": {"label": "Say hello", "argv": ["echo", "hello from a button"]}})
     deps = Deps(llm=FakeLLM(), claude=FakeLLM(), transcriber=FakeTranscriber(),
                 assistant=FakeAssistant())
