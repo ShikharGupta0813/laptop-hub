@@ -216,6 +216,27 @@ class ClaudeClient:
             raise LLMError(f"Claude returned an error ({exc.status_code}).") from None
 
 
+    async def complete(self, system: str, user: str, json_mode: bool = False) -> str:
+        import anthropic
+        client = self._get()
+        try:
+            reply = await client.beta.messages.create(
+                model=self.model, max_tokens=4096, system=system,
+                messages=[{"role": "user", "content": user}],
+                output_config={"effort": "medium"}, betas=[FALLBACK_BETA], fallbacks="default")
+        except anthropic.AuthenticationError:
+            raise LLMError("The Anthropic API key was rejected.") from None
+        except anthropic.RateLimitError:
+            raise LLMError("Claude is rate limited. Try again in a minute.") from None
+        except anthropic.APIConnectionError:
+            raise LLMError("Can't reach the Anthropic API. Check the laptop's internet.") from None
+        except anthropic.APIStatusError as exc:
+            raise LLMError(f"Claude returned an error ({exc.status_code}).") from None
+        if reply.stop_reason == "refusal":
+            raise LLMError("Claude declined this request.")
+        return "".join(b.text for b in reply.content if b.type == "text").strip()
+
+
 def parse_label(text: str, note_text: str) -> tuple[str, list[str]]:
     """Title and tags from the model's JSON, or a plain fallback when it isn't usable."""
     match = re.search(r"\{.*\}", text, re.DOTALL)

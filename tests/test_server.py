@@ -279,20 +279,17 @@ class TerminalTest(Base):
             time.sleep(0.1)
         self.assertIsNotNone(self.terminals[-1].proc.poll())
 
+    def refused_code(self, path, **kwargs):
+        with self.client.websocket_connect(path, **kwargs) as ws:
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_text()
+        return caught.exception.code
+
     def test_not_logged_in_wrong_shell_and_wrong_origin_are_refused(self):
-        with self.assertRaises(WebSocketDisconnect) as caught:
-            with self.client.websocket_connect("/ws/term?shell=sh"):
-                pass
-        self.assertEqual(caught.exception.code, 4401)
+        self.assertEqual(self.refused_code("/ws/term?shell=sh"), 4401)
         self.login()
-        with self.assertRaises(WebSocketDisconnect) as caught:
-            with self.client.websocket_connect("/ws/term?shell=nope"):
-                pass
-        self.assertEqual(caught.exception.code, 4400)
-        with self.assertRaises(WebSocketDisconnect) as caught:
-            with self.client.websocket_connect("/ws/term?shell=sh", headers={"origin": "https://evil.example"}):
-                pass
-        self.assertEqual(caught.exception.code, 4403)
+        self.assertEqual(self.refused_code("/ws/term?shell=nope"), 4400)
+        self.assertEqual(self.refused_code("/ws/term?shell=sh", headers={"origin": "https://evil.example"}), 4403)
 
     def test_a_missing_shell_program_is_reported(self):
         self.config.shells = {"ghost": ["/no/such/shell"]}

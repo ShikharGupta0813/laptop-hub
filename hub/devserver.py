@@ -24,15 +24,43 @@ from .server import Deps, create_app
 DEV_TOKEN = "devtoken"
 
 
+def _collect_fakes() -> dict[str, str]:
+    """Canned model replies from each feature module, keyed by a piece of its system prompt."""
+    import importlib
+    fakes: dict[str, str] = {}
+    for name in ("work", "study", "english"):
+        try:
+            fakes.update(importlib.import_module(f".{name}", __package__).DEV_FAKES)
+        except (ModuleNotFoundError, AttributeError) as exc:
+            if isinstance(exc, ModuleNotFoundError) and exc.name != f"{__package__}.{name}":
+                raise
+    return fakes
+
+
 class FakeLLM:
     name = "local"
 
+    def _canned(self, system):
+        for marker, reply in _collect_fakes().items():
+            if marker in system:
+                return reply
+        return None
+
     async def stream(self, system, user):
+        canned = self._canned(system)
+        if canned:
+            for word in canned.split(" "):
+                await asyncio.sleep(0.02)
+                yield word + " "
+            return
         for word in f"This is a pretend answer about: {user[-60:]!r}. ".split(" "):
             await asyncio.sleep(0.02)
             yield word + " "
 
     async def complete(self, system, user, json_mode=False):
+        canned = self._canned(system)
+        if canned:
+            return canned
         return json.dumps({"title": "Pretend title", "tags": ["demo", "sample"]})
 
     async def models(self):
@@ -42,6 +70,13 @@ class FakeLLM:
 class FakeTranscriber:
     def transcribe(self, path):
         return "Note it. Remember to review the sharding chapter tomorrow morning."
+
+    def transcribe_detailed(self, path):
+        words = "Um so yesterday I I go to the office and uh we discuss the new plan".split()
+        return {"text": " ".join(words), "duration": 6.0,
+                "words": [{"word": w, "start": round(i * 0.4, 2), "end": round(i * 0.4 + 0.3, 2),
+                           "prob": 0.5 if w in ("discuss", "plan") else 0.95}
+                          for i, w in enumerate(words)]}
 
 
 class FakeAssistant:

@@ -6,6 +6,7 @@ session cookie. The server listens on 127.0.0.1 only; Tailscale puts HTTPS in fr
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import os
 import platform
@@ -28,6 +29,7 @@ from pydantic import BaseModel
 
 from . import auth, files
 from .assistant import AssistantService
+from .common import Ctx
 from .config import Config
 from .llm import ClaudeClient, LLMError, OllamaClient, build_prompt, label_note
 from .notes import NoteError, NoteStore, clean_spoken
@@ -443,27 +445,44 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     app.include_router(api)
 
+    # Feature modules (work, study, english). Each exposes make_router(ctx); one that isn't
+    # written yet is skipped, but a real error inside a module is never hidden.
+    def model_for(provider: str):
+        return claude if provider == "claude" else llm
+
+    ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
+              need_auth=need_auth, audit=audit)
+    for name in ("work", "study", "english"):
+        try:
+            module = importlib.import_module(f".{name}", __package__)
+        except ModuleNotFoundError as exc:
+            if exc.name != f"{__package__}.{name}":
+                raise
+            continue
+        app.include_router(module.make_router(ctx))
+
     # ---- terminal ---------------------------------------------------------------------------------
+
+    async def refuse(ws: WebSocket, code: int) -> None:
+        # Accept, then close with a code: closing before accept shows browsers a bare 1006.
+        await ws.accept()
+        await ws.close(code=code)
 
     @app.websocket("/ws/term")
     async def terminal_socket(ws: WebSocket):
         if not auth.session_valid(config.session_secret, ws.cookies.get(auth.COOKIE), deps.clock()):
-            await ws.close(code=4401)
-            return
+            return await refuse(ws, 4401)
         if not origin_ok(ws.headers):
-            await ws.close(code=4403)
-            return
+            return await refuse(ws, 4403)
         table = config.shell_table()
         shell = ws.query_params.get("shell") or next(iter(table))
         if shell not in table:
-            await ws.close(code=4400)
-            return
+            return await refuse(ws, 4400)
         try:
             rows = min(max(int(ws.query_params.get("rows", 24)), 2), 200)
             cols = min(max(int(ws.query_params.get("cols", 80)), 10), 400)
         except ValueError:
-            await ws.close(code=4400)
-            return
+            return await refuse(ws, 4400)
         await ws.accept()
         try:
             term = deps.terminal(table[shell], rows, cols)

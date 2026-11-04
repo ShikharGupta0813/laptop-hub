@@ -33,3 +33,22 @@ class Transcriber:
             model = self._load()
             segments, _ = model.transcribe(audio_path, vad_filter=True)
             return " ".join(s.text.strip() for s in segments).strip()
+
+    def transcribe_detailed(self, audio_path: str) -> dict:
+        """Text plus word timings and confidences, for the English coach.
+
+        Returns {"text", "duration" (seconds), "words": [{"word","start","end","prob"}]}.
+        The prompt nudges Whisper to keep "um" and "uh" instead of tidying them away.
+        """
+        with self._lock:
+            model = self._load()
+            segments, info = model.transcribe(
+                audio_path, vad_filter=True, word_timestamps=True,
+                initial_prompt="Um, uh, so, like, you know, I mean, well, okay.")
+            texts, words = [], []
+            for segment in segments:
+                texts.append(segment.text.strip())
+                for w in segment.words or []:
+                    words.append({"word": w.word.strip(), "start": round(w.start, 2),
+                                  "end": round(w.end, 2), "prob": round(w.probability, 3)})
+            return {"text": " ".join(texts).strip(), "duration": round(info.duration, 2), "words": words}

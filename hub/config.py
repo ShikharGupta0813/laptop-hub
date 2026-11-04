@@ -28,6 +28,7 @@ class Config:
     roots: dict[str, str]
     notes_dir: str
     inbox_dir: str
+    data_dir: str = ""
     host: str = "127.0.0.1"
     port: int = DEFAULT_PORT
     ollama_host: str = "http://127.0.0.1:11434"
@@ -37,8 +38,13 @@ class Config:
     # The assistant does many small tool calls, so it uses the faster, cheaper Sonnet.
     assistant_model: str = "claude-sonnet-5-5"
     allowed_origins: list[str] = field(default_factory=list)
+    jarvis_dir: str = ""  # folder of the jarvis-voice-assistant repo (email, calendar, chat helpers)
     shells: dict[str, list[str]] = field(default_factory=dict)
     scripts: dict[str, dict] = field(default_factory=dict)
+
+    def data_path(self) -> Path:
+        """Where Learn and English keep their history (quiz results, vocabulary...)."""
+        return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
 
     def shell_table(self) -> dict[str, list[str]]:
         return self.shells or default_shells()
@@ -75,6 +81,7 @@ def save(config: Config, path: Path) -> None:
         "token_hash": config.token_hash,
         "session_secret": config.session_secret.hex(),
         "roots": config.roots, "notes_dir": config.notes_dir, "inbox_dir": config.inbox_dir,
+        "data_dir": config.data_dir, "jarvis_dir": config.jarvis_dir,
         "host": config.host, "port": config.port, "ollama_host": config.ollama_host,
         "chat_model": config.chat_model, "whisper_model": config.whisper_model,
         "claude_model": config.claude_model, "assistant_model": config.assistant_model,
