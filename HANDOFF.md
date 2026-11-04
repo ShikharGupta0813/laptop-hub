@@ -3,13 +3,14 @@
 Read this first when starting a new chat. It says what the project is, what is finished, what is
 still to do, how it was built, and the exact words to paste to continue.
 
-_Last updated: 2026-11-04. Update the status tables whenever something changes._
+_Last updated: 2026-11-04 (round 3 in progress)._
 
 ## 1. What this is
 
 One app on the owner's Android phone that works with their Windows laptop:
 
 - **Talk**: speak or type to an assistant that acts on the laptop (files, notes, commands).
+- **Apps**: a searchable directory of every feature, incl. Jarvis control and laptop actions (lock, screenshot, processes, open apps, media keys, clipboard...)
 - **Work**: Asana tasks, calendar, send email, post to Google Chat (reuses the owner's existing
   `jarvis-voice-assistant` setup and their Asana token).
 - **Learn**: chat with notes/documents, quizzes (from notes, a document, a web page or any topic),
@@ -34,7 +35,8 @@ Laptop Hub  (FastAPI, 127.0.0.1:8765, on the Windows laptop)
    ├─ hub/llm.py           Ollama + Claude clients, prompts
    ├─ hub/files.py notes.py speech.py terminal.py config.py auth.py
    ├─ hub/static/          the phone UI (vanilla JS modules, no build step)
-   └─ planned/next: hub/study.py, hub/english.py, hub/work/ (see section 4)
+   ├─ hub/work/ study.py english.py laptop.py jarvis.py   feature routers (make_router(ctx), see hub/common.py)
+   └─ hub/devserver.py     fake models + sample data for UI work
 Ollama (local models)   faster-whisper (offline speech)   Jarvis modules (keyring secrets)
 ```
 
@@ -52,52 +54,60 @@ Key decisions and why:
   hard work. The assistant uses `claude-sonnet-5-5`; "Ask Claude" uses `claude-opus-5-5`.
 - **The model never decides safety.** Approval gating, path limits and protected files are code.
 
-## 3. Status: finished
+## 3. Status: finished (tested with fake models in a Linux container)
 
-| Part | State | Evidence |
-|---|---|---|
-| Server: login, lockout, cookies, headers, audit log | done | `tests/test_server.py` |
-| Files (read-only, folder-jailed), upload to inbox | done | `tests/test_files.py`, UI tested |
-| Notes: voice + text, background title/tags, edit | done | `tests/test_notes.py`, UI tested |
-| Ask (Explain/Summarise/Quiz) over SSE | done | `tests/test_llm.py`, UI tested |
-| Terminal over WebSocket (POSIX pty) | done on Linux | `tests/test_server.py::TerminalTest` |
-| Assistant backend (tools, approvals, limits) | done | `tests/test_assistant.py` (38 tests) |
-| Talk, Files, Notes, Hub tabs | done | Playwright runs, screenshots viewed |
-| App shell, PWA manifest, service worker, icons | done | |
-| Terminal tab UI | see section 5 | |
+| Part | Evidence |
+|---|---|
+| Server: login, lockout, cookies, headers, audit log, websocket refusal codes | `tests/test_server.py` |
+| Files (read-only, folder-jailed), upload to inbox | `tests/test_files.py` + UI run |
+| Notes: voice + text, background title/tags, edit | `tests/test_notes.py` + UI run |
+| Ask (Explain/Summarise/Quiz) over SSE | `tests/test_llm.py` + UI run |
+| Terminal (POSIX pty) + Terminal tab | server tests + UI run |
+| Assistant backend (tools, approvals, limits), Talk tab | `tests/test_assistant.py` + UI run |
+| Hub tab (status, buttons, upload, setup check) | UI run |
+| **Work backend**: Asana (direct REST), calendar/email/chat via Jarvis helper modules, demo mode | `tests/test_work.py` (54) |
+| **Learn backend**: sources (note/file/PDF/URL with SSRF guard/text/topic), chat, quizzes, history | `tests/test_study.py` (76) |
+| **English backend**: speaking analysis (code-computed fillers/WPM/pauses), role-play, correction, vocabulary SRS, progress | `tests/test_english.py` (67) |
+| Navigation: Talk, Work, Learn, Notes, Apps; Files/Terminal/Hub under Apps | browser run |
+| Android shell (Capacitor) in `mobile/` | `npm run sync` verified; **no APK built** |
 
-104 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
+301 unit tests passed on the last full run (`python -m unittest discover -s tests -t .`).
 
-## 4. Status: still to do (in this order)
+## 4. Status: in progress / still to do (in this order)
 
-1. **Integrate + review the finished tabs** (Terminal tab report, full-app browser test, security review by Opus).
-2. **Work tab + backend** (`hub/work/`): Asana tasks (direct REST, token from `ASANA_TOKEN`,
-   `~/.claude/.asana_token` or `~/.config/task-agent/asana_token`; read first, comment/complete with
-   approval), calendar (reuse Jarvis `agenda.py` secret iCal link), email draft/send (Jarvis `mailer.py`,
-   Gmail app password in Windows Credential Manager), Google Chat post (Jarvis `gchat.py`).
-   Also expose these as assistant tools. Config key `jarvis_dir` points at the Jarvis folder.
-3. **Learn tab + backend** (`hub/study.py`): chat with a note/document/pasted text; quiz generator with
-   sources: notes, a file from the laptop, a pasted text, a web page URL (with an SSRF guard), or a
-   topic from the model's own knowledge. Structured JSON questions (multiple choice + short answer),
-   scoring, explanations, history, wrong-answer review. Provider switch per feature.
-4. **English coach** (`hub/english.py`): speaking practice (record, Whisper transcript with word
-   timestamps, words per minute, filler words, grammar and wording feedback, a better rewrite),
-   role-play scenarios (standup, interview, client call), writing correction, vocabulary with
-   spaced repetition, and a progress page. Pronunciation: only a hint from Whisper word confidence.
-5. **Navigation**: bottom bar becomes Talk, Work, Learn, Notes, More (Files, Terminal, Hub live under More).
-6. **Native Android app** (`mobile/`, Capacitor): wraps the hub URL; build steps in `mobile/README.md`.
-   Later: background wake word ("Hey Jarvis") as a native plugin, push notifications.
-7. **Inbox reading** (IMAP read-only with the same Gmail app password), if wanted.
-8. Windows terminal path (`pywinpty`) has never run on real Windows: test and fix.
+In progress when this was written (round 3, parallel agents, files owned separately):
+- Work screens `js/work.js`; Learn Chat+Quiz+source picker `js/studychat.js quiz.js sourcepicker.js`;
+  English screens `js/english.js`; backend `hub/laptop.py` (registry of laptop actions) and `hub/jarvis.py`
+  (start/stop Jarvis, queue commands) plus `docs/jarvis-remote-inbox.md` (optional Jarvis patch).
 
-## 5. Open items and known gaps
+Then:
+1. **Apps directory UI** (`js/apps.js`, `js/laptop.js`, `js/jarvis.js`): searchable list of every feature
+   (built-in screens, laptop actions from `/api/laptop/actions`, the owner's `apps`/`scripts`, Jarvis),
+   favourites and recents, a generic action runner (form from the param schema, risk confirmation,
+   image/table/text results) and the Jarvis screen. Contract: `docs/UI.md`, `docs/API.md` (last section).
+2. **Assistant tools** for Work, Learn and Laptop actions ("what's on my Asana today", "lock my laptop"):
+   extend `hub/assistant.py` (`tool_specs`) with read-only Work/notes tools and a `run_laptop_action` tool
+   that goes through the same approval rule as `run_command`.
+3. **Integration pass**: full-app browser run over every tab with the dev server, fix seams.
+4. **Security review** (Opus): auth, path jail, SSRF guard, laptop actions, Jarvis inbox, approvals.
+5. Windows hardening: terminal (`pywinpty`), process-tree kill, laptop actions on real Windows, Jarvis start/stop.
+6. Native extras: background wake word ("Hey Jarvis") plugin, push notifications, app icon/splash,
+   signed release build. Build the debug APK on the laptop (`mobile/README.md`).
+7. Optional: read-only inbox via IMAP, Learn streak should count from yesterday like English does,
+   assistant-created notes are not auto-titled.
 
-- Everything marked "done" was tested **in a Linux container with fake models**. Not yet tested on:
-  the real Windows laptop, real Ollama, real Whisper, real Claude API, real Android Chrome/keyboard.
-- Windows terminal (ConPTY via pywinpty) and process-tree kill on Windows are untested.
-- Assistant `run_command` can write the hub's own config if the owner approves a command that does so
-  (the `write_file` tool refuses it, a shell command does not).
-- Notes the assistant adds are not auto-titled (the labeller lives in the server).
+## 5. Known gaps and honest limits
+
+- Everything above was tested **in a Linux container with fake models and fake OS calls**. Not tested on:
+  the real Windows laptop, real Ollama, real Whisper, real Claude API, real Asana/Gmail/iCal, real Android.
+- Windows-only code (ConPTY terminal, process kill, lock/sleep/volume keys, screenshot, Jarvis launch) has
+  never run on Windows. Expect small fixes on first real use.
+- **No APK has been built.** `mobile/` is configured and syncs; the Gradle build needs the Android SDK.
+- Pronunciation feedback is only Whisper word confidence (a hint, not a grade).
+- Quiz "from the internet" means: a web page you give (SSRF-guarded) or a topic from the model's own
+  knowledge. There is no live web search.
+- `run_command` (assistant) can still touch the hub's own config once the owner approves it.
+- Jarvis remote commands need the optional patch in `docs/jarvis-remote-inbox.md`, untested (needs Windows).
 
 ## 6. How it was built (so you can continue the same way)
 

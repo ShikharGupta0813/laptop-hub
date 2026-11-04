@@ -47,6 +47,12 @@ export function init(container, ctx) {
   select(SECTIONS.some((s) => s.id === saved) ? saved : "chat");
 
   return {
+    // "quiz" or "english/speak": pick the section, pass the rest to it.
+    openSection(name) {
+      const [section, rest] = name.split("/");
+      if (panes[section]) select(section);
+      if (rest) handles[section]?.openSection?.(rest);
+    },
     show() { handles[current]?.show?.(); },
     hide() { handles[current]?.hide?.(); },
   };

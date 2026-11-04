@@ -1,4 +1,4 @@
-// More: a launcher for the screens that don't have a bottom-bar button.
+// Apps: a launcher for the screens that don't have a bottom-bar button.
 import { el } from "./api.js";
 
 const ENTRIES = [
@@ -9,7 +9,7 @@ const ENTRIES = [
 
 export function init(container, ctx) {
   container.append(
-    el("h2", {}, "More"),
+    el("h2", {}, "Apps"),
     el("div", { class: "more-list" }, ENTRIES.map((entry) =>
       el("button", { class: "more-item card", type: "button", onclick: () => ctx.goto(entry.id) },
         el("strong", {}, entry.title), el("span", { class: "muted" }, entry.text)))));

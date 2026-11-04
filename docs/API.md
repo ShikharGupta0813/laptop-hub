@@ -117,3 +117,35 @@ A **source** is one of: `{type:"note", id}`, `{type:"file", root, path}`, `{type
 - `GET /api/english/vocab/today[?provider=]` → `{new_words:[{id,word,meaning,example,level}], due:[{id,word,meaning,example,level}]}`
 - `POST /api/english/vocab/add` `{word, provider}` → `{id,word,meaning,example,level}`
 - `POST /api/english/vocab/{id}/review` `{rating:"again|hard|good|easy"}` → `{next_due}`
+
+---
+
+# Laptop access and Jarvis (added in round 3)
+
+## Laptop actions: a data-driven list of things the phone can do to the laptop
+
+The server owns a registry of actions. The phone lists them and renders a generic form per action, so
+adding an option is one registry entry, not new UI. Every run is written to the audit log.
+
+- `GET /api/laptop/actions` → `{categories:[{id,title}], actions:[{id,title,category,description,risk:"safe"|"confirm",params:[{name,label,type:"text"|"number"|"choice"|"bool",required,choices?,placeholder?}],available:bool,unavailable_reason?}]}`
+  Also lists the owner's `apps` (hub.json) as launchable entries (category `apps`) and `scripts` as category `buttons`.
+- `POST /api/laptop/run` `{action, params, confirm?}` →
+  `{ok:true, kind:"text"|"image"|"table"|"none", message, text?, image_b64?, mime?, columns?, rows?}`
+  - `404` unknown action · `400` bad params (a plain sentence) · `501` not available on this machine (the reason) ·
+    `409` `risk:"confirm"` action sent without `confirm:true` (the phone asks the owner, then resends) · `500` failure (a plain sentence)
+- Built-in actions (a platform that can't do one reports `available:false` with a reason; nothing crashes):
+  system (`system_info`, `battery`, `disk_usage`, `network_info`, `uptime`), processes (`list_processes` sorted by memory, `kill_process`
+  by pid = confirm), launch (`open_url`, `open_path` for an existing file or folder, `open_app` from the owner's `apps` list),
+  screen (`screenshot` of the laptop screen, `lock_screen`, `sleep` = confirm, `restart` = confirm, `shutdown` = confirm, `cancel_shutdown`),
+  clipboard (`get_clipboard`, `set_clipboard`), media (`volume_up`, `volume_down`, `mute`, `play_pause`, `next_track`, `previous_track`).
+
+## Jarvis: start and stop the owner's Jarvis voice assistant on the laptop
+
+Jarvis is the owner's separate project (the `jarvis-voice-assistant` folder, `config.jarvis_dir`). It listens for "Hey Jarvis" on
+the laptop microphone. The hub starts and stops it and can queue a text command for it.
+
+- `GET /api/jarvis/status` → `{configured, reason?, running, pid|null, started_at|null, log_tail:[line], remote_ready:bool}`
+- `POST /api/jarvis/start` → status (already running: no second process) · `POST /api/jarvis/stop` `{confirm:true}` → status
+- `GET /api/jarvis/log?lines=100` → `{lines:[...]}` (the end of Jarvis's own `jarvis.log`)
+- `POST /api/jarvis/say` `{text}` → `{queued:true,id}`. Writes `<jarvis_dir>/remote_inbox/<id>.txt`. `409` with a clear sentence when Jarvis is
+  not running, or when `remote_ready` is false (the small optional patch in `docs/jarvis-remote-inbox.md` is not installed in Jarvis yet).

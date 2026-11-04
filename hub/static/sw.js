@@ -1,10 +1,10 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached.
-const CACHE = "hub-shell-v2";
+const CACHE = "hub-shell-v3";
 const SHELL = ["/", "/style.css", "/js/main.js", "/js/api.js", "/js/assistant.js", "/js/files.js",
   "/js/notes.js", "/js/terminal.js", "/js/hub.js", "/js/work.js", "/js/learn.js", "/js/studychat.js",
-  "/js/quiz.js", "/js/sourcepicker.js", "/js/english.js", "/js/more.js", "/css/work.css", "/css/learn.css",
-  "/css/english.css", "/css/more.css", "/css/assistant.css", "/css/files.css",
+  "/js/quiz.js", "/js/sourcepicker.js", "/js/english.js", "/js/apps.js", "/css/work.css", "/css/learn.css",
+  "/css/english.css", "/css/apps.css", "/css/assistant.css", "/css/files.css",
   "/css/notes.css", "/css/terminal.css", "/css/hub.css", "/vendor/marked.js",
   "/vendor/purify.min.js", "/vendor/xterm.js", "/vendor/xterm.css", "/vendor/addon-fit.js",
   "/manifest.webmanifest", "/icons/icon-192.png"];

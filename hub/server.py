@@ -452,7 +452,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
               need_auth=need_auth, audit=audit)
-    for name in ("work", "study", "english"):
+    for name in ("work", "study", "english", "laptop", "jarvis"):
         try:
             module = importlib.import_module(f".{name}", __package__)
         except ModuleNotFoundError as exc:
