@@ -171,6 +171,7 @@ class Base(unittest.TestCase):
 class SqliteTest(unittest.TestCase):
     def test_this_python_has_fts5_and_bm25(self):
         db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
         db.execute("CREATE VIRTUAL TABLE t USING fts5(x)")
         db.execute("INSERT INTO t VALUES('apple pie')")
         db.execute("INSERT INTO t VALUES('apple apple apple')")
@@ -367,14 +368,14 @@ class RefusalTest(Base):
         self.assertEqual(sorted(self.rels("insideword")), ["inlink.txt", "inside.txt"])
 
     def test_the_hubs_own_data_folder_is_not_indexed(self):
-        config, root = make_config(data_dir=str(self.docs / "data"), kb_roots=[])
-        (self.docs / "data").mkdir()
-        (self.docs / "data" / "state.json").write_text('{"x": "datafolderword"}', encoding="utf-8")
-        ctx = Ctx(config=self.config, model_for=None, transcriber=None, notes=None, need_auth=None, audit=lambda *a, **k: None)
+        self.config.data_dir = str(self.docs / "hubdata")      # the hub keeps its files inside a shared folder
+        (self.docs / "hubdata").mkdir()
+        (self.docs / "hubdata" / "state.json").write_text('{"x": "datafolderword"}', encoding="utf-8")
+        self.write("plain.txt", "plainword")
         other = kb.KB(self.config)
-        with mock.patch.object(other, "_skip_paths", return_value=[(self.docs / "data").resolve()]):
-            other.reindex()
+        other.reindex()
         self.assertEqual([h["rel"] for h in other.search("datafolderword")], [])
+        self.assertEqual([h["rel"] for h in other.search("plainword")], ["plain.txt"])
 
     def test_file_context_refuses_traversal_and_credentials(self):
         self.write("note.md", "# Note\n\nhello contextword")

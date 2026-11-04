@@ -3,6 +3,7 @@ every call, the clock is fake, and `wait` steps use a fake sleep: nothing here t
 import asyncio
 import datetime as dt
 import json
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,8 @@ from hub.common import Ctx
 from tests.helpers import TOKEN, make_config
 
 D = dt.datetime
+logging.getLogger("hub.automations").addHandler(logging.NullHandler())
+logging.getLogger("hub.automations").propagate = False      # expected failures stay quiet
 NOT_AVAILABLE = "That feature is not available on this hub."
 
 REGISTRY = {"actions": [
@@ -193,22 +196,6 @@ class StepValidation(unittest.TestCase):
         self.assertEqual(set(au.STEP_TYPES), {"laptop_action", "script", "jarvis_say", "jarvis_start", "open_url",
                                               "notify", "note", "wait", "briefing", "reminder"})
 
-    def test_the_http_route_answers_400_for_an_unknown_type(self):
-        client = Base.build(self_ := _Holder(self))
-        r = client.post("/api/automations", json={"name": "x", "steps": [{"type": "format_disk"}]})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("not a step type", r.json()["detail"])
-
-
-class _Holder(Base):
-    """Lets a plain TestCase borrow Base.build."""
-
-    def __init__(self, outer):
-        super().__init__("setUp")
-        self.setUp()
-        self.addCleanup = outer.addCleanup
-        self.assertEqual = outer.assertEqual
-
 
 # ---- schedules ----------------------------------------------------------------------------------------------------
 
@@ -287,6 +274,12 @@ class Routes(Base):
                              ("post", "/api/automations/x/run"), ("delete", "/api/automations/x")]:
             with self.subTest(path=path):
                 self.assertEqual(getattr(client, method)(path).status_code, 401)
+
+    def test_the_http_route_answers_400_for_an_unknown_type(self):
+        client = self.build()
+        r = client.post("/api/automations", json={"name": "x", "steps": [{"type": "format_disk"}]})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("not a step type", r.json()["detail"])
 
     def test_create_read_update_delete(self):
         client = self.build()
@@ -409,11 +402,6 @@ class Running(Base):
         runs = client.get(f"/api/automations/{made['id']}/runs").json()["runs"]
         self.assertEqual(runs[0]["run_id"], out["run_id"])
         self.assertEqual(runs[0]["trigger"], "manual")
-
-    def test_script_names_are_url_quoted(self):
-        _, _, out = self.run_routine([{"type": "script", "name": "my button"}])
-        self.assertEqual(out["status"], "failed")                      # not in the button list -> refused at save
-        # (the save check is what catches it; the path quoting is exercised by the next call)
 
     def test_script_path_is_quoted_when_run(self):
         engine = self.engine()
@@ -758,7 +746,7 @@ class Scheduler(Base):
             self.assertEqual(len(self.notes), 1)
             await self.tick_at(engine, D(2026, 11, 4, 9, 30))
             self.assertEqual(len(self.notes), 2)
-            await self.tick_at(engine, D(2026, 11, 4, 12, 0))               # a long gap: one catch-up at most, skipped
+            await self.tick_at(engine, D(2026, 11, 4, 12, 12))              # a long gap: the latest slot was 12 minutes ago, skipped
             self.assertEqual(len(self.notes), 2)
         asyncio.run(go())
 

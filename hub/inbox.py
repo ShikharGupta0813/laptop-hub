@@ -17,6 +17,7 @@ import codecs
 import datetime as dt
 import email
 import email.header
+import email.message
 import email.policy
 import email.utils
 import html as html_lib
@@ -338,19 +339,43 @@ def _payload_text(part) -> str:
     return decode_bytes(payload[:4_000_000], part.get_content_charset())
 
 
+def _raw_headers(msg) -> dict[str, list[str]]:
+    """Header name (lower case) to its raw values. Unlike msg.get(), keeps 8-bit bytes intact."""
+    out: dict[str, list[str]] = {}
+    for name, value in msg.raw_items():
+        out.setdefault(name.lower(), []).append(str(value))
+    return out
+
+
+def _part_filename(part) -> str | None:
+    """The attachment name (RFC 2231 and RFC 2047 aware), also when the header holds raw UTF-8."""
+    raw = _raw_headers(part)
+    tmp = email.message.Message()
+    for name in ("content-disposition", "content-type"):
+        if raw.get(name):
+            tmp[name] = _unescape_surrogates(raw[name][0])
+    try:
+        return tmp.get_filename()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def parse_message(raw: RawMessage) -> ParsedMessage:
     """Turns raw bytes into safe, plain data. Never raises on hostile or broken input."""
     try:
         msg = email.message_from_bytes(raw.data, policy=email.policy.compat32)
+        headers = _raw_headers(msg)
     except Exception:  # noqa: BLE001
         msg = email.message_from_bytes(b"Subject: (unreadable message)\n\n", policy=email.policy.compat32)
-    name, addr = parse_address(msg.get("From"))
-    _, reply_addr = parse_address(msg.get("Reply-To"))
+        headers = _raw_headers(msg)
+    first = lambda name: (headers.get(name) or [None])[0]   # noqa: E731
+    name, addr = parse_address(first("from"))
+    _, reply_addr = parse_address(first("reply-to"))
     parsed = ParsedMessage(
         uid=raw.uid, from_name=name or addr, from_addr=addr, reply_to=reply_addr,
-        to=parse_addresses(msg.get_all("To") or []), cc=parse_addresses(msg.get_all("Cc") or []),
-        subject=decode_header_value(msg.get("Subject")) or "(no subject)",
-        date=parse_date(msg.get("Date")),
+        to=parse_addresses(headers.get("to", [])), cc=parse_addresses(headers.get("cc", [])),
+        subject=decode_header_value(first("subject")) or "(no subject)",
+        date=parse_date(first("date")),
         unread="\\seen" not in {f.lower() for f in raw.flags})
 
     plain: list[str] = []
@@ -363,8 +388,8 @@ def parse_message(raw: RawMessage) -> ParsedMessage:
             if part.is_multipart():
                 continue
             ctype = part.get_content_type()
-            disposition = (part.get("Content-Disposition") or "").split(";")[0].strip().lower()
-            filename = part.get_filename()
+            disposition = str(part.get("Content-Disposition") or "").split(";")[0].strip().lower()
+            filename = _part_filename(part)
             if disposition == "attachment" or filename or ctype == "message/rfc822":
                 if len(attachments) < MAX_ATTACHMENTS:
                     try:
@@ -381,8 +406,10 @@ def parse_message(raw: RawMessage) -> ParsedMessage:
         pass
 
     text = clean_text("\n\n".join(plain))
-    if not text and html_parts:
-        text = html_to_text("\n".join(html_parts))
+    if html_parts and len(text) < 60:     # no plain text, or only "your client can't show HTML"
+        from_html = html_to_text("\n".join(html_parts))
+        if len(from_html) > 2 * len(text):
+            text = from_html
     if len(text) > TEXT_CAP:
         text, parsed.truncated = text[:TEXT_CAP], True
     parsed.text = text
@@ -496,6 +523,8 @@ class ImapMailBox:
 
     @contextmanager
     def _session(self, folder: str | None = None):
+        if folder is not None and not FOLDER_RE.match(folder):
+            raise MailBoxError("That isn't a mail folder name Gmail would use.", 400)
         try:
             conn = self._open()
         except (OSError, imaplib.IMAP4.error):
@@ -542,6 +571,8 @@ class ImapMailBox:
         return [found[u] for u in uids if u in found]
 
     def unread_count(self, folder: str) -> int:
+        if not FOLDER_RE.match(folder):
+            raise MailBoxError("That isn't a mail folder name Gmail would use.", 400)
         with self._session() as conn:
             typ, data = conn.status(f'"{folder}"', "(UNSEEN)")
             match = re.search(rb"UNSEEN (\d+)", b" ".join(d for d in (data or []) if isinstance(d, bytes)))
@@ -642,7 +673,9 @@ def _build(sender: str, subject: str, body: str, when: dt.datetime, *, to: str =
     msg["Date"] = email.utils.format_datetime(when)
     if reply_to:
         msg["Reply-To"] = reply_to
-    if html is not None:
+    if html is not None and not body:
+        msg.set_content(html, subtype="html")
+    elif html is not None:
         msg.set_content(body)
         msg.add_alternative(html, subtype="html")
     elif charset:
@@ -675,7 +708,7 @@ def demo_mailbox(now: dt.datetime | None = None) -> MemoryMailBox:
          False),
         # uid 4: an HTML newsletter with a tracking pixel and a hidden preheader
         (dict(sender="The Weekly Build <news@weeklybuild.example>", subject="5 tips for faster CI",
-              when=ago(days=1, hours=20), body="Your email client does not show HTML.",
+              when=ago(days=1, hours=20), body="",
               html='<html><head><style>p{color:red}</style></head><body>'
                    '<div style="display:none">preheader filler text</div>'
                    '<h1>5 tips for faster CI</h1><p>Cache your dependencies and <b>run tests in parallel</b>.</p>'
@@ -1082,8 +1115,9 @@ def make_router(ctx: Ctx, *, mailbox: MailBox | None = None, bridge: Bridge | No
 
     async def part_reminders(day: dt.date) -> dict:
         data = await hub_call("/api/reminders")
-        rows = data if isinstance(data, list) else next(
-            (v for v in (data or {}).values() if isinstance(v, list)), []) if isinstance(data, (list, dict)) else []
+        if isinstance(data, dict):     # {"reminders": [...]} or similar
+            data = next((v for v in data.values() if isinstance(v, list)), [])
+        rows = data if isinstance(data, list) else []
         out = []
         for r in rows:
             if not isinstance(r, dict) or any(r.get(k) is True for k in ("done", "completed", "fired")):
