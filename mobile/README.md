@@ -62,6 +62,41 @@ The APK is `mobile\android\app\build\outputs\apk\debug\app-debug.apk`.
 Open **Laptop Hub**, allow the microphone when asked, and log in with your hub token. Tailscale must be
 running on the phone.
 
+## Automatic spend capture (optional)
+
+The app can add your spending to the hub's expense list by itself, from the notifications your payment apps
+already show (GPay, PhonePe, Paytm, BHIM, CRED, Amazon and common bank apps) and, if you choose, from bank SMS.
+
+**What is captured.** Only notifications from that fixed list of apps, and only when the text looks like money
+you spent (for example "Paid Rs 250 to ..."). Money you received, refunds, cashback, payment requests, reminders,
+offers and OTPs are ignored on the phone and never sent. Notifications from every other app are never read.
+
+**Privacy.** Only payment-app notifications and bank SMS that pass those checks are forwarded, and only to your own
+laptop hub, over HTTPS, using the login you already have inside the app. Nothing goes to any other server, no new
+password is stored, and notification text is never written to the phone's log. Not-yet-sent items wait in a small
+private queue on the phone (200 at most) and are sent when the hub is reachable again. The SMS permission is
+RECEIVE_SMS only (the app cannot read your inbox) and is off until you grant it.
+
+**Turn it on** (the hub page's capture settings call the app for these steps):
+
+1. Open **Laptop Hub**, log in, and open the capture settings in the hub. Press the button that opens
+   **Notification access**, or go there yourself: **Settings, Notifications, Device and app notifications**
+   (on some phones **Settings, Apps, Special app access, Notification access**). Switch **Laptop Hub** on.
+2. Android 13 and newer block this for apps installed from an APK ("Restricted setting"). If the switch is greyed out
+   or shows a warning: **Settings, Apps, Laptop Hub, the three-dot menu (top right), Allow restricted settings**, then
+   try step 1 again. The same applies to the SMS permission.
+3. Optional, for bank SMS: press the SMS button in the hub's capture settings and allow SMS.
+4. Press **Test** in the hub. A fake "Paid Rs 1" item should appear in your expenses.
+
+**Keep it running.** Some phones stop background apps. Set **Settings, Apps, Laptop Hub, Battery** to
+**Unrestricted** (or "Don't optimise"), and on Xiaomi, Oppo, Vivo, OnePlus and Samsung also allow auto-start / disable
+"put unused apps to sleep". If a capture is missed because the phone was asleep or offline it is not recovered, but
+anything that was captured and could not be sent is retried when you next open the app.
+
+Developers: the JS calls are documented in `docs/api/capture-android.md`. The filter rules are in
+`android/app/src/main/java/dev/shikhar/laptophub/capture/CaptureFilter.java`, and `node scripts/test-capture-filter.js`
+checks them against sample notifications and confirms the Java and JS copies match.
+
 ## Changing the hub address later
 
 Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address is built into the app.

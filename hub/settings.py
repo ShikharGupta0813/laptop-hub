@@ -81,8 +81,14 @@ def _version() -> str:
         return "unknown"
 
 
+def valid_model_name(value: Any) -> bool:
+    """Letters, digits and . _ : / - only (as Ollama names are), no '..', not starting with '/' or '-'."""
+    return (isinstance(value, str) and bool(MODEL_NAME.match(value.strip())) and ".." not in value
+            and not value.strip().startswith(("/", "-")))
+
+
 def _clean_name(value: Any, key: str) -> str:
-    if not isinstance(value, str) or not MODEL_NAME.match(value.strip()):
+    if not valid_model_name(value):
         raise HTTPException(400, f"{key} must be a model name like qwen3:4b (letters, digits and . _ : / - only).")
     return value.strip()
 
@@ -476,7 +482,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
     @router.post("/models/pull")
     async def pull_model(body: PullBody):
         name = body.name.strip()
-        if not MODEL_NAME.match(name):
+        if not valid_model_name(name):
             raise HTTPException(400, "That is not a model name. Use something like qwen3:4b.")
         if not body.confirm:
             raise HTTPException(409, f"Downloading {name} can take several GB and a while. Confirm to start.")
@@ -524,7 +530,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
     @router.post("/models/test")
     async def test_model(body: ModelTestBody):
         name = body.model.strip()
-        if not MODEL_NAME.match(name):
+        if not valid_model_name(name):
             raise HTTPException(400, "That is not a model name. Use something like qwen3:4b.")
         started = time.perf_counter()
         try:

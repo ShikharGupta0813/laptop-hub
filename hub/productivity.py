@@ -515,14 +515,13 @@ def resolve_list(c: sqlite3.Connection, name: Any) -> str:
     return row["name"]
 
 
-def clean_subtasks(value: Any, existing: Optional[list] = None) -> list[dict]:
+def clean_subtasks(value: Any) -> list[dict]:
     if value is None:
         return []
     if not isinstance(value, list):
         raise bad("Subtasks must be a list.")
     if len(value) > MAX_SUBTASKS:
         raise bad(f"A task can have up to {MAX_SUBTASKS} subtasks.")
-    known = {s["id"] for s in existing or []}
     out, used = [], set()
     for item in value:
         text_in, done, sid = (item, False, None) if isinstance(item, str) else (
@@ -532,7 +531,6 @@ def clean_subtasks(value: Any, existing: Optional[list] = None) -> list[dict]:
             sid = "s_" + secrets.token_hex(4)
         used.add(sid)
         out.append({"id": sid, "text": text, "done": done})
-    del known
     return out
 
 
@@ -558,7 +556,8 @@ def validate_todo(c: sqlite3.Connection, merged: dict) -> dict:
         "due": clean_due(merged.get("due")),
         "tags": clean_tags(merged.get("tags")),
     }
-    priority = merged.get("priority", 0)
+    priority = merged.get("priority")
+    priority = 0 if priority is None else priority
     if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 3:
         raise bad("Priority must be a number from 0 (none) to 3 (urgent).")
     out["priority"] = priority
@@ -568,7 +567,7 @@ def validate_todo(c: sqlite3.Connection, merged: dict) -> dict:
     if repeat != "none" and not out["due"]:
         raise bad("A repeating task needs a due date.")
     out["repeat"] = repeat
-    out["subtasks"] = clean_subtasks(merged.get("subtasks"), merged.get("_existing_subtasks"))
+    out["subtasks"] = clean_subtasks(merged.get("subtasks"))
     return out
 
 
@@ -877,16 +876,14 @@ def mood_stats(c: sqlite3.Connection, days: int, on: date) -> dict:
             slot.append(r["mood"])
             moods.append(r["mood"])
             distribution[str(r["mood"])] += 1
+    counts = {r["date"]: r["n"] for r in c.execute(
+        "SELECT date, COUNT(*) AS n FROM journal WHERE date >= ? AND date <= ? GROUP BY date", (first, on.isoformat()))}
     by_day = []
     for i in range(days - 1, -1, -1):
         d = (on - timedelta(days=i)).isoformat()
         found = per_day.get(d)
         by_day.append({"date": d, "mood": round(sum(found) / len(found), 1) if found else None,
-                       "entries": int(d in per_day) and sum(1 for _ in [0]) if False else 0})
-    counts = {r["date"]: r["n"] for r in c.execute(
-        "SELECT date, COUNT(*) AS n FROM journal WHERE date >= ? AND date <= ? GROUP BY date", (first, on.isoformat()))}
-    for item in by_day:
-        item["entries"] = counts.get(item["date"], 0)
+                       "entries": counts.get(d, 0)})
     current, best = day_streaks(journal_days(c), on)
     return {"days": days, "entries": entries, "mood_entries": len(moods),
             "average_mood": round(sum(moods) / len(moods), 2) if moods else None,
@@ -1163,7 +1160,7 @@ def make_router(ctx: Ctx) -> APIRouter:
             sql += " AND done = ?"
             args.append(1 if done else 0)
         if q and q.strip():
-            sql += " AND (title LIKE ?1 ESCAPE '\\' OR notes LIKE ?1 ESCAPE '\\')".replace("?1", "?")
+            sql += " AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')"
             args += [like(q.strip())] * 2
         with store.tx() as c:
             rows = c.execute(sql + " ORDER BY done, ord, rowid", args).fetchall()
@@ -1186,7 +1183,7 @@ def make_router(ctx: Ctx) -> APIRouter:
         sent = {("list" if k == "list_name" else k): getattr(body, k) for k in body.model_fields_set}
         with store.tx() as c:
             row = get_todo_row(c, tid)
-            merged = todo_out(row) | sent | {"_existing_subtasks": json.loads(row["subtasks"])}
+            merged = todo_out(row) | sent
             fields = validate_todo(c, merged)
             c.execute("UPDATE todos SET title=?, notes=?, list=?, due=?, priority=?, tags=?, repeat=?, subtasks=? "
                       "WHERE id=?", (fields["title"], fields["notes"], fields["list"], fields["due"],

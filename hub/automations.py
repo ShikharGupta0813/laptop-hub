@@ -572,7 +572,7 @@ class Engine:
         if never and schedule:
             raise HTTPException(400, "Shutting down, restarting or ending a program can't run on a schedule. "
                                      "Remove the schedule or that step.")
-        if False:
+        if dangerous and confirm is not True:
             raise HTTPException(409, "This routine can lock, sleep, or end things on the laptop. "
                                      "Confirm it and save again.")
         if existing is None and len(self.routines) >= MAX_ROUTINES:
