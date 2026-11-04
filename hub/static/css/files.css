@@ -1,1 +1,98 @@
 /* files tab styles. Scope every rule under #view-files. */
+#view-files { padding: 0; overflow: hidden; }
+#view-files [hidden] { display: none !important; }
+#view-files .fl-icon { width: 24px; height: 24px; flex: none; fill: currentColor; }
+
+/* Browser pane scrolls by itself so its position can be saved and restored */
+#view-files .fl-browser { height: 100%; overflow-y: auto; overflow-x: hidden; padding: 14px 14px 18px; -webkit-overflow-scrolling: touch; }
+#view-files .fl-roots { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+#view-files .fl-chip { min-height: 44px; padding: 0 16px; flex: none; font-size: 15px; }
+#view-files .fl-search { display: flex; gap: 8px; margin: 8px 0 4px; }
+#view-files .fl-search-input { flex: 1; min-width: 0; font-size: 16px; min-height: 44px; }
+#view-files .fl-iconbtn { width: 44px; padding: 0; flex: none; }
+#view-files .fl-crumbs {
+  display: flex; align-items: center; gap: 2px; overflow-x: auto; white-space: nowrap;
+  margin: 6px -4px 4px; scrollbar-width: none;
+}
+#view-files .fl-crumb {
+  min-height: 44px; padding: 0 8px; background: none; border: 0; color: var(--accent);
+  font-size: 15px; cursor: pointer; border-radius: 8px; flex: none;
+}
+#view-files .fl-crumb[aria-current="page"] { color: var(--text); font-weight: 600; }
+#view-files .fl-sep { color: var(--muted); flex: none; }
+
+#view-files .fl-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+#view-files .fl-list li + li { border-top: 1px solid var(--line); }
+#view-files .fl-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px;
+  background: none; border: 0; text-align: left; cursor: pointer; color: var(--text);
+}
+#view-files .fl-item:active { background: var(--surface-2); }
+#view-files .fl-item .dir { color: var(--accent); }
+#view-files .fl-item .fl-icon:not(.dir):not(.fl-go) { color: var(--muted); }
+#view-files .fl-go { width: 18px; height: 18px; color: var(--muted); }
+#view-files .fl-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+#view-files .fl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-files .fl-meta { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-files .fl-relpath { white-space: normal; overflow-wrap: anywhere; }
+#view-files .fl-resulthead { margin: 8px 0; font-size: 14px; }
+#view-files .fl-note { padding: 18px 4px; text-align: center; }
+#view-files .fl-errorbox { margin-top: 10px; display: grid; gap: 10px; }
+#view-files .fl-errorbox p { margin: 0; }
+
+/* Reader: header and bar stay put, the document scrolls between them */
+#view-files .fl-reader { height: 100%; display: flex; flex-direction: column; min-width: 0; }
+#view-files .fl-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; flex: none;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+#view-files .fl-back { padding: 0 12px 0 6px; flex: none; }
+#view-files .fl-title { margin: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-files .fl-sub { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-files .fl-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px; -webkit-overflow-scrolling: touch; }
+#view-files .fl-doc { min-width: 0; overflow-wrap: anywhere; }
+#view-files .fl-doc.markdown { line-height: 1.6; }
+#view-files .fl-doc.markdown pre { overflow-wrap: normal; }
+#view-files .fl-doc.markdown h1 { font-size: 1.6em; }
+#view-files .fl-doc.markdown h2 { font-size: 1.3em; margin-top: 1.2em; }
+#view-files .fl-pre { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: normal; max-width: 100%; }
+#view-files .fl-pre.wrap { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+#view-files .fl-img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 10px; background: var(--surface-2); }
+#view-files .fl-card { display: grid; gap: 4px; }
+#view-files .fl-card p { margin: 0 0 6px; }
+#view-files .fl-cardname { font-weight: 600; overflow-wrap: anywhere; }
+#view-files .fl-card a.btn, #view-files .fl-card a.btn:visited { text-decoration: none; color: inherit; }
+#view-files .fl-card a.btn.primary { color: var(--accent-ink); }
+#view-files .fl-brokenimg { font-size: 14px; font-style: italic; }
+
+/* AI bar */
+#view-files .fl-bar {
+  flex: none; display: grid; gap: 6px; padding: 6px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+#view-files .fl-barhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#view-files .fl-scope { font-size: 13px; color: var(--muted); padding-left: 4px; }
+#view-files .fl-scope.on { color: var(--accent); font-weight: 600; }
+#view-files .fl-prov { display: inline-flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
+#view-files .fl-seg {
+  min-height: 44px; min-width: 64px; padding: 0 14px; background: var(--surface-2); border: 0;
+  font-size: 14px; cursor: pointer; color: var(--text);
+}
+#view-files .fl-seg + .fl-seg { border-left: 1px solid var(--line); }
+#view-files .fl-seg[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+#view-files .fl-aibtns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#view-files .fl-ai { padding: 0 4px; font-size: 14px; min-width: 0; }
+#view-files .fl-askform { display: flex; gap: 8px; }
+#view-files .fl-ask-input { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; }
+
+/* Answer sheet */
+#view-files .fl-sheet:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; gap: 8px; max-height: 80vh; }
+#view-files .fl-sheet-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex: none; }
+#view-files .fl-sheet-title { margin: 0; font-size: 18px; }
+#view-files .fl-status { font-size: 13px; text-align: right; }
+#view-files .fl-sheet-body { flex: 1; min-height: 80px; overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; }
+#view-files .fl-answer > :first-child { margin-top: 0; }
+#view-files .fl-sheet-error { margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--bad); border-radius: 10px; }
+#view-files .fl-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
+#view-files .fl-sheet-actions .btn { flex: 1 1 auto; padding: 0 12px; }
+#view-files .fl-copyarea { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
