@@ -1,0 +1,6 @@
+# Calendar, email and Google Chat reuse the Jarvis helper modules (agenda, mailer, gchat).
+# They need these packages; set jarvis_dir in hub.json to the jarvis-voice-assistant folder.
+keyring>=24.0
+icalendar>=5.0
+recurring-ical-events>=2.1
+tzdata>=2024.1
