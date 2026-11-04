@@ -8,7 +8,24 @@ Why a shell and not a rewrite: the whole interface is already built and tested a
 all of it, builds in minutes, and stays in sync with the laptop. Features that need real native code (a
 background "Hey Jarvis" wake word, notifications) are listed under **Later** below.
 
-## What you need on the laptop that builds the app
+## Easiest: let GitHub build it (no Android Studio, nothing to install)
+
+1. Get your hub's **HTTPS address**: on the laptop run `tailscale serve status`. It looks like
+   `https://yourlaptop.tail1234.ts.net`. The app needs HTTPS (the microphone requires it).
+2. Open the repo on GitHub: **Actions** tab, **Build Android APK** in the list on the left, **Run workflow**,
+   paste the address, press the green button.
+3. Wait 5 to 10 minutes. Open the finished run (green tick) and download **laptop-hub-debug-apk** at the bottom
+   (a zip with `app-debug.apk` inside). Open it on the phone.
+4. Install it (see below), open **Laptop Hub**, allow the microphone, and log in with your hub token.
+
+If you change the address later, run the workflow again with the new one.
+
+**Updating the app:** every build is signed with a fresh debug key, so Android will not install a new build over an
+old one ("App not installed"). Uninstall the old Laptop Hub first. Your data is on the laptop, so nothing is lost.
+
+## Or build it yourself on your laptop
+
+### What you need
 
 1. **Node.js 22 or newer** (`node --version`).
 2. **Android Studio** (it brings the Android SDK and a Java runtime). Open it once and let it finish
@@ -16,7 +33,7 @@ background "Hey Jarvis" wake word, notifications) are listed under **Later** bel
 3. Your hub's **HTTPS address** from `tailscale serve status`, like `https://yourlaptop.tail1234.ts.net`.
    The app cannot work without HTTPS (the microphone needs it).
 
-## Build the APK (Windows PowerShell)
+### Build the APK (Windows PowerShell)
 
 ```powershell
 cd mobile
@@ -53,12 +70,11 @@ Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address
 
 - Background wake word ("Hey Jarvis") that works with the screen off: needs a native plugin.
 - Push notifications for approvals and reminders.
-- A custom app icon and splash screen (it uses Capacitor's default icon).
-- A signed release build for sharing; this guide makes a debug build for your own phone.
+- A custom splash screen (the launcher icon is the Laptop Hub icon; regenerate it with `python scripts/make-icons.py`).
+- A release-signed build with a keystore kept in GitHub secrets, so updates install over the old app (today's builds are debug-signed for your own phone).
 
 ## Not tested
 
-This was generated and checked for correct configuration, but **no APK has been built or run yet**: the
-build needs the Android SDK, which was not available where this was written. If the build fails, the first
-suspects are the Java version and the Android SDK path (`ANDROID_HOME`, or `android/local.properties`
-containing `sdk.dir=C\:\\Users\\YOU\\AppData\\Local\\Android\\Sdk`).
+The cloud build is the route that has been run: see the green run on the repo's Actions tab. **The APK has not been
+installed on a real phone yet.** If the app opens to a blank or error page, check that Tailscale is on, the hub is
+running, and the address you built with is exactly the one from `tailscale serve status`.

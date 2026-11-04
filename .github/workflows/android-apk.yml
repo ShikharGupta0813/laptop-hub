@@ -43,8 +43,14 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Prepare the Android SDK
+        run: |
+          # GitHub's Ubuntu machines already have the Android SDK ($ANDROID_HOME); make sure the pieces
+          # this app needs are there and the licences are accepted.
+          set -eu
+          SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install the Capacitor tools
         working-directory: mobile
