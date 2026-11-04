@@ -63,6 +63,7 @@ MAX_SOURCE_CHARS = 1200          # of one chunk shown to the model
 MAX_CONTEXT_CHARS = 9000         # of all chunks together
 PER_FILE_HITS = 3
 RRF_K = 60
+MIN_SIMILARITY = 0.4            # cosine below this is not 'about the same thing'; the nearest junk is dropped
 
 TEXT_EXTS = {".md", ".txt", ".rst", ".py", ".js", ".ts", ".json", ".csv", ".html"}
 ALL_EXTS = TEXT_EXTS | {".pdf", ".docx"}
@@ -704,14 +705,14 @@ class KB:
             matrix = np.frombuffer(b"".join(r["vec"] for r in rows), dtype=np.float32).reshape(len(rows), dim)
             sims = matrix @ np.frombuffer(query.tobytes(), dtype=np.float32)
             order = np.argsort(-sims)[:count]
-            return [rows[int(i)]["id"] for i in order if sims[int(i)] > 0]
+            return [rows[int(i)]["id"] for i in order if sims[int(i)] >= MIN_SIMILARITY]
         scored = []
         for r in rows:
             v = array("f")
             v.frombytes(r["vec"])
             scored.append((sum(a * b for a, b in zip(v, query)), r["id"]))
         scored.sort(reverse=True)
-        return [cid for sim, cid in scored[:count] if sim > 0]
+        return [cid for sim, cid in scored[:count] if sim >= MIN_SIMILARITY]
 
     def file_chunks(self, root: str, rel: str, limit: int = 60) -> list[dict] | None:
         with closing(self.connect()) as db:
@@ -748,7 +749,7 @@ def _fuse(rankings: list[list[int]]) -> list[tuple[int, float]]:
 
 def _defang(text: str) -> str:
     """Stop file text from closing (or opening) the <sources> block it is quoted in."""
-    return re.sub(r"<(/?)\s*sources", lambda m: f"<​{m.group(1)}sources", text, flags=re.I)
+    return re.sub(r"<\s*(/?)\s*sources", lambda m: f"<\u200b{m.group(1)}sources", text, flags=re.I)
 
 
 def build_prompt(question: str, hits: list[dict]) -> tuple[str, str]:

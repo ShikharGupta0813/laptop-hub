@@ -1,0 +1,124 @@
+package dev.shikhar.laptophub.capture;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
+/** Small persisted state: hub origin, on/off switch and the unsent queue. All data stays on the phone. */
+final class HubStore {
+    private HubStore() {}
+
+    static final String PREFS = "hubcapture";
+    static final int QUEUE_CAP = 200;
+    private static final String K_ORIGIN = "origin";
+    private static final String K_ENABLED = "enabled";
+    private static final String K_QUEUE = "queue";
+
+    private static SharedPreferences prefs(Context c) {
+        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** "https://host[:port]" or null for anything that is not a plain https origin. */
+    static String toOrigin(String url) {
+        if (url == null) return null;
+        try {
+            URL u = new URL(url.trim());
+            if (!"https".equalsIgnoreCase(u.getProtocol())) return null;
+            String host = u.getHost();
+            if (host == null || host.isEmpty()) return null;
+            return "https://" + host.toLowerCase() + (u.getPort() == -1 ? "" : ":" + u.getPort());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static void saveOrigin(Context c, String url) {
+        String o = toOrigin(url);
+        if (o != null) prefs(c).edit().putString(K_ORIGIN, o).apply();
+    }
+
+    /** The hub origin saved at plugin load, else the one baked into assets/capacitor.config.json at sync time. */
+    static String origin(Context c) {
+        String o = prefs(c).getString(K_ORIGIN, null);
+        if (o != null) return o;
+        try (InputStream in = c.getAssets().open("capacitor.config.json")) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[4096];
+            int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            JSONObject cfg = new JSONObject(new String(buf.toByteArray(), StandardCharsets.UTF_8));
+            JSONObject server = cfg.optJSONObject("server");
+            o = toOrigin(server == null ? null : server.optString("url", null));
+            if (o != null) prefs(c).edit().putString(K_ORIGIN, o).apply();
+            return o;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static boolean enabled(Context c) {
+        return prefs(c).getBoolean(K_ENABLED, true);
+    }
+
+    static void setEnabled(Context c, boolean on) {
+        prefs(c).edit().putBoolean(K_ENABLED, on).apply();
+    }
+
+    // ---- queue (JSON array of payload objects, each with a private "_id") ----
+
+    private static JSONArray readQueue(Context c) {
+        try {
+            return new JSONArray(prefs(c).getString(K_QUEUE, "[]"));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    private static void writeQueue(Context c, JSONArray q) {
+        prefs(c).edit().putString(K_QUEUE, q.toString()).apply();
+    }
+
+    static synchronized void enqueue(Context c, JSONObject payload) {
+        try {
+            JSONObject item = new JSONObject(payload.toString());
+            item.put("_id", System.nanoTime() + "-" + Math.abs(payload.toString().hashCode()));
+            JSONArray q = readQueue(c);
+            q.put(item);
+            if (q.length() > QUEUE_CAP) {
+                JSONArray trimmed = new JSONArray();
+                for (int i = q.length() - QUEUE_CAP; i < q.length(); i++) trimmed.put(q.get(i));
+                q = trimmed;
+            }
+            writeQueue(c, q);
+        } catch (JSONException ignored) {
+        }
+    }
+
+    static synchronized int queueSize(Context c) {
+        return readQueue(c).length();
+    }
+
+    /** The oldest queued item (with its "_id"), or null. */
+    static synchronized JSONObject peek(Context c) {
+        JSONArray q = readQueue(c);
+        return q.length() == 0 ? null : q.optJSONObject(0);
+    }
+
+    static synchronized void remove(Context c, String id) {
+        JSONArray q = readQueue(c);
+        JSONArray rest = new JSONArray();
+        for (int i = 0; i < q.length(); i++) {
+            JSONObject o = q.optJSONObject(i);
+            if (o != null && !id.equals(o.optString("_id"))) rest.put(o);
+        }
+        writeQueue(c, rest);
+    }
+}

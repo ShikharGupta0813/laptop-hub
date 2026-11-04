@@ -1,4 +1,5 @@
-// Adds the permissions Laptop Hub needs to the Android manifest. Safe to run many times.
+// Adds the permissions and the payment-capture components Laptop Hub needs to the Android manifest.
+// Safe to run many times: every piece is only added if it is not there yet.
 const fs = require("fs");
 const path = require("path");
 const file = path.join(__dirname, "..", "android", "app", "src", "main", "AndroidManifest.xml");
@@ -6,6 +7,7 @@ let xml = fs.readFileSync(file, "utf8");
 const wanted = [
   "android.permission.RECORD_AUDIO",          // voice notes, talking to the assistant, English practice
   "android.permission.MODIFY_AUDIO_SETTINGS", // lets the web view open the microphone
+  "android.permission.RECEIVE_SMS",           // optional bank-SMS capture (asked at runtime; never READ_SMS)
 ];
 let changed = false;
 for (const name of wanted) {
@@ -14,5 +16,43 @@ for (const name of wanted) {
     changed = true;
   }
 }
+
+// Components of the HubCapture plugin (automatic spend capture).
+const components = [
+  {
+    marker: ".capture.PaymentNotificationListener",
+    xml: `        <!-- Reads notifications from an allow-list of payment apps only (see CaptureFilter.java). -->
+        <service
+            android:name=".capture.PaymentNotificationListener"
+            android:label="@string/app_name"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+`,
+  },
+  {
+    marker: ".capture.BankSmsReceiver",
+    xml: `        <!-- Optional bank/UPI debit SMS. Does nothing until the user grants SMS permission in the app. -->
+        <receiver
+            android:name=".capture.BankSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+`,
+  },
+];
+for (const c of components) {
+  if (!xml.includes(`"${c.marker}"`)) {
+    if (!xml.includes("</application>")) throw new Error("AndroidManifest.xml has no </application>");
+    xml = xml.replace(/[ \t]*<\/application>/, `${c.xml}    </application>`);
+    changed = true;
+  }
+}
 if (changed) fs.writeFileSync(file, xml);
-console.log(changed ? "Manifest updated." : "Manifest already has the permissions.");
+console.log(changed ? "Manifest updated." : "Manifest already has the permissions and capture components.");
