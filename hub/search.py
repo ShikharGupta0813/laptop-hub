@@ -458,7 +458,7 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             if text:
                 rows.append({"id": _clip(r.get("id"), 60), "title": _clip(text, 140), "when": when[:40],
                              "open": {"view": "reminders", "id": _clip(r.get("id"), 60)}})
-        rows.sort(key=lambda r: (r["when"] == "", r["when"]))
+        rows.sort(key=lambda r: parse_when(r["when"]) or datetime.max)   # stable: unparsable times keep the feature's order
         return rows[:5]
 
     async def s_notifications(memo: Memo):

@@ -15,14 +15,15 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.HttpsURLConnection;
 
 /**
- * Sends captured items to the hub, using the login cookie the WebView already holds.
+ * Sends captured items (payments and watched mail/chat messages) to the hub, using the login cookie the WebView already holds.
  * Anything that cannot be delivered stays in the persisted queue and is retried on the next
  * capture, on app resume and on flush(). Nothing here logs notification text.
  */
 final class Delivery {
     private Delivery() {}
 
-    static final String PATH = "/api/expenses/capture";
+    static final String PATH_CAPTURE = "/api/expenses/capture";
+    static final String PATH_WATCH = "/api/watch/ingest";
     static final int TIMEOUT_MS = 10_000;
     /** One thread, so sends are strictly ordered and the queue head is never sent twice at once. */
     static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
@@ -38,19 +39,28 @@ final class Delivery {
         }
     }
 
-    /** Queue the item, then try to send everything. Blocking: call from EXEC or a worker thread. */
+    /** Queue a payment item (POST /api/expenses/capture), then try to send everything. Blocking. */
     static Result enqueueAndFlush(Context c, JSONObject payload) {
-        HubStore.enqueue(c, payload);
+        return enqueueAndFlush(c, PATH_CAPTURE, payload);
+    }
+
+    /** Queue the item for {@code path}, then try to send everything. Blocking: call from EXEC or a worker thread. */
+    static Result enqueueAndFlush(Context c, String path, JSONObject payload) {
+        HubStore.enqueue(c, path, payload);
         return flush(c);
+    }
+
+    /** Only these paths are ever posted to; anything else found in the queue is dropped. */
+    private static boolean knownPath(String path) {
+        return PATH_CAPTURE.equals(path) || PATH_WATCH.equals(path);
     }
 
     static synchronized Result flush(Context c) {
         String origin = HubStore.origin(c);
         if (origin == null) return new Result(false, HubStore.queueSize(c), "no-https-origin");
-        String endpoint = origin + PATH;
         String cookie = null;
         try {
-            cookie = CookieManager.getInstance().getCookie(endpoint);
+            cookie = CookieManager.getInstance().getCookie(origin + PATH_CAPTURE);
         } catch (Throwable ignored) {
         }
         if (cookie == null || cookie.isEmpty()) {
@@ -61,8 +71,15 @@ final class Delivery {
             JSONObject item = HubStore.peek(c);
             if (item == null) break;
             String id = item.optString("_id");
+            // Items queued by older app versions have no "_path": they are payments.
+            String path = item.optString(HubStore.K_PATH, PATH_CAPTURE);
             item.remove("_id");
-            int code = post(endpoint, cookie, item.toString());
+            item.remove(HubStore.K_PATH);
+            if (!knownPath(path)) {
+                HubStore.remove(c, id);
+                continue;
+            }
+            int code = post(origin + path, cookie, item.toString());
             if (code >= 200 && code < 300) {
                 HubStore.remove(c, id);
                 any = true;

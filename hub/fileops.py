@@ -205,6 +205,8 @@ def make_router(ctx: Ctx) -> APIRouter:
 
     def writable(root: str) -> Path:
         base = base_of(root)            # 404 for an unknown folder, before the read-only answer
+        if root not in ctx.config.writable_roots:
+            raise HTTPException(403, READ_ONLY)
         return base
 
     def protected() -> list[Path]:

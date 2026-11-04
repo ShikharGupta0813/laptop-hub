@@ -61,6 +61,8 @@ public class HubCapturePlugin extends Plugin {
         ret.put("listenerEnabled", listenerEnabled());
         ret.put("smsGranted", smsGranted());
         ret.put("enabled", HubStore.enabled(getContext()));
+        ret.put("watchMail", HubStore.watchMail(getContext()));
+        ret.put("watchChat", HubStore.watchChat(getContext()));
         ret.put("queued", HubStore.queueSize(getContext()));
         ret.put("hubOrigin", origin == null ? JSONObject.NULL : origin);
         return ret;
@@ -106,6 +108,23 @@ public class HubCapturePlugin extends Plugin {
         boolean on = Boolean.TRUE.equals(call.getBoolean("enabled", true));
         HubStore.setEnabled(getContext(), on);
         if (on) {
+            try {
+                NotificationListenerService.requestRebind(
+                    new ComponentName(getContext(), PaymentNotificationListener.class));
+            } catch (Throwable ignored) {
+            }
+        }
+        call.resolve(statusObject());
+    }
+
+    /** setWatch({ mail, chat }): independent of payment capture; a key that is left out keeps its value. */
+    @PluginMethod
+    public void setWatch(PluginCall call) {
+        Boolean mail = call.getBoolean("mail");
+        Boolean chat = call.getBoolean("chat");
+        if (mail != null) HubStore.setWatchMail(getContext(), mail);
+        if (chat != null) HubStore.setWatchChat(getContext(), chat);
+        if (HubStore.watchMail(getContext()) || HubStore.watchChat(getContext())) {
             try {
                 NotificationListenerService.requestRebind(
                     new ComponentName(getContext(), PaymentNotificationListener.class));

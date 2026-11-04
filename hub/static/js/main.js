@@ -1,45 +1,45 @@
-// App shell: login, the five tabs, and the small toolkit (`ctx`) handed to every tab module.
+// App shell: login, the view registry, navigation (bottom bar, top bar, Android back), and the small
+// toolkit (`ctx`) handed to every screen module.
 //
-// A tab module exports `init(container, ctx)`. It builds its UI inside `container` and may
-// return an object with optional `show()` (tab became visible), `hide()`, and any methods
-// other modules call through ctx (for example files returns `openFile(root, path)`).
+// A screen module exports `init(container, ctx)`. It builds its UI inside `container` (#view-<id>) and may
+// return { show(), hide(), openSection(name), openItem(id, section), refresh() }; all optional.
 import { api, ApiError } from "./api.js";
-import * as assistant from "./assistant.js";
-import * as files from "./files.js";
-import * as notes from "./notes.js";
-import * as terminal from "./terminal.js";
-import * as hub from "./hub.js";
-import * as work from "./work.js";
-import * as learn from "./learn.js";
-import * as apps from "./apps.js";
+import * as ui from "./ui.js";
+import { openSearch } from "./omnibox.js";
 
-// Every screen is a "view". The bottom bar shows five of them; Files, Terminal and Hub live
-// under Apps, so they have no button of their own and count as "Apps" for highlighting.
-const VIEWS = [
-  { id: "assistant", label: "Talk", mod: assistant, nav: true, icon: "M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z" },
-  { id: "work", label: "Work", mod: work, nav: true, icon: "M10 2h4a2 2 0 0 1 2 2v2h4a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4V4a2 2 0 0 1 2-2Zm0 2v2h4V4h-4Zm-6 8v2h16v-2H4Z" },
-  { id: "learn", label: "Learn", mod: learn, nav: true, icon: "M12 3 1 9l11 6 9-4.9V17h2V9L12 3ZM5 13.2v4L12 21l7-3.8v-4L12 17l-7-3.8Z" },
-  { id: "notes", label: "Notes", mod: notes, nav: true, icon: "M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM7 12v2h10v-2H7Zm0 4v2h7v-2H7Z" },
-  { id: "apps", label: "Apps", mod: apps, nav: true, icon: "M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" },
-  { id: "files", label: "Files", mod: files, nav: false, under: "apps" },
-  { id: "terminal", label: "Terminal", mod: terminal, nav: false, under: "apps" },
-  { id: "hub", label: "Hub", mod: hub, nav: false, under: "apps" },
+// ---- the registry: adding a screen is one line ----------------------------------------------------
+// id: also the DOM id (#view-<id>) and the hash (#/<id>). path: module, loaded on first open.
+// nav: shows in the bottom bar. under: the bottom-bar tab that stays highlighted (and where Back goes).
+// A screen whose module is missing shows a friendly "not installed" page instead of breaking.
+export const VIEWS = [
+  { id: "home", label: "Home", icon: "home", path: "./home.js", nav: true },
+  { id: "assistant", label: "Talk", icon: "talk", path: "./assistant.js", nav: true, title: "Talk" },
+  { id: "work", label: "Work", icon: "work", path: "./work.js", nav: true },
+  { id: "learn", label: "Learn", icon: "learn", path: "./learn.js", nav: true },
+  { id: "apps", label: "Apps", icon: "apps", path: "./apps.js", nav: true },
+  { id: "notes", label: "Notes", icon: "note", path: "./notes.js", under: "apps" },
+  { id: "files", label: "Files", icon: "folder", path: "./files.js", under: "apps" },
+  { id: "terminal", label: "Terminal", icon: "terminal", path: "./terminal.js", under: "apps" },
+  { id: "hub", label: "Laptop", icon: "laptop", path: "./hub.js", under: "apps" },
+  { id: "notifications", label: "Notifications", icon: "bell", path: "./notifications.js", under: "home" },
+  { id: "settings", label: "Settings", icon: "settings", path: "./settings.js", under: "home" },
+  { id: "reminders", label: "Reminders", icon: "alarm", path: "./reminders.js", under: "home" },
+  { id: "inbox", label: "Inbox", icon: "inbox", path: "./inbox.js", under: "apps" },
+  { id: "screen", label: "Remote screen", icon: "cast", path: "./screen.js", under: "apps" },
+  { id: "focus", label: "Focus", icon: "target", path: "./focus.js", under: "home" },
+  { id: "automations", label: "Automations", icon: "zap", path: "./automations.js", under: "apps" },
+  { id: "kb", label: "Knowledge", icon: "book-open", path: "./kb.js", under: "learn" },
 ];
-const TABS = VIEWS; // the rest of this file loops over every view
+const byId = new Map(VIEWS.map((v) => [v.id, v]));
+const NAV = VIEWS.filter((v) => v.nav);
 
-const handles = {};
+const handles = {};   // id -> what init() returned
+const mounting = {};  // id -> promise while the module loads
 let current = null;
 let started = false;
+let navToken = 0;
 
 const $ = (id) => document.getElementById(id);
-
-function toast(message, ms = 3500) {
-  const node = $("toast");
-  node.textContent = message;
-  node.hidden = false;
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { node.hidden = true; }, ms);
-}
 
 function speak(text) {
   if (!("speechSynthesis" in window) || !text) return;
@@ -47,50 +47,278 @@ function speak(text) {
   window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
-function show(tabId) {
-  const tab = TABS.find((t) => t.id === tabId) || TABS[0];
-  if (current && handles[current]?.hide) handles[current].hide();
-  current = tab.id;
-  for (const t of TABS) {
-    $("view-" + t.id).hidden = t.id !== tab.id;
+// An id that is not registered still works if js/<id>.js exists (convention over configuration).
+function viewFor(id) {
+  if (byId.has(id)) return byId.get(id);
+  if (typeof id === "string" && /^[a-z][a-z0-9-]{0,30}$/.test(id)) {
+    const label = id.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+    const v = { id, label, icon: "grid", path: `./${id}.js`, under: "apps", dynamic: true };
+    byId.set(id, v);
+    return v;
   }
-  const owner = tab.under || tab.id;
-  for (const button of document.querySelectorAll("#tabs [data-tab]")) {
-    button.setAttribute("aria-selected", String(button.dataset.tab === owner));
-  }
-  try { localStorage.setItem("hub.tab", tab.id); } catch (_) { /* private mode */ }
-  handles[tab.id]?.show?.();
+  return byId.get("home");
 }
 
+// ---- mounting --------------------------------------------------------------------------------------
+function sectionFor(v) {
+  let node = $("view-" + v.id);
+  if (!node) {
+    node = document.createElement("section");
+    node.id = "view-" + v.id;
+    node.className = "view";
+    node.hidden = true;
+    node.setAttribute("aria-label", v.label);
+    node.addEventListener("scroll", onViewScroll, { passive: true });
+    $("views").append(node);
+  }
+  return node;
+}
+
+function missing(container, v, error, installed) {
+  container.replaceChildren(ui.el("div", { class: "sh-missing" }, ui.emptyState(installed ? {
+    icon: "alert", title: `${v.label} couldn't start`,
+    body: error?.message || "Something went wrong while opening this screen.",
+    action: { label: "Try again", icon: "refresh", onClick: () => { delete handles[v.id]; delete mounting[v.id]; show(v.id, { push: false }); } },
+  } : {
+    icon: v.icon || "grid", title: `${v.label} isn't installed yet`,
+    body: "This screen is on its way. Everything else keeps working in the meantime.",
+    action: { label: "Back to Home", icon: "home", onClick: () => show("home") },
+  })));
+}
+
+async function mount(v) {
+  if (handles[v.id]) return handles[v.id];
+  if (mounting[v.id]) return mounting[v.id];
+  const container = sectionFor(v);
+  mounting[v.id] = (async () => {
+    const timer = setTimeout(() => { if (!handles[v.id]) container.replaceChildren(ui.el("div", { class: "sh-loading" }, ui.skeleton("card", 1), ui.skeleton("list", 4))); }, 120);
+    let mod;
+    try {
+      mod = await import(v.path);
+    } catch (error) {
+      clearTimeout(timer);
+      let installed = true;
+      try { installed = (await fetch(new URL(v.path, import.meta.url), { method: "HEAD" })).ok; } catch (_) { installed = false; }
+      if (installed) console.error(v.id, error);
+      if (!installed && v.id === "settings") return mountFallbackSettings(container);
+      missing(container, v, error, installed);
+      return {};
+    }
+    clearTimeout(timer);
+    container.replaceChildren();
+    try {
+      return (await mod.init(container, ctx)) || {};
+    } catch (error) {
+      console.error(v.id, error);
+      missing(container, v, error, true);
+      return {};
+    }
+  })();
+  handles[v.id] = await mounting[v.id];
+  delete mounting[v.id];
+  return handles[v.id];
+}
+
+// Until the Settings screen ships, the gear opens the Appearance controls so themes are reachable.
+function mountFallbackSettings(container) {
+  container.append(ui.el("div", { class: "sh-settings-lite ui-stack ui-stack--lg" },
+    ui.el("div", { class: "ui-card ui-card--pad-lg" },
+      ui.el("div", { class: "ui-card__head" }, ui.tile("palette", "violet"), ui.el("div", { class: "grow" },
+        ui.el("h2", { class: "ui-card__title" }, "Appearance"), ui.el("p", { class: "ui-card__sub" }, "Saved on this phone."))),
+      ui.appearancePanel()),
+    ui.el("div", { class: "ui-card ui-card--pad-0" }, ui.el("div", { class: "ui-list ui-list--icons" },
+      ui.listRow({ icon: "laptop", tone: "info", title: "Laptop and hub", sub: "Status, quick buttons, upload, log out", chevron: true, onClick: () => show("hub") }),
+      ui.listRow({ icon: "apps", tone: "gray", title: "All features", sub: "The Apps directory", chevron: true, onClick: () => show("apps") }))),
+  ));
+  return {};
+}
+
+// ---- navigation ------------------------------------------------------------------------------------
+function navIndex(v) { return NAV.findIndex((n) => n.id === (v.nav ? v.id : v.under)); }
+
+async function show(id, { section, item, push = true, replace = false } = {}) {
+  const token = ++navToken;
+  await ui.historySettled();
+  const v = viewFor(id);
+  const prev = current ? byId.get(current) : null;
+  const container = sectionFor(v);
+  if (current !== v.id) {
+    if (prev) {
+      handles[prev.id]?.hide?.();
+      const old = $("view-" + prev.id);
+      if (old) old.hidden = true;
+    }
+    current = v.id;
+    container.hidden = false;
+    const a = prev ? navIndex(prev) : -1, b = navIndex(v);
+    const dir = !prev ? "fade" : (prev.nav && v.nav) ? (b > a ? "fwd" : "back") : (v.nav ? "back" : "fwd");
+    container.classList.remove("sh-enter-fwd", "sh-enter-back", "sh-enter-fade");
+    void container.offsetWidth;
+    container.classList.add("sh-enter-" + dir);
+    container.addEventListener("animationend", () => container.classList.remove("sh-enter-" + dir), { once: true });
+    paintChrome(v);
+  }
+  const hash = "#/" + v.id + (section ? "/" + section : "");
+  try {
+    if (replace) history.replaceState({ view: v.id, section: section || null }, "", hash);
+    else if (push && (history.state?.view !== v.id || (section && history.state?.section !== section))) {
+      history.pushState({ view: v.id, section: section || null }, "", hash);
+    }
+  } catch (_) { /* sandboxed */ }
+  const handle = await mount(v);
+  if (token !== navToken || current !== v.id) return handle;
+  handle.show?.();
+  if (section) handle.openSection?.(section);
+  if (item != null) handle.openItem?.(item, section);
+  return handle;
+}
+
+function paintChrome(v) {
+  const owner = v.nav ? v.id : v.under;
+  const i = NAV.findIndex((n) => n.id === owner);
+  for (const button of document.querySelectorAll("#tabs [data-tab]")) {
+    const on = button.dataset.tab === owner;
+    if (on) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+    button.setAttribute("aria-selected", String(on));
+  }
+  const pill = document.querySelector(".sh-pill");
+  if (pill) { pill.style.setProperty("--i", String(Math.max(0, i))); pill.classList.toggle("is-off", i < 0); }
+  const bar = $("appbar");
+  const title = bar.querySelector("h1");
+  const text = v.id === "home" ? "Laptop Hub" : (v.title || v.label);
+  if (title.textContent !== text) {
+    title.textContent = text;
+    title.classList.remove("is-changing"); void title.offsetWidth; title.classList.add("is-changing");
+  }
+  const sub = !v.nav;
+  bar.classList.toggle("has-back", sub);
+  bar.querySelector(".sh-back").hidden = !sub;
+  bar.querySelector(".sh-logo").hidden = sub;
+  bar.classList.toggle("is-scrolled", ($("view-" + v.id)?.scrollTop || 0) > 4);
+  document.title = v.id === "home" ? "Laptop Hub" : `${text} · Laptop Hub`;
+}
+
+function onViewScroll(event) {
+  if (event.currentTarget.id !== "view-" + current) return;
+  $("appbar").classList.toggle("is-scrolled", event.currentTarget.scrollTop > 4);
+}
+
+function goBack() {
+  const v = byId.get(current);
+  if (history.state?.view && history.length > 1 && history.state.view !== "home") history.back();
+  else show(v?.under || "home");
+}
+
+window.addEventListener("popstate", (event) => {
+  if (!started) return;
+  const state = event.state;
+  if (state?.view) show(state.view, { section: state.section || undefined, push: false });
+  else show(parseHash().view || "home", { push: false });
+});
+
+function parseHash() {
+  const [view, ...rest] = (location.hash || "").replace(/^#\/?/, "").split("/");
+  return { view: view || null, section: rest.join("/") || undefined };
+}
+
+// ---- badges ----------------------------------------------------------------------------------------
+const badgeCounts = {};
+function setBadge(id, count) {
+  const n = Math.max(0, Number(count) || 0);
+  badgeCounts[id] = n;
+  const targets = [...document.querySelectorAll(`[data-badge-for="${id}"]`)];
+  for (const host of targets) {
+    let node = host.querySelector(".ui-count");
+    if (!n) { node?.remove(); continue; }
+    if (!node) { node = ui.el("span", { class: "ui-count" }); host.append(node); }
+    node.textContent = n > 99 ? "99+" : String(n);
+  }
+  if (id === "notifications") {
+    const bell = $("ab-bell");
+    if (bell) bell.setAttribute("aria-label", n ? `Notifications, ${n} unread` : "Notifications");
+  }
+}
+
+// Unread notifications: polled every 30 s while the app is visible. A hub without the notify module
+// answers 404, so polling backs off to every 5 minutes and the bell shows no count.
+let pollTimer = null;
+let lastUnread = 0;
+async function pollUnread() {
+  clearTimeout(pollTimer);
+  let delay = 30000;
+  if (document.visibilityState === "visible" && started) {
+    try {
+      const { count } = await api("/api/notifications/unread-count");
+      const n = Number(count) || 0;
+      if (n > lastUnread) { $("ab-bell")?.classList.remove("is-ringing"); void $("ab-bell")?.offsetWidth; $("ab-bell")?.classList.add("is-ringing"); }
+      lastUnread = n;
+      setBadge("notifications", n);
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) delay = 300000;
+    }
+  }
+  pollTimer = setTimeout(pollUnread, delay);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollUnread(); });
+
+// ---- ctx -------------------------------------------------------------------------------------------
 const ctx = {
   api,
-  toast,
+  ui,
+  toast: ui.toast,
   speak,
-  goto: show,
   secure: window.isSecureContext,
-  // Switch to the Files tab and open a file in the reader.
-  // Open a screen, and optionally one section of it (modules may return openSection(name)).
-  open(view, section) {
-    show(view);
-    if (section) handles[view]?.openSection?.(section);
+  views: VIEWS,
+  goto: (view) => show(view),
+  // Open a screen, optionally one section of it, optionally one item: ctx.open("work", "email") or
+  // ctx.open("notes", null, {id: "abc"}). Returns a promise of the screen's handle.
+  open(view, section, opts = {}) {
+    if (view === "search") { openSearch(ctx, section || ""); return Promise.resolve(null); }
+    return show(view, { section: section || undefined, item: opts.id ?? opts.item });
   },
   openFile(root, path) {
-    show("files");
-    handles.files?.openFile?.(root, path);
+    return show("files").then((h) => h?.openFile?.(root, path));
   },
+  back: goBack,
+  search: (q = "") => openSearch(ctx, q),
+  setBadge,
+  refreshNotifications: pollUnread,
+  current: () => current,
 };
 
-function buildTabs() {
+// ---- chrome ----------------------------------------------------------------------------------------
+function buildChrome() {
+  const bar = $("appbar");
+  const back = ui.el("button", { type: "button", class: "sh-iconbtn sh-back", "aria-label": "Back", hidden: true, onclick: goBack }, ui.icon("chevron-left"));
+  const logo = ui.el("span", { class: "sh-logo", "aria-hidden": "true" }, ui.icon("laptop"));
+  const search = ui.el("button", { type: "button", class: "sh-iconbtn", "aria-label": "Search", "data-tip": "Search",
+    onclick: () => openSearch(ctx) }, ui.icon("search"));
+  const bell = ui.el("button", { type: "button", id: "ab-bell", class: "sh-iconbtn", "aria-label": "Notifications", "data-badge-for": "notifications",
+    onclick: () => { ui.haptic("select"); show("notifications"); } }, ui.icon("bell"));
+  const gear = ui.el("button", { type: "button", class: "sh-iconbtn", "aria-label": "Settings", "data-tip": "Settings",
+    onclick: () => show("settings") }, ui.icon("settings"));
+  bar.replaceChildren(back, ui.el("div", { class: "sh-title" }, logo, ui.el("h1", {}, "Laptop Hub")),
+    ui.el("div", { class: "sh-actions" }, search, bell, gear));
+
   const nav = $("tabs");
-  for (const tab of TABS.filter((v) => v.nav)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.tab = tab.id;
-    button.setAttribute("role", "tab");
-    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${tab.icon}"/></svg><span>${tab.label}</span>`;
-    button.addEventListener("click", () => show(tab.id));
-    nav.append(button);
+  const dock = ui.el("div", { class: "sh-dock", role: "tablist", "aria-label": "Main sections" }, ui.el("span", { class: "sh-pill", "aria-hidden": "true" }));
+  dock.style.setProperty("--n", String(NAV.length));
+  for (const v of NAV) {
+    dock.append(ui.el("button", { type: "button", class: "sh-tab", role: "tab", "data-tab": v.id, "data-badge-for": v.id,
+      "aria-selected": "false",
+      onclick: () => {
+        ui.haptic("select");
+        if (current === v.id) { const s = $("view-" + v.id); s?.scrollTo({ top: 0, behavior: "smooth" }); handles[v.id]?.refresh?.(); return; }
+        show(v.id);
+      } }, ui.icon(v.icon), ui.el("span", {}, v.label)));
   }
+  nav.replaceChildren(dock);
+
+  // "/" or Ctrl+K opens search on a keyboard.
+  document.addEventListener("keydown", (e) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if ((e.key === "k" && (e.ctrlKey || e.metaKey)) || (e.key === "/" && !typing)) { e.preventDefault(); openSearch(ctx); }
+  });
 }
 
 function startApp() {
@@ -98,43 +326,74 @@ function startApp() {
   $("app").hidden = false;
   if (!started) {
     started = true;
-    buildTabs();
-    for (const tab of TABS) {
-      try {
-        handles[tab.id] = tab.mod.init($("view-" + tab.id), ctx) || {};
-      } catch (error) {
-        console.error(tab.id, error);
-        $("view-" + tab.id).textContent = `The ${tab.label} tab failed to start: ${error.message}`;
-        handles[tab.id] = {};
-      }
-    }
+    buildChrome();
+    $("app").classList.add("is-entering");
+    const { view, section } = parseHash();
+    const target = view && view !== "search" ? view : "home";
+    try { history.replaceState({ view: "home" }, "", "#/home"); } catch (_) { /* ignore */ }
+    show("home", { push: false }).then(() => { if (target !== "home") show(target, { section }); });
+    setTimeout(pollUnread, 800);
   }
-  let saved = null;
-  try { saved = localStorage.getItem("hub.tab"); } catch (_) { /* ignore */ }
-  show(saved || "assistant");
 }
 
+// ---- login -----------------------------------------------------------------------------------------
 function showLogin(message) {
   $("app").hidden = true;
-  $("login").hidden = false;
+  const login = $("login");
+  login.hidden = false;
+  login.classList.remove("is-success");
   const error = $("login-error");
   error.hidden = !message;
   error.textContent = message || "";
-  $("token").focus();
+  $("token").setAttribute("aria-invalid", message ? "true" : "false");
+  if (message) {
+    const card = $("login-form");
+    card.classList.remove("ui-shake"); void card.offsetWidth; card.classList.add("ui-shake");
+  }
+  if (!window.matchMedia("(pointer: coarse)").matches || message) $("token").focus({ preventScroll: true });
+}
+
+$("token-toggle").addEventListener("click", (e) => {
+  const input = $("token");
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  e.currentTarget.setAttribute("aria-pressed", String(!showing));
+  e.currentTarget.setAttribute("aria-label", showing ? "Show token" : "Hide token");
+});
+$("token").addEventListener("input", () => { $("login-error").hidden = true; $("token").setAttribute("aria-invalid", "false"); });
+if (navigator.clipboard?.readText && window.isSecureContext) {
+  const paste = $("token-paste");
+  paste.hidden = false;
+  paste.addEventListener("click", async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text) { $("token").value = text; $("login-form").requestSubmit(); }
+    } catch (_) { ui.toast("Clipboard access was blocked. Long-press the field to paste.", { kind: "warn" }); }
+  });
 }
 
 $("login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const token = $("token").value.trim();
+  if (!token) { showLogin("Paste your login token first."); return; }
+  const submit = $("login-submit");
   try {
-    await api("/api/login", { method: "POST", json: { token: $("token").value } });
+    await ui.busy(submit, api("/api/login", { method: "POST", json: { token } }));
     $("token").value = "";
-    startApp();
+    $("token").type = "password";
+    ui.haptic("success");
+    $("login").classList.add("is-success");
+    setTimeout(startApp, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260);
   } catch (error) {
-    showLogin(error.message);
+    ui.haptic("error");
+    const msg = error instanceof ApiError && error.status === 401 ? "That token didn't match. Check it and try again."
+      : error instanceof ApiError && error.status === 429 ? "Too many tries. Wait a minute, then try again."
+      : error.message;
+    showLogin(msg);
   }
 });
 
-window.addEventListener("hub:unauthorized", () => showLogin("Please log in again."));
+window.addEventListener("hub:unauthorized", () => showLogin("Your session ended. Please log in again."));
 
 (async function boot() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

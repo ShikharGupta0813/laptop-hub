@@ -9,8 +9,9 @@ import android.service.notification.StatusBarNotification;
 import org.json.JSONObject;
 
 /**
- * Reads notifications from the allow-listed payment / bank apps ONLY (see CaptureFilter.ALLOWED_PACKAGES).
- * Every other package is dropped on the first line, before its content is touched.
+ * Reads notifications from two fixed allow-lists ONLY: payment / bank apps (CaptureFilter.ALLOWED_PACKAGES) and,
+ * when the user has switched it on, Google Chat and Gmail (WatchFilter). Every other package is dropped on the
+ * first lines, before its content is touched.
  */
 public class PaymentNotificationListener extends NotificationListenerService {
 
@@ -27,6 +28,10 @@ public class PaymentNotificationListener extends NotificationListenerService {
         try {
             if (sbn == null) return;
             String pkg = sbn.getPackageName();
+            if (WatchFilter.isWatchPackage(pkg)) {
+                handleWatch(sbn, pkg);
+                return;
+            }
             if (!CaptureFilter.isAllowedPackage(pkg)) return;
             final Context ctx = getApplicationContext();
             if (!HubStore.enabled(ctx)) return;
@@ -51,5 +56,35 @@ public class PaymentNotificationListener extends NotificationListenerService {
         } catch (Throwable ignored) {
             // never crash the listener, never log content
         }
+    }
+
+    /** Google Chat / Gmail message notifications -> POST /api/watch/ingest. Nothing is read while the flag is off. */
+    private void handleWatch(StatusBarNotification sbn, String pkg) throws Exception {
+        final Context ctx = getApplicationContext();
+        Notification n = sbn.getNotification();
+        if (n == null || n.extras == null) return;
+        boolean summary = (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+        boolean ongoing = (n.flags & Notification.FLAG_ONGOING_EVENT) != 0;
+        String source = WatchFilter.route(pkg, ctx.getPackageName(), summary, ongoing,
+                HubStore.watchMail(ctx), HubStore.watchChat(ctx));
+        if (source == null) return;
+
+        Bundle ex = n.extras;
+        String title = WatchFilter.cap(str(ex.getCharSequence(Notification.EXTRA_TITLE)), WatchFilter.MAX_TITLE);
+        String text = WatchFilter.cap(WatchFilter.composeText(source,
+                str(ex.getCharSequence(Notification.EXTRA_TEXT)),
+                str(ex.getCharSequence(Notification.EXTRA_BIG_TEXT))), WatchFilter.MAX_TEXT);
+        if (title.isEmpty() && text.isEmpty()) return;
+        long ts = sbn.getPostTime() > 0 ? sbn.getPostTime() : System.currentTimeMillis();
+        if (!WatchFilter.firstSeen(pkg, title, text, ts)) return;
+
+        final JSONObject p = new JSONObject();
+        p.put("source", source);
+        p.put("app", pkg);
+        p.put("title", title);
+        p.put("text", text);
+        if (source.equals("mail") && !title.isEmpty()) p.put("sender", title); // Gmail: title is the sender
+        p.put("ts", ts);
+        Delivery.EXEC.execute(() -> Delivery.enqueueAndFlush(ctx, Delivery.PATH_WATCH, p));
     }
 }

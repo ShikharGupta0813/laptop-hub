@@ -21,6 +21,10 @@ final class HubStore {
     private static final String K_ORIGIN = "origin";
     private static final String K_ENABLED = "enabled";
     private static final String K_QUEUE = "queue";
+    private static final String K_WATCH_MAIL = "watchMail";
+    private static final String K_WATCH_CHAT = "watchChat";
+    /** Queue entries without a "_path" are payment items queued by an older version of the app. */
+    static final String K_PATH = "_path";
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -72,7 +76,24 @@ final class HubStore {
         prefs(c).edit().putBoolean(K_ENABLED, on).apply();
     }
 
-    // ---- queue (JSON array of payload objects, each with a private "_id") ----
+    /** Mail / chat watching is OFF until the hub page turns it on (independent of payment capture). */
+    static boolean watchMail(Context c) {
+        return prefs(c).getBoolean(K_WATCH_MAIL, false);
+    }
+
+    static boolean watchChat(Context c) {
+        return prefs(c).getBoolean(K_WATCH_CHAT, false);
+    }
+
+    static void setWatchMail(Context c, boolean on) {
+        prefs(c).edit().putBoolean(K_WATCH_MAIL, on).apply();
+    }
+
+    static void setWatchChat(Context c, boolean on) {
+        prefs(c).edit().putBoolean(K_WATCH_CHAT, on).apply();
+    }
+
+    // ---- queue (JSON array of payload objects, each with a private "_id" and "_path") ----
 
     private static JSONArray readQueue(Context c) {
         try {
@@ -86,16 +107,25 @@ final class HubStore {
         prefs(c).edit().putString(K_QUEUE, q.toString()).apply();
     }
 
-    static synchronized void enqueue(Context c, JSONObject payload) {
+    /** Adds an item that will be POSTed to {@code path} (e.g. Delivery.PATH_CAPTURE). */
+    static synchronized void enqueue(Context c, String path, JSONObject payload) {
         try {
             JSONObject item = new JSONObject(payload.toString());
             item.put("_id", System.nanoTime() + "-" + Math.abs(payload.toString().hashCode()));
+            item.put(K_PATH, path);
             JSONArray q = readQueue(c);
             q.put(item);
-            if (q.length() > QUEUE_CAP) {
-                JSONArray trimmed = new JSONArray();
-                for (int i = q.length() - QUEUE_CAP; i < q.length(); i++) trimmed.put(q.get(i));
-                q = trimmed;
+            // Over the cap: drop the oldest watch item first so a chatty inbox never pushes out payments.
+            while (q.length() > QUEUE_CAP) {
+                int drop = 0;
+                for (int i = 0; i < q.length(); i++) {
+                    JSONObject o = q.optJSONObject(i);
+                    if (o != null && Delivery.PATH_WATCH.equals(o.optString(K_PATH))) {
+                        drop = i;
+                        break;
+                    }
+                }
+                q.remove(drop);
             }
             writeQueue(c, q);
         } catch (JSONException ignored) {
