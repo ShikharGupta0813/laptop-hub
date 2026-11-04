@@ -616,8 +616,7 @@ _ANY_TO = re.compile(r"\bto\s+(?:vpa\s+)?" + _NAME + _NAME_END, re.I)
 _ANY_AT = re.compile(r"\bat\s+" + _NAME + _NAME_END, re.I)
 _VPA = re.compile(r"(?<![\w.\-])([\w.\-]{2,64}@[a-z][a-z0-9]{1,19})\b(?!\.[a-z])", re.I)
 _INFO_UPI = re.compile(r"(?:\binfo[:\-]?\s*)?(?<![\w@])upi/([^|\n]{1,140})", re.I)
-_BAD_NAME_START = re.compile(r"^(?:your|my|the|this|a/c|acct?\b|account|bank a/c|self\b|you\b|me\b|₹|rs\.?\s|rs\d|inr\b|\d|"
-                             r"vpa\b|upi\b|a merchant)", re.I)
+_BAD_NAME_START = re.compile(r"^(?:(?:your|my|this|account|self|you|me|vpa|upi|inr)\b|a/c|acct?\b|bank a/c|₹|rs\.?\s|rs\d|\d|a merchant)", re.I)
 _REF_PATTERNS = [
     re.compile(r"\b(?:upi\s*)?(?:ref(?:erence)?|refno|rrn|utr)\s*(?:no\.?|number|id|num)?\s*[:#\-]?\s*(\d{6,18})(?!\d)", re.I),
     re.compile(r"\bupi\s*[:#]\s*(\d{9,18})(?!\d)", re.I),
@@ -744,6 +743,8 @@ def _pick_amount(text: str) -> Optional[tuple[Decimal, str]]:
         except InvalidOperation:
             return
         after = text[end:end + 28]
+        if cut_after := _NEAR_BREAK.search(after):      # a debit word in the next sentence belongs to another amount
+            after = after[:cut_after.start()]
         score = 0
         if _CAPTURE_DEBIT.search(before) or _CAPTURE_DEBIT.search(after):
             score += 3

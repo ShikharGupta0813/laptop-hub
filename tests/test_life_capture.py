@@ -282,6 +282,7 @@ class CaptureBase(unittest.TestCase):
     def setUp(self):
         self.allow = True
         self.now = START
+        self.offset = timedelta(0)            # how far the hub's local clock is ahead of UTC
         self.audit_log, self.notices = [], []
         self.data_dir = tempfile.mkdtemp(prefix="hub-capture-data-")
         self.config, self.root = make_config(data_dir=self.data_dir)
@@ -295,7 +296,7 @@ class CaptureBase(unittest.TestCase):
                   need_auth=need_auth, audit=lambda event, **f: self.audit_log.append((event, f)),
                   notify=lambda *a, **k: self.notices.append((a, k)))
         app = FastAPI()
-        app.include_router(life.make_router(ctx, now=lambda: self.now.replace(tzinfo=None), utc_now=lambda: self.now))
+        app.include_router(life.make_router(ctx, now=lambda: (self.now + self.offset).replace(tzinfo=None), utc_now=lambda: self.now))
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
 
@@ -318,7 +319,7 @@ class CaptureBase(unittest.TestCase):
         return self.capture(f"Paid ₹{amount} to {merchant}", "Payment successful", **kw)
 
     def pending(self, status="pending"):
-        r = self.client.get("/api/expenses/pending", params={"status": status})
+        r = self.client.get("/api/expenses/pending", params={"status": status, "limit": 500})
         self.assertEqual(r.status_code, 200, r.text)
         return r.json()["items"]
 
@@ -447,7 +448,7 @@ class CaptureTest(CaptureBase):
         self.assertEqual(self.client.post("/api/expenses/capture", json={"text": "Paid Rs 5 to X"}).status_code, 422)
         self.assertEqual(self.client.post("/api/expenses/capture", json={"source": "sms", "text": "x" * 60_000}).status_code, 422)
         self.assertEqual(self.client.post("/api/expenses/capture", content=b"\xff\xfe not json",
-                                          headers={"Content-Type": "application/json"}).status_code, 422)
+                                          headers={"Content-Type": "application/json"}).status_code, 400)
         for body in ({"source": "sms"}, {"source": "sms", "text": None, "title": None, "package": None, "sender": None},
                      {"source": "notification", "text": "Paid Rs 5 to X", "ts": "soon"}):
             r = self.client.post("/api/expenses/capture", json=body)
@@ -469,10 +470,10 @@ class CaptureTest(CaptureBase):
         self.assertEqual(self.pending()[0]["ts"], self.ms() // 1000 * 1000)
 
     def test_newest_first_and_status_filter(self):
-        self.pay("A", 10000, ts=self.ms(minutes=-30))
-        self.pay("B", 20000, ts=self.ms(minutes=-10))
-        self.pay("C", 30000, ts=self.ms(minutes=-20))
-        self.assertEqual([i["merchant"] for i in self.pending()], ["B", "C", "A"])
+        self.pay("Shop A", 10000, ts=self.ms(minutes=-30))
+        self.pay("Shop B", 20000, ts=self.ms(minutes=-10))
+        self.pay("Shop C", 30000, ts=self.ms(minutes=-20))
+        self.assertEqual([i["merchant"] for i in self.pending()], ["Shop B", "Shop C", "Shop A"])
         self.assertEqual(self.client.get("/api/expenses/pending", params={"status": "nope"}).status_code, 400)
         self.assertEqual(self.client.get("/api/expenses/pending", params={"limit": 0}).status_code, 422)
         body = self.client.get("/api/expenses/pending").json()
@@ -624,12 +625,12 @@ class ConfirmTest(CaptureBase):
         self.assertEqual(self.confirm(got["id"], "food")["expense"]["date"], "2026-11-01")
 
     def test_the_date_follows_the_hubs_local_time(self):
-        self.now = datetime(2026, 11, 4, 20, 0, tzinfo=timezone.utc)       # the clock says 20:00 UTC
-        self.client.app.router.routes                                       # (shape check only)
-        ts = int(datetime(2026, 11, 4, 19, 0, tzinfo=timezone.utc).timestamp() * 1000)
-        got = self.pay("Swiggy", 45000, ts=ts)
-        self.assertEqual(self.pending()[0]["date"], "2026-11-04")
-        self.assertEqual(self.confirm(got["id"], "food")["expense"]["date"], "2026-11-04")
+        self.offset = timedelta(hours=5, minutes=30)                      # India
+        self.now = datetime(2026, 11, 4, 20, 0, tzinfo=timezone.utc)      # 01:30 on the 5th at the hub
+        late = self.pay("Night Shop", 45000, ts=int(datetime(2026, 11, 4, 19, 0, tzinfo=timezone.utc).timestamp() * 1000))
+        early = self.pay("Day Shop", 46000, ts=int(datetime(2026, 11, 4, 17, 0, tzinfo=timezone.utc).timestamp() * 1000))
+        self.assertEqual(self.confirm(late["id"], "food")["expense"]["date"], "2026-11-05")     # 00:30 local
+        self.assertEqual(self.confirm(early["id"], "food")["expense"]["date"], "2026-11-04")    # 22:30 local
 
     def test_edits_at_confirm_time(self):
         got = self.pay("Swiggy", 45000)
@@ -732,9 +733,12 @@ class MemoryTest(CaptureBase):
 
 
 class AutoFileTest(CaptureBase):
+    taught = 0
+
     def teach(self, merchant, category, times):
-        for n in range(times):
-            self.confirm(self.pay(merchant, 10000 + n * 100, ts=self.ms(minutes=-600 + n * 10))["id"], category)
+        for _ in range(times):
+            self.taught += 1
+            self.confirm(self.pay(merchant, 10000 + self.taught * 100, ts=self.ms(minutes=-900 + self.taught * 10))["id"], category)
 
     def test_off_by_default(self):
         self.teach("Zomato", "food", 5)
@@ -930,7 +934,7 @@ class HousekeepingTest(CaptureBase):
         ids = [i["id"] for i in self.pending("all")]
         self.assertIn(waiting["id"], ids)
         self.assertNotIn(old["id"], ids)
-        self.assertEqual(len(self.month_expenses()) if False else 1, 1)
+        self.assertEqual(len(self.client.get('/api/expenses', params={'month': '2026-11'}).json()['expenses']), 1)
 
 
 if __name__ == "__main__":
