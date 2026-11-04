@@ -30,9 +30,10 @@ def _collect_fakes() -> dict[str, str]:
     """Canned model replies from each feature module, keyed by a piece of its system prompt."""
     import importlib
     fakes: dict[str, str] = {}
-    for name in ("work", "study", "english"):
+    from .server import FEATURE_MODULES
+    for name in FEATURE_MODULES:
         try:
-            fakes.update(importlib.import_module(f".{name}", __package__).DEV_FAKES)
+            fakes.update(getattr(importlib.import_module(f".{name}", __package__), "DEV_FAKES", {}))
         except (ModuleNotFoundError, AttributeError) as exc:
             if isinstance(exc, ModuleNotFoundError) and exc.name != f"{__package__}.{name}":
                 raise
