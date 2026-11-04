@@ -4,11 +4,13 @@ Your laptop, from your phone, in one app you install on the home screen.
 
 | Tab | What it does |
 |---|---|
-| **Talk** | Speak or type to an AI assistant that acts on your laptop: find files, read notes, check the system, run commands. Risky actions wait for your tap. |
-| **Files** | Browse the folders you chose, read Markdown, text, images and PDFs. Select a confusing passage and tap **Explain**, **Summarise** or **Quiz me**. |
-| **Notes** | Tap the mic and talk. Your laptop turns speech into text (offline), saves it as a Markdown file in time order, and adds a title and tags. Typed notes work too. |
-| **Terminal** | A real shell on the laptop (PowerShell, WSL, or bash) with a phone keyboard bar: Esc, Tab, Ctrl, arrows. |
-| **Hub** | Battery, CPU, memory, disk. One-tap buttons for scripts you wrote. Send files from the phone to the laptop. Setup checks. |
+| **Talk** | Speak or type to an assistant that acts on your laptop: files, notes, Asana, calendar, email, laptop actions, Jarvis. Changes wait for your tap. |
+| **Work** | Asana tasks (comment, complete), today's meetings with Join buttons, write and send email (AI drafts it, you review), post to Google Chat. |
+| **Learn** | **Chat** with a note, document, web page or topic. **Quiz** yourself from a note, a PDF or document on your laptop, a web page, pasted text or any topic. **English coach**: speaking practice with pace, filler words and corrections, role-play, writing fixes, vocabulary and progress. |
+| **Notes** | Tap the mic and talk. Saved as Markdown in time order with a title and tags. Typed notes work too. |
+| **Apps** | A searchable directory of **every** feature, plus laptop actions you can run from your phone (lock, screenshot, processes, open a link or app, clipboard, volume and media keys, shutdown...) and the **Jarvis** screen: start or stop Jarvis on the laptop and send it commands. Also opens Files, Terminal and Hub. |
+
+Every AI feature has a **Local (Ollama) or Claude** switch.
 
 Everything runs on your laptop. The local AI (Ollama) and speech-to-text (Whisper) work with no internet. The assistant can use Claude (needs an API key) or your local model.
 
@@ -37,7 +39,7 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
    ```powershell
    python -m venv .venv
    .venv\Scripts\activate
-   pip install -r requirements.txt -r requirements-voice.txt
+   pip install -r requirements.txt -r requirements-voice.txt -r requirements-work.txt -r requirements-laptop.txt
    ```
 
 3. **Download a small local model** for Explain, Quiz and note tags:
@@ -49,10 +51,12 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
 4. **Create your config and login token.** Choose the folders to share (repeat `--root`). A `notes` folder (`~\HubNotes`) and an `inbox` folder (`~\HubInbox`) are added for you:
 
    ```powershell
-   python -m hub init --root study=C:\Users\YOU\Documents\study --root projects=C:\Users\YOU\projects
+   python -m hub init --root study=C:\Users\YOU\Documents\study --root projects=C:\Users\YOU\projects --jarvis-dir C:\Users\YOU\jarvis-voice-assistant
    ```
 
    It prints a **login token once**. Copy it into your password manager. If you lose it: `python -m hub token`.
+
+   `--jarvis-dir` points the hub at your Jarvis folder, which Work (calendar, email, chat) and the Jarvis screen use. Skip it if you don't use Jarvis. Asana uses your existing token (`ASANA_TOKEN`, or the file `~\.claude\.asana_token`).
 
 5. **Check everything:**
 
@@ -121,6 +125,14 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
 | Terminal won't open on Windows | `pip install pywinpty`; the Windows terminal path has not been tested on a real machine yet |
 | Terminal closes after the origin check | Add the address to `allowed_origins` in `hub.json` |
 | Notes have no tags | The local model adds them a few seconds after saving; check `python -m hub doctor` |
+
+## Android app
+
+`mobile/` builds a real Android app (APK) around the hub. See `mobile/README.md`. It needs Android Studio and Node 22 on the laptop that builds it.
+
+## Hand-off notes
+
+`HANDOFF.md` says what is built, what is still to do, and how to continue in a new chat.
 
 ## For developers
 

@@ -30,6 +30,12 @@ def cmd_init(args) -> int:
             return 1
         roots[name] = str(Path(folder).expanduser())
     config, token = cfg.make(roots or None)
+    if args.jarvis_dir:
+        jarvis = Path(args.jarvis_dir).expanduser()
+        if not (jarvis / "jarvis.py").is_file():
+            print(f"No jarvis.py in {jarvis}. Point --jarvis-dir at your jarvis-voice-assistant folder.")
+            return 1
+        config.jarvis_dir = str(jarvis)
     if args.model:
         config.chat_model = args.model
     for folder in (config.notes_dir, config.inbox_dir):
@@ -128,6 +134,7 @@ def main(argv=None) -> int:
     init = sub.add_parser("init", help="create the config and your login token")
     init.add_argument("--root", action="append", metavar="NAME=FOLDER",
                       help="a folder to share, e.g. --root study=C:\\Users\\me\\notes (repeatable)")
+    init.add_argument("--jarvis-dir", metavar="FOLDER", help="your jarvis-voice-assistant folder (optional)")
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
     sub.add_parser("serve", help="start the hub")
