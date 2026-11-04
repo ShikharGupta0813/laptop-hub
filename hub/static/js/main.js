@@ -9,14 +9,23 @@ import * as files from "./files.js";
 import * as notes from "./notes.js";
 import * as terminal from "./terminal.js";
 import * as hub from "./hub.js";
+import * as work from "./work.js";
+import * as learn from "./learn.js";
+import * as more from "./more.js";
 
-const TABS = [
-  { id: "assistant", label: "Talk", mod: assistant, icon: "M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z" },
-  { id: "files", label: "Files", mod: files, icon: "M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z" },
-  { id: "notes", label: "Notes", mod: notes, icon: "M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM7 12v2h10v-2H7Zm0 4v2h7v-2H7Z" },
-  { id: "terminal", label: "Terminal", mod: terminal, icon: "M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3.7 4.3L5.3 9.7 7.6 12l-2.3 2.3 1.4 1.4L10.4 12 6.7 8.3ZM12 15v2h6v-2h-6Z" },
-  { id: "hub", label: "Hub", mod: hub, icon: "M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" },
+// Every screen is a "view". The bottom bar shows five of them; Files, Terminal and Hub live
+// under More, so they have no button of their own and count as "More" for highlighting.
+const VIEWS = [
+  { id: "assistant", label: "Talk", mod: assistant, nav: true, icon: "M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z" },
+  { id: "work", label: "Work", mod: work, nav: true, icon: "M10 2h4a2 2 0 0 1 2 2v2h4a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4V4a2 2 0 0 1 2-2Zm0 2v2h4V4h-4Zm-6 8v2h16v-2H4Z" },
+  { id: "learn", label: "Learn", mod: learn, nav: true, icon: "M12 3 1 9l11 6 9-4.9V17h2V9L12 3ZM5 13.2v4L12 21l7-3.8v-4L12 17l-7-3.8Z" },
+  { id: "notes", label: "Notes", mod: notes, nav: true, icon: "M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM7 12v2h10v-2H7Zm0 4v2h7v-2H7Z" },
+  { id: "more", label: "More", mod: more, nav: true, icon: "M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" },
+  { id: "files", label: "Files", mod: files, nav: false, under: "more" },
+  { id: "terminal", label: "Terminal", mod: terminal, nav: false, under: "more" },
+  { id: "hub", label: "Hub", mod: hub, nav: false, under: "more" },
 ];
+const TABS = VIEWS; // the rest of this file loops over every view
 
 const handles = {};
 let current = null;
@@ -44,8 +53,10 @@ function show(tabId) {
   current = tab.id;
   for (const t of TABS) {
     $("view-" + t.id).hidden = t.id !== tab.id;
-    const button = document.querySelector(`#tabs [data-tab="${t.id}"]`);
-    button.setAttribute("aria-selected", String(t.id === tab.id));
+  }
+  const owner = tab.under || tab.id;
+  for (const button of document.querySelectorAll("#tabs [data-tab]")) {
+    button.setAttribute("aria-selected", String(button.dataset.tab === owner));
   }
   try { localStorage.setItem("hub.tab", tab.id); } catch (_) { /* private mode */ }
   handles[tab.id]?.show?.();
@@ -66,7 +77,7 @@ const ctx = {
 
 function buildTabs() {
   const nav = $("tabs");
-  for (const tab of TABS) {
+  for (const tab of TABS.filter((v) => v.nav)) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.tab = tab.id;

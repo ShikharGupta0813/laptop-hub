@@ -1,0 +1,4 @@
+/* Learn tab styles. Scope under #view-learn. The segmented control is shared by all three sections. */
+#view-learn .learn-seg { display: flex; gap: 6px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding-bottom: 10px; }
+#view-learn .learn-seg button { flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; }
+#view-learn .learn-seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
