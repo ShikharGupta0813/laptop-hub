@@ -91,12 +91,12 @@ class ResetBody(BaseModel):
     session_id: str
 
 
-def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None = None) -> FastAPI:
+def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None = None,
+               config_path: Path | None = None) -> FastAPI:
     deps = deps or Deps()
     llm = deps.llm or OllamaClient(config.ollama_host, config.chat_model)
     claude = deps.claude or ClaudeClient(config.claude_model)
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
-    assistant = deps.assistant or AssistantService(config, claude=None, local=None)
     store = NoteStore(config.notes_dir)
     limiter = auth.LoginLimiter()
     pool = ThreadPoolExecutor(max_workers=16, thread_name_prefix="hub-term")
@@ -113,6 +113,10 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                 f.write(json.dumps(line) + "\n")
         except OSError:
             pass  # a full disk must not take the hub down
+
+    # The assistant may never write the hub's own config or audit log, wherever they are.
+    assistant = deps.assistant or AssistantService(
+        config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p])
 
     app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -191,6 +195,23 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     # ---- status ------------------------------------------------------------------------
 
+    def machine_numbers() -> dict[str, Any]:
+        """Disk, CPU, memory, battery. Blocks briefly, so it runs off the event loop."""
+        usage = shutil.disk_usage(Path.home())
+        out: dict[str, Any] = {"disk": {"free_gb": round(usage.free / 1e9, 1),
+                                        "total_gb": round(usage.total / 1e9, 1)}}
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            out["cpu_percent"] = psutil.cpu_percent(interval=0.2)
+            out["memory"] = {"percent": mem.percent, "total_gb": round(mem.total / 1e9, 1)}
+            battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
+            out["battery"] = ({"percent": round(battery.percent), "plugged": battery.power_plugged}
+                              if battery else None)
+        except ImportError:
+            out.update(cpu_percent=None, memory=None, battery=None)
+        return out
+
     @api.get("/status")
     async def status():
         info: dict[str, Any] = {
@@ -200,18 +221,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             "claude_ready": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "chat_model": config.chat_model,
         }
-        usage = shutil.disk_usage(Path.home())
-        info["disk"] = {"free_gb": round(usage.free / 1e9, 1), "total_gb": round(usage.total / 1e9, 1)}
-        try:
-            import psutil
-            mem = psutil.virtual_memory()
-            info["cpu_percent"] = psutil.cpu_percent(interval=0.2)
-            info["memory"] = {"percent": mem.percent, "total_gb": round(mem.total / 1e9, 1)}
-            battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
-            info["battery"] = ({"percent": round(battery.percent), "plugged": battery.power_plugged}
-                               if battery else None)
-        except ImportError:
-            info.update(cpu_percent=None, memory=None, battery=None)
+        info.update(await asyncio.to_thread(machine_numbers))
         try:
             info["ollama"] = {"up": True, "models": await llm.models()}
         except LLMError:

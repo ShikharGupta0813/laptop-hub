@@ -90,7 +90,7 @@ export function init(container, ctx) {
   const dot = el("span", { class: "term-dot", "aria-hidden": "true" });
   const statusText = el("span", { class: "term-status-text" }, "Disconnected");
   const statusDetail = el("span", { class: "term-status-detail muted" });
-  const statusLine = el("div", { class: "term-status", role: "status", "aria-live": "polite" }, dot, statusText, statusDetail);
+  const statusLine = el("div", { class: "term-status", role: "status", "aria-live": "polite" }, dot, statusText, " ", statusDetail);
 
   const host = el("div", { class: "term-host" });
   const screen = el("div", { class: "term-screen" }, host);
@@ -238,7 +238,7 @@ export function init(container, ctx) {
         line = "Connection lost. Press Reconnect to start a new shell (the old shell's state is gone).";
       } else {
         detail = "Session ended (press Reconnect).";
-        line = "Session ended (press Reconnect). A new connection starts a fresh shell.";
+        line = "Session ended (press Reconnect). It starts a fresh shell.";
       }
       setStatus("disconnected", kept || detail);
       if (kept) statusDetail.classList.add("is-error"); else statusDetail.classList.toggle("is-error", event.code !== 1000);

@@ -64,7 +64,7 @@ def cmd_serve(args) -> int:
     config = cfg.load(path)
     print(f"Laptop Hub on http://{config.host}:{config.port}  (config {path})")
     print("Put HTTPS in front with:  tailscale serve --bg " + str(config.port))
-    uvicorn.run(create_app(config), host=config.host, port=config.port, log_level="info")
+    uvicorn.run(create_app(config, config_path=path), host=config.host, port=config.port, log_level="info")
     return 0
 
 
