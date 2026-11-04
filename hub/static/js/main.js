@@ -29,6 +29,14 @@ export const VIEWS = [
   { id: "focus", label: "Focus", icon: "target", path: "./focus.js", under: "home" },
   { id: "automations", label: "Automations", icon: "zap", path: "./automations.js", under: "apps" },
   { id: "kb", label: "Knowledge", icon: "book-open", path: "./kb.js", under: "learn" },
+  { id: "todos", label: "To-do", icon: "list-checks", path: "./todos.js", under: "apps" },
+  { id: "habits", label: "Habits", icon: "flame", path: "./habits.js", under: "apps" },
+  { id: "journal", label: "Journal", icon: "book", path: "./journal.js", under: "apps" },
+  { id: "expenses", label: "Spending", icon: "trend", path: "./expenses.js", under: "apps" },
+  { id: "bookmarks", label: "Read later", icon: "bookmark", path: "./bookmarks.js", under: "apps" },
+  { id: "tools", label: "Tools", icon: "sliders", path: "./tools.js", under: "apps" },
+  { id: "cards", label: "Flashcards", icon: "layers", path: "./cards.js", under: "learn" },
+  { id: "watch", label: "Watch", icon: "eye", path: "./watch.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);

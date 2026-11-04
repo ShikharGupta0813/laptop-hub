@@ -52,9 +52,9 @@ html[data-theme="daylight"] .lg-blob { opacity: .32; }
 .lg-error::before { content: ""; flex: none; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v7h-2V7Zm0 9h2v2h-2v-2Z'/%3E%3C/svg%3E") center / contain no-repeat;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v7h-2V7Zm0 9h2v2h-2v-2Z'/%3E%3C/svg%3E") center / contain no-repeat; }
-.lg-submit { margin-top: var(--sp-1); background: var(--c-accent-grad); }
-html:not([data-theme="daylight"]) .lg-submit { color: #fff; text-shadow: 0 1px 1px rgb(0 0 0 / .15); }
-.lg-submit:hover { background: var(--c-accent-grad); filter: brightness(1.06); }
+.lg-submit { margin-top: var(--sp-1); background: var(--c-card-grad); color: #fff; }
+
+.lg-submit:hover { background: var(--c-card-grad); filter: brightness(1.08); }
 .lg-submit .ui-icon { transition: transform var(--dur-base) var(--ease-out); }
 .lg-submit:hover .ui-icon { transform: translateX(3px); }
 .lg-paste { margin-top: -6px; color: var(--c-text-2); }
