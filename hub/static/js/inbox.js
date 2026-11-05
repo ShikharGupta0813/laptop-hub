@@ -4,6 +4,9 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// replaceChildren that skips null/false entries (conditional children).
+function fill(node, ...kids) { node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); }
+
 const REPLY_DRAFT_KEY = "hub.draft.reply";
 const PAGE = 25;
 
@@ -57,7 +60,7 @@ export function init(container, ctx) {
     setupProblem = text;
     head.hidden = true;
     watchCard.hidden = true;
-    listBox.replaceChildren(ui.emptyState({
+    fill(listBox, ui.emptyState({
       icon: "mail", title: "Email isn't set up yet",
       body: text || "Run setup email in the Jarvis folder on the laptop, then try again.",
       action: { label: "Check again", icon: "refresh", onClick: () => load(true) },
@@ -65,7 +68,7 @@ export function init(container, ctx) {
   }
 
   function errorState(text) {
-    listBox.replaceChildren(el("div", { class: "ib-error", role: "alert" },
+    fill(listBox, el("div", { class: "ib-error", role: "alert" },
       ui.notice(text, { tone: "bad" }),
       ui.button({ label: "Try again", icon: "refresh", size: "sm", onClick: () => load(true) })));
   }
@@ -89,7 +92,7 @@ export function init(container, ctx) {
 
   function renderList(more) {
     if (!messages.length) {
-      listBox.replaceChildren(query
+      fill(listBox, query
         ? ui.emptyState({ icon: "search", title: "No mail found", body: `Nothing matches "${query}".`, compact: true })
         : mode === "unread"
           ? ui.emptyState({ icon: "check-circle", title: "Inbox zero", body: "You have no unread mail. Switch to All to see everything.", compact: true,
@@ -102,7 +105,7 @@ export function init(container, ctx) {
     if (!query && !exhausted) {
       children.push(ui.button({ label: "Load older mail", icon: "arrow-down", variant: "secondary", block: true, onClick: loadMore }));
     }
-    listBox.replaceChildren(...children);
+    fill(listBox, ...children);
   }
 
   async function load(force) {
@@ -111,7 +114,7 @@ export function init(container, ctx) {
     head.hidden = false;
     watchCard.hidden = false;
     exhausted = false;
-    if (!force || !messages.length) listBox.replaceChildren(ui.skeleton("list", 6));
+    if (!force || !messages.length) fill(listBox, ui.skeleton("list", 6));
     try {
       if (query) {
         const data = await api(`/api/inbox/search?q=${encodeURIComponent(query)}`);
@@ -165,7 +168,7 @@ export function init(container, ctx) {
       const m = await api(`/api/inbox/messages/${encodeURIComponent(uid)}`);
       renderRead(sheet, body, m);
     } catch (error) {
-      body.replaceChildren(ui.notice(message(error), { tone: "bad" }));
+      fill(body, ui.notice(message(error), { tone: "bad" }));
     }
   }
 
@@ -183,7 +186,7 @@ export function init(container, ctx) {
     sheet.tone = tone;
 
     const atts = m.attachments || [];
-    body.replaceChildren(
+    fill(body, 
       el("h3", { class: "ib-r-subject" }, h.subject || "(no subject)"),
       el("div", { class: "ib-r-from" },
         ui.avatar(name),
@@ -209,17 +212,17 @@ export function init(container, ctx) {
   }
 
   async function runSummary(uid, box, btn) {
-    box.replaceChildren(ui.skeleton("lines", 3));
+    fill(box, ui.skeleton("lines", 3));
     try {
       const s = await ui.busy(btn, api(`/api/inbox/messages/${encodeURIComponent(uid)}/summary`, { method: "POST", json: { model: "local" } }));
       const items = s.action_items || [];
-      box.replaceChildren(el("section", { class: "ui-card ui-card--glass ib-summary", "aria-label": "AI summary" },
+      fill(box, el("section", { class: "ui-card ui-card--glass ib-summary", "aria-label": "AI summary" },
         el("div", { class: "ui-card__head" }, ui.tile("sparkles", "accent", "sm"), el("h4", { class: "ui-card__title grow" }, "AI summary"),
           s.needs_reply ? ui.badge("Needs reply", "warn") : ui.badge("No reply needed", "good")),
         el("p", { class: "ib-sum-text" }, s.summary || "No summary."),
         items.length ? el("ul", { class: "ib-actions" }, items.map((t) => el("li", {}, ui.icon("check-circle"), el("span", {}, t)))) : null));
     } catch (error) {
-      box.replaceChildren(ui.notice(message(error), { tone: "bad" }));
+      fill(box, ui.notice(message(error), { tone: "bad" }));
     }
   }
 
@@ -248,7 +251,7 @@ export function init(container, ctx) {
     try {
       const d = await api("/api/inbox/digest?model=local");
       const groups = d.groups || [];
-      body.replaceChildren(
+      fill(body, 
         el("p", { class: "ib-dg-headline" }, d.headline || ""),
         ...groups.map((g) => el("section", { class: "ib-dg-group" },
           el("h4", {}, g.urgent ? ui.badge("Urgent", "bad") : null, g.title || ""),
@@ -262,7 +265,7 @@ export function init(container, ctx) {
       );
       if (!groups.length) body.append(ui.emptyState({ icon: "check-circle", title: "All clear", body: "No unread mail to summarize.", compact: true }));
     } catch (error) {
-      body.replaceChildren(error.status === 503 ? ui.notice(error.message, { tone: "warn" }) : ui.notice(message(error), { tone: "bad" }));
+      fill(body, error.status === 503 ? ui.notice(error.message, { tone: "warn" }) : ui.notice(message(error), { tone: "bad" }));
     }
   }
 

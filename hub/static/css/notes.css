@@ -2,12 +2,16 @@
 #view-notes .nt-pane { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-3); align-content: start; min-width: 0; }
 #view-notes .nt-pane > * { min-width: 0; }
 #view-notes [hidden] { display: none; }
+#view-notes .nt-list-pane { display: flex; flex-direction: column; min-height: 100%; }
+#view-notes .nt-list-pane > * { flex: none; }
+#view-notes .nt-list-pane > .nt-list { flex: 1 0 auto; }
+#view-notes .nt-list-pane > .nt-dock { margin-top: auto; }
 
 /* search + new */
 #view-notes .nt-searchbar { display: flex; gap: var(--sp-2); align-items: center; }
 #view-notes .nt-search { flex: 1; }
 #view-notes .nt-search input { width: 100%; }
-#view-notes .nt-tags { gap: 6px; padding-bottom: 2px; }
+#view-notes .nt-tags { gap: 6px; padding-top: 2px; padding-bottom: 2px; }
 #view-notes .nt-count { font-size: var(--fs-xs); color: var(--c-text-2); margin-left: 2px; }
 
 /* day groups + rows */

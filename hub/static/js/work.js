@@ -3,6 +3,9 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// replaceChildren that skips null/false entries (conditional children).
+function fill(node, ...kids) { node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); }
+
 const SECTIONS = [
   { id: "tasks", label: "Tasks", key: "asana", name: "Asana" },
   { id: "calendar", label: "Calendar", key: "calendar", name: "Calendar" },
@@ -134,26 +137,26 @@ export function init(container, ctx) {
     async function show(force = false) {
       let s;
       try {
-        if (!status) { gate.hidden = false; gate.replaceChildren(ui.skeleton("list", 3)); }
+        if (!status) { gate.hidden = false; fill(gate, ui.skeleton("list", 3)); }
         s = await loadStatus(force);
       } catch (error) {
         body.hidden = true;
         gate.hidden = false;
-        gate.replaceChildren(errorBlock(message(error), () => show(true)));
+        fill(gate, errorBlock(message(error), () => show(true)));
         return;
       }
       const part = s[def.key] || { configured: false };
       if (!part.configured) {
         body.hidden = true;
         gate.hidden = false;
-        gate.replaceChildren(ui.emptyState({
+        fill(gate, ui.emptyState({
           icon: "settings", title: `${def.name} isn't set up yet`,
           body: part.reason || `${def.name} is not configured on this laptop.`,
           action: { label: "Check again", icon: "refresh", onClick: () => show(true) },
         }));
         return;
       }
-      gate.replaceChildren();
+      fill(gate, );
       gate.hidden = true;
       body.hidden = false;
       handle.refresh(part, force);
@@ -190,7 +193,7 @@ export function init(container, ctx) {
       if (s.calendar && s.calendar.ok) stats.push(stat("calendar", (s.calendar.meetings || []).length, "meetings", () => select("calendar")));
       if (s.tasks && s.tasks.ok) {
         const c = s.tasks.counts || {};
-        stats.push(stat("list-checks", (c.overdue || 0) + (c.today || 0), (c.overdue ? `tasks · ${c.overdue} late` : "tasks due"), () => select("tasks")));
+        stats.push(stat("list-checks", (c.overdue || 0) + (c.today || 0), (c.overdue ? `tasks, ${c.overdue} late` : "tasks due"), () => select("tasks")));
       }
       if (s.mail && s.mail.ok) stats.push(stat("mail", s.mail.unread ?? 0, "unread", () => ctx.open("inbox")));
       if (s.reminders && s.reminders.ok) stats.push(stat("alarm", (s.reminders.reminders || []).length, "reminders", () => ctx.open("reminders")));
@@ -201,7 +204,7 @@ export function init(container, ctx) {
         ? ui.button({ label: "Read it to me", icon: "volume", variant: "tonal", size: "sm", class: "wk-brief-listen",
             onClick: () => { ui.haptic("light"); ctx.speak(spoken); } })
         : null;
-      card.replaceChildren(
+      fill(card, 
         el("div", { class: "wk-brief-top" },
           ui.tile("sparkles", "accent", "sm"),
           el("h2", { class: "wk-brief-title grow" }, "Your briefing"),
@@ -241,7 +244,7 @@ export function init(container, ctx) {
     body.append(listView, detailView);
 
     function renderChips() {
-      chipBar.replaceChildren(...FILTERS.map(([id, label]) => {
+      fill(chipBar, ...FILTERS.map(([id, label]) => {
         const n = id === "all" ? allCount : counts ? counts[id] : null;
         const chip = el("button", { type: "button", class: `ui-chip${id === "overdue" && n ? " wk-chip--bad" : ""}`, "aria-pressed": String(filter === id),
           onclick: () => { filter = id; renderChips(); loadList(); } },
@@ -282,7 +285,7 @@ export function init(container, ctx) {
 
     async function loadList() {
       const mine = ++token;
-      listBox.replaceChildren(ui.skeleton("list", 4));
+      fill(listBox, ui.skeleton("list", 4));
       try {
         const data = await api(`/api/work/asana/tasks?filter=${filter}`);
         if (mine !== token) return;
@@ -290,25 +293,25 @@ export function init(container, ctx) {
         if (filter === "all") allCount = data.tasks.length;
         renderChips();
         if (!data.tasks.length) {
-          listBox.replaceChildren(ui.emptyState({
+          fill(listBox, ui.emptyState({
             icon: "check-circle",
             title: filter === "all" ? "No open tasks" : `Nothing ${filter}`,
             body: filter === "overdue" ? "You're all caught up." : "Enjoy the clear space.",
             compact: true,
           }));
         } else {
-          listBox.replaceChildren(el("ul", { class: "ui-list ui-list--inset wk-tasks" }, data.tasks.map(row)));
+          fill(listBox, el("ul", { class: "ui-list ui-list--inset wk-tasks" }, data.tasks.map(row)));
         }
       } catch (error) {
         if (mine !== token) return;
-        listBox.replaceChildren(errorBlock(message(error), loadList));
+        fill(listBox, errorBlock(message(error), loadList));
       }
     }
 
     function backToList() {
       detailView.hidden = true;
       listView.hidden = false;
-      detailView.replaceChildren();
+      fill(detailView, );
       loadList();
     }
 
@@ -320,20 +323,20 @@ export function init(container, ctx) {
     async function openTask(gid) {
       listView.hidden = true;
       detailView.hidden = false;
-      detailView.replaceChildren(backBar(), ui.skeleton("card", 2));
+      fill(detailView, backBar(), ui.skeleton("card", 2));
       container.scrollTop = 0;
       try {
         const { task } = await api(`/api/work/asana/tasks/${encodeURIComponent(gid)}`);
         renderDetail(task);
       } catch (error) {
-        detailView.replaceChildren(backBar(), errorBlock(message(error), () => openTask(gid)));
+        fill(detailView, backBar(), errorBlock(message(error), () => openTask(gid)));
       }
     }
 
     function renderDetail(task) {
       const comments = el("div", { class: "wk-comments" });
       const renderComments = (list) => {
-        comments.replaceChildren(...(list.length
+        fill(comments, ...(list.length
           ? list.map((c) => el("div", { class: "wk-comment" },
               ui.avatar(c.author || "?", { size: "sm" }),
               el("div", { class: "wk-comment-body" },
@@ -392,7 +395,7 @@ export function init(container, ctx) {
         });
       }
 
-      detailView.replaceChildren(
+      fill(detailView, 
         backBar(),
         el("section", { class: "ui-card wk-stack" },
           el("h2", { class: `wk-task-h${task.completed ? " is-done" : ""}` }, task.name),
@@ -460,14 +463,14 @@ export function init(container, ctx) {
       const mine = ++token;
       const d = parseDay(day);
       const rel = dayDiff(day) === 0 ? "Today" : dayDiff(day) === 1 ? "Tomorrow" : dayDiff(day) === -1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long" });
-      label.replaceChildren(el("strong", {}, rel), el("span", {}, d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })));
-      list.replaceChildren(ui.skeleton("list", 3));
+      fill(label, el("strong", {}, rel), el("span", {}, d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })));
+      fill(list, ui.skeleton("list", 3));
       try {
         const data = await api(`/api/work/calendar?day=${day}&days=1`);
         if (mine !== token) return;
         const meetings = (data.meetings || []).slice().sort((a, b) => (b.all_day ? 1 : 0) - (a.all_day ? 1 : 0) || new Date(a.start) - new Date(b.start));
         if (!meetings.length) {
-          list.replaceChildren(ui.emptyState({ icon: "calendar", title: "No meetings", body: "Nothing on the calendar for this day.", compact: true }));
+          fill(list, ui.emptyState({ icon: "calendar", title: "No meetings", body: "Nothing on the calendar for this day.", compact: true }));
           return;
         }
         const now = new Date();
@@ -481,10 +484,10 @@ export function init(container, ctx) {
           items.push(eventRow(m, now));
         }
         if (!marked) items.push(marker());
-        list.replaceChildren(el("ul", { class: "ui-card wk-timeline" }, items));
+        fill(list, el("ul", { class: "ui-card wk-timeline" }, items));
       } catch (error) {
         if (mine !== token) return;
-        list.replaceChildren(errorBlock(message(error), load));
+        fill(list, errorBlock(message(error), load));
       }
     }
 
@@ -537,7 +540,7 @@ export function init(container, ctx) {
         const data = await api("/api/work/email/contacts");
         contacts = data.contacts || [];
         contactsLoaded = true;
-        datalist.replaceChildren(...contacts.map((c) => el("option", { value: c.name, label: c.address })));
+        fill(datalist, ...contacts.map((c) => el("option", { value: c.name, label: c.address })));
       } catch (error) {
         formMsg.show(`Contacts could not be loaded (${message(error)}). You can still type an email address.`, "muted");
       }
@@ -552,7 +555,7 @@ export function init(container, ctx) {
       subject.value = String(d.subject || "");
       text.value = String(d.body || "");
       toError.hidden = true;
-      banner.replaceChildren(ui.notice("Reply draft loaded from Inbox. Read it, edit it, then review. Nothing has been sent.", { tone: "good", icon: "mail" }));
+      fill(banner, ui.notice("Reply draft loaded from Inbox. Read it, edit it, then review. Nothing has been sent.", { tone: "good", icon: "mail" }));
       banner.hidden = false;
       text.focus({ preventScroll: true });
     }
@@ -600,7 +603,7 @@ export function init(container, ctx) {
     function showForm(note) {
       reviewing = null;
       reviewBox.hidden = true;
-      reviewBox.replaceChildren();
+      fill(reviewBox, );
       formView.hidden = false;
       if (note) formMsg.show(note);
     }
@@ -633,7 +636,7 @@ export function init(container, ctx) {
           }
         });
       }
-      reviewBox.replaceChildren(
+      fill(reviewBox, 
         el("div", { class: "ui-card__head" }, ui.tile("eye", "warn", "sm"), el("h3", { class: "ui-card__title grow" }, "Review before sending")),
         el("p", { class: "wk-muted" }, "This is exactly what will be sent."),
         el("dl", { class: "wk-facts" },
@@ -674,28 +677,28 @@ export function init(container, ctx) {
     body.append(formView, reviewBox);
 
     function renderSpaces() {
-      spaceBar.replaceChildren(...spaces.map((name) =>
+      fill(spaceBar, ...spaces.map((name) =>
         el("button", { type: "button", class: "ui-chip", "aria-pressed": String(space === name),
           onclick: () => { space = name; renderSpaces(); } }, name)));
     }
 
     async function loadSpaces() {
-      spaceBox.replaceChildren(ui.skeleton("lines", 1));
+      fill(spaceBox, ui.skeleton("lines", 1));
       reviewBtn.disabled = true;
       try {
         const data = await api("/api/work/chat/spaces");
         spaces = data.spaces || [];
         loaded = true;
         if (!spaces.length) {
-          spaceBox.replaceChildren(emptyBlock("users", "No spaces", "No Google Chat spaces are set up."));
+          fill(spaceBox, emptyBlock("users", "No spaces", "No Google Chat spaces are set up."));
           return;
         }
         if (!spaces.includes(space)) space = spaces.length === 1 ? spaces[0] : null;
         renderSpaces();
-        spaceBox.replaceChildren(spaceBar);
+        fill(spaceBox, spaceBar);
         reviewBtn.disabled = false;
       } catch (error) {
-        spaceBox.replaceChildren(errorBlock(message(error), loadSpaces));
+        fill(spaceBox, errorBlock(message(error), loadSpaces));
       }
     }
 
@@ -723,7 +726,7 @@ export function init(container, ctx) {
           }
         });
       }
-      reviewBox.replaceChildren(
+      fill(reviewBox, 
         el("div", { class: "ui-card__head" }, ui.tile("eye", "warn", "sm"), el("h3", { class: "ui-card__title grow" }, "Review before posting")),
         el("p", { class: "wk-muted" }, "This is exactly what will be posted."),
         el("dl", { class: "wk-facts" }, el("div", {}, el("dt", {}, "Space"), el("dd", {}, reviewing.space))),
@@ -738,7 +741,7 @@ export function init(container, ctx) {
     function backToForm() {
       reviewing = null;
       reviewBox.hidden = true;
-      reviewBox.replaceChildren();
+      fill(reviewBox, );
       formView.hidden = false;
     }
 
@@ -755,8 +758,7 @@ export function init(container, ctx) {
 
   const seg = ui.segmented({
     label: "Work sections", block: true,
-    options: [{ value: "tasks", label: "Tasks", icon: "list-checks" }, { value: "calendar", label: "Calendar", icon: "calendar" },
-      { value: "email", label: "Email", icon: "mail" }, { value: "chat", label: "Chat", icon: "users" }],
+    options: [{ value: "tasks", label: "Tasks" }, { value: "calendar", label: "Calendar" }, { value: "email", label: "Email" }, { value: "chat", label: "Chat" }],
     value: "tasks", onChange: (id) => select(id),
   });
   const header = el("div", { class: "wk-head" }, seg);

@@ -7,10 +7,10 @@
 /* summary */
 #view-habits .hb-sum { display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-5); }
 #view-habits .hb-sum .ui-ring__track { stroke: rgb(255 255 255 / .22); }
-#view-habits .hb-sum .ui-ring__value { stroke: #fff; }
+#view-habits .hb-sum .ui-ring__value { stroke: currentColor; }
 #view-habits .hb-sum__stats { flex: 1; min-width: 0; display: grid; gap: var(--sp-2); }
 #view-habits .hb-stat { display: grid; grid-template-columns: 32px auto 1fr; align-items: center; gap: var(--sp-2); }
-#view-habits .hb-stat .ui-tile { background: rgb(255 255 255 / .16); color: #fff; }
+#view-habits .hb-stat .ui-tile { background: rgb(255 255 255 / .16); color: inherit; }
 #view-habits .hb-stat__v { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
 #view-habits .hb-stat__l { font-size: var(--fs-xs); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -24,7 +24,6 @@
 #view-habits .hb-card.is-busy { opacity: .7; pointer-events: none; }
 #view-habits .hb-card.is-done { border-color: color-mix(in oklab, var(--c-good), transparent 55%); background: color-mix(in oklab, var(--c-good) 7%, var(--c-surface-1)); }
 #view-habits .hb-more { position: absolute; top: 2px; right: 2px; }
-#view-habits .hb-ring { --_tone: var(--c-accent); }
 #view-habits .hb-ring .ui-ring__big { font-size: 30px; line-height: 1; }
 #view-habits .hb-ring .ui-ring__track { stroke: color-mix(in oklab, var(--_tone) 18%, transparent); }
 #view-habits .hb-card__name { font-weight: var(--fw-semibold); font-size: var(--fs-md); line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

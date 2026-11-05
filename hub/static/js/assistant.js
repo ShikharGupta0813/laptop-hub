@@ -251,7 +251,7 @@ export function init(container, ctx) {
     const yes = await ui.confirm({
       title: "Run commands without asking?",
       message: "The assistant will run commands and change files on your laptop without waiting for your tap. It stays on until you turn it off, or until you restart the app. Only do this when you trust what you are asking for.",
-      confirmLabel: "Yes, run without asking", cancelLabel: "Keep asking me", danger: true,
+      confirmLabel: "Run without asking", cancelLabel: "Keep asking me", danger: true,
     });
     setAutoApprove(!!yes);
   }

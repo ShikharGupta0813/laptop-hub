@@ -1,0 +1,49 @@
+/* Focus. Scoped under #view-focus. */
+#view-focus .fc { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-3); align-content: start; min-width: 0; }
+#view-focus .fc > *, #view-focus .fc-lower > * { min-width: 0; }
+#view-focus .fc-lower { display: grid; gap: var(--sp-3); }
+#view-focus [hidden] { display: none; }
+
+#view-focus .fc-stage { display: grid; justify-items: center; gap: var(--sp-4); padding: var(--sp-6) var(--sp-4) var(--sp-5); text-align: center; position: relative; overflow: hidden; }
+#view-focus .fc-stage::before {
+  content: ""; position: absolute; inset: -40% -20% auto; height: 80%; pointer-events: none; opacity: .5;
+  background: radial-gradient(closest-side, var(--c-accent-soft), transparent);
+}
+#view-focus .fc-stage.is-break::before, #view-focus .fc-stage.is-done::before { background: radial-gradient(closest-side, var(--c-good-soft), transparent); }
+#view-focus .fc-stage > * { position: relative; max-width: 100%; }
+#view-focus .fc-ring { max-width: 100%; }
+#view-focus .fc-ring svg { max-width: 100%; height: auto; }
+#view-focus .fc-ring .ui-ring__value { transition: stroke-dashoffset 600ms linear; }
+#view-focus .fc-ring .ui-ring__track { stroke: color-mix(in oklab, var(--_tone, var(--c-accent)) 16%, var(--c-surface-3)); }
+#view-focus .fc-ring .ui-ring__big { font-size: 56px; font-weight: var(--fw-bold); letter-spacing: -0.04em; line-height: 1; }
+#view-focus .fc-ring .ui-ring__small { font-size: var(--fs-xs); margin-top: 6px; letter-spacing: .1em; }
+#view-focus .fc-what { display: grid; gap: 2px; }
+#view-focus .fc-what__t { margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); overflow-wrap: anywhere; }
+#view-focus .fc-what__s { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); }
+#view-focus .fc-actions { display: grid; gap: var(--sp-2); width: 100%; }
+#view-focus .fc-stage > .ui-btn { width: 100%; }
+
+/* setup */
+#view-focus .fc-presets { display: flex; justify-content: center; gap: 6px; }
+#view-focus .fc-preset { min-height: 40px; padding: 0 13px; }
+#view-focus .fc-stepper { display: flex; align-items: center; gap: var(--sp-4); }
+#view-focus .fc-stepper__v { min-width: 84px; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+#view-focus .fc-form { display: grid; gap: var(--sp-2); width: 100%; text-align: left; }
+#view-focus .fc-two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--sp-2); }
+#view-focus .fc-two select { text-overflow: ellipsis; }
+
+/* stats */
+#view-focus .fc-statscard { display: grid; gap: var(--sp-4); padding: var(--sp-4); }
+#view-focus .fc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+#view-focus .fc-stat { display: grid; justify-items: center; gap: 2px; text-align: center; }
+#view-focus .fc-stat b { font-size: var(--fs-xl); }
+#view-focus .fc-stat span { font-size: var(--fs-xs); color: var(--c-text-2); }
+#view-focus .fc-bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; height: 96px; align-items: end; }
+#view-focus .fc-bar__col { display: grid; grid-template-rows: 1fr auto; gap: 4px; height: 100%; justify-items: stretch; }
+#view-focus .fc-bar__track { display: flex; align-items: flex-end; }
+#view-focus .fc-bar { display: block; width: 100%; height: max(4px, calc(var(--h) * 100%)); border-radius: 4px; background: color-mix(in oklab, var(--c-accent) 55%, transparent); transition: height var(--dur-slow) var(--ease-out); }
+#view-focus .fc-bar.is-today { background: var(--c-accent); }
+#view-focus .fc-bar.is-zero { background: var(--c-surface-3); }
+#view-focus .fc-bar__d { font-size: var(--fs-2xs); color: var(--c-text-3); text-align: center; }
+#view-focus .fc-labels { display: flex; flex-wrap: wrap; gap: 6px; }
+#view-focus .fc-head { margin: var(--sp-2) 0 0; }

@@ -54,9 +54,9 @@ export function init(container, ctx) {
 
   // ---- main page ---------------------------------------------------------------------------------
   function appearance() {
-    const haptics = switchRow({ icon: "zap", tone: "orange", title: "Haptics", sub: "A tiny buzz on taps and switches", checked: localStorage.getItem("hub.haptics") !== "off",
+    const haptics = switchRow({ icon: "zap", tone: "orange", title: "Haptics", sub: "A tiny buzz on taps", checked: localStorage.getItem("hub.haptics") !== "off",
       onChange: (on) => { try { localStorage.setItem("hub.haptics", on ? "on" : "off"); } catch (_) { /* private */ } if (on) ui.haptic("success"); } });
-    const motion = switchRow({ icon: "wand", tone: "teal", title: "Reduce motion", sub: "Fewer animations. Also follows your phone setting.",
+    const motion = switchRow({ icon: "wand", tone: "teal", title: "Reduce motion", sub: "Fewer animations",
       checked: document.documentElement.dataset.motion === "reduce",
       onChange: (on) => {
         try { if (on) localStorage.setItem("hub.motion", "reduce"); else localStorage.removeItem("hub.motion"); } catch (_) { /* private */ }
@@ -92,7 +92,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "folder", tone: "orange", title: "Folders", sub: `${S.kb_roots?.length || 0} searchable, ${S.writable_roots?.length || 0} editable`, chevron: true, onClick: () => openSection("folders") })));
     rows.push(group("Alerts",
       ui.listRow({ icon: "bell", tone: "bad", title: "Phone push", sub: notify ? (notify.ntfy_enabled ? "On. Alerts reach your phone." : "Off. Alerts stay in the app.") : "Alerts on your phone through ntfy", chevron: true, onClick: () => openSection("push") }),
-      ui.listRow({ icon: "eye", tone: "info", title: "Mail and chat watching", sub: "Rules that alert you about what matters", chevron: true, onClick: () => ctx.open("watch") }),
+      ui.listRow({ icon: "eye", tone: "info", title: "Mail and chat watching", sub: "Rules for important mail and chat", chevron: true, onClick: () => ctx.open("watch") }),
       ui.listRow({ icon: "inbox", tone: "accent", title: "Notifications", sub: "Everything the hub told you", chevron: true, onClick: () => ctx.open("notifications") })));
     rows.push(group("This phone",
       ui.listRow({ icon: "phone", tone: "teal", title: "Phone capture", sub: capture() ? "Spending and message capture" : "Needs the installed Android app", chevron: true, onClick: () => openSection("capture") })));

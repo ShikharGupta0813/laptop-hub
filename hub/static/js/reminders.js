@@ -3,6 +3,9 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// replaceChildren that skips null/false entries (conditional children).
+function fill(node, ...kids) { node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); }
+
 function ensureCss() {
   if ([...document.querySelectorAll("link[rel=stylesheet]")].some((l) => (l.getAttribute("href") || "").includes("/css/reminders.css"))) return;
   document.head.append(el("link", { rel: "stylesheet", href: "/css/reminders.css" }));
@@ -54,9 +57,9 @@ export function init(container, ctx) {
     el("p", { class: "rm-examples" }, "Say it naturally: \"in 10 minutes check oven\", \"every weekday 8:30 standup\", \"timer 10 minutes pasta\"."));
 
   function setEcho(kind, text) {
-    if (!text) { echo.replaceChildren(); return; }
+    if (!text) { fill(echo, ); return; }
     const tone = kind === "ok" ? "good" : kind === "err" ? "warn" : "";
-    echo.replaceChildren(el("div", { class: `rm-echo-chip${tone ? ` is-${tone}` : ""}` },
+    fill(echo, el("div", { class: `rm-echo-chip${tone ? ` is-${tone}` : ""}` },
       ui.icon(kind === "ok" ? "check-circle" : kind === "err" ? "info" : "clock"), el("span", {}, text)));
   }
 
@@ -141,7 +144,7 @@ export function init(container, ctx) {
           el("span", {}, done ? "Finished" : `of ${clock(total)}`)),
         ui.button({ label: done ? "Dismiss timer" : "Cancel timer", icon: done ? "check" : "close", variant: "ghost", iconOnly: true, onClick: () => cancelTimer(t) }));
     });
-    timersBox.replaceChildren(
+    fill(timersBox, 
       el("div", { class: "ui-section-head" }, el("h2", { class: "ui-section-title" }, "Timers")),
       presets,
       cards.length ? el("div", { class: "rm-timer-list" }, ...cards) : null);
@@ -202,7 +205,7 @@ export function init(container, ctx) {
 
   function renderList() {
     if (!reminders.length) {
-      listBox.replaceChildren(ui.emptyState({ icon: "alarm", title: "No reminders yet", body: "Type one above, like \"remind me to stretch at 3pm\".", compact: true }));
+      fill(listBox, ui.emptyState({ icon: "alarm", title: "No reminders yet", body: "Type one above, like \"remind me to stretch at 3pm\".", compact: true }));
       return;
     }
     const groups = { overdue: [], today: [], upcoming: [], done: [] };
@@ -219,11 +222,11 @@ export function init(container, ctx) {
     if (!groups.overdue.length && !groups.today.length && !groups.upcoming.length) {
       nodes.unshift(ui.emptyState({ icon: "check-circle", title: "All clear", body: "Nothing coming up. Add a reminder above.", compact: true }));
     }
-    listBox.replaceChildren(...nodes);
+    fill(listBox, ...nodes);
   }
 
   async function load(force) {
-    if (!force && !reminders.length) listBox.replaceChildren(ui.skeleton("list", 4));
+    if (!force && !reminders.length) fill(listBox, ui.skeleton("list", 4));
     try {
       const data = await api("/api/reminders/?status=all");
       reminders = data.reminders || [];
@@ -231,7 +234,7 @@ export function init(container, ctx) {
       renderList();
       ctx.setBadge?.("reminders", reminders.filter((r) => groupOf(r) === "overdue").length);
     } catch (error) {
-      listBox.replaceChildren(el("div", { class: "rm-error", role: "alert" }, ui.notice(message(error), { tone: "bad" }),
+      fill(listBox, el("div", { class: "rm-error", role: "alert" }, ui.notice(message(error), { tone: "bad" }),
         ui.button({ label: "Try again", icon: "refresh", size: "sm", onClick: () => load() })));
     }
   }

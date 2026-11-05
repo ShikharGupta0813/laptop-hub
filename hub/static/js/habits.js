@@ -73,8 +73,6 @@ export function init(container, ctx) {
     const value = weekly ? Math.min(1, (h.week_count || 0) / target) : (h.done_today ? 1 : 0);
     const ring = ui.ringProgress({ value, size: 88, stroke: 8, big: h.icon || "✓", label: h.name });
     paint(ring, h.color);
-    ring.style.setProperty("--_tone", ring.style.getPropertyValue("--_tone") || "");
-    ring.querySelector(".ui-ring__value").style.stroke = "var(--_tone)";
     ring.classList.add("hb-ring");
     const more = ui.button({ iconOnly: true, icon: "more", variant: "ghost", size: "sm", label: `Edit ${h.name}`, class: "hb-more", onClick: (e) => { e.stopPropagation(); openEditor(h); } });
     const card = el("div", { class: "ui-card hb-card" + (h.done_today ? " is-done" : ""), role: "button", tabindex: "0", "aria-pressed": String(h.done_today),

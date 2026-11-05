@@ -33,7 +33,7 @@
 #view-watch .wt-rule__name { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-weight: var(--fw-semibold); font-size: var(--fs-base); }
 #view-watch .wt-rule__text { font-size: var(--fs-md); line-height: 1.45; color: var(--c-text-2); overflow-wrap: anywhere; }
 #view-watch .wt-rule__tags, .wt-rule__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-#view-watch .wt-alert__meta { white-space: nowrap; }
+#view-watch .wt-alert__meta { white-space: nowrap; font-size: var(--fs-xs); color: var(--c-text-3); align-self: center; }
 #view-watch .wt-flash { animation: wt-flash 1.6s var(--ease-out); }
 @keyframes wt-flash { 0%, 60% { background: var(--c-accent-soft); } }
 #view-watch .ui-list .ui-row__sub { overflow-wrap: anywhere; }

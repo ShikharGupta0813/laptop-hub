@@ -4,7 +4,7 @@ import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 
 const CSS = "/css/watch.css";
-const INTERVALS = [[60, "Every minute"], [120, "Every 2 minutes"], [300, "Every 5 minutes"], [600, "Every 10 minutes"], [900, "Every 15 minutes"]];
+const INTERVALS = [[60, "1 minute"], [120, "2 minutes"], [300, "5 minutes"], [600, "10 minutes"], [900, "15 minutes"]];
 const LEVELS = [{ value: "info", label: "Info" }, { value: "warn", label: "Warning" }, { value: "error", label: "Urgent" }];
 const LEVEL_WORD = { info: "a normal notification", warn: "a warning", error: "an urgent alert" };
 const BY_LABEL = { ai: "AI judged", keywords: "Keywords", rule: "Rule" };
@@ -107,10 +107,10 @@ export function init(container, ctx) {
   }
 
   function monitors() {
-    const mail = switchRow({ icon: "mail", tone: "info", title: "Watch my mail", sub: "Checks your inbox on a schedule", checked: !!status.mail_monitor,
+    const mail = switchRow({ icon: "mail", tone: "info", title: "Watch my mail", sub: "Checks your inbox", checked: !!status.mail_monitor,
       onChange: (on) => saveSettings({ mail_monitor: on }, () => { status.mail_monitor = !on; }) });
     const hub = capture();
-    const chat = switchRow({ icon: "talk", tone: "teal", title: "Watch Google Chat", sub: hub ? "Reads Chat notifications on this phone" : "Needs the Android app on your phone", checked: !!status.chat_monitor,
+    const chat = switchRow({ icon: "talk", tone: "teal", title: "Watch Google Chat", sub: hub ? "Reads Chat notifications" : "Needs the Android app", checked: !!status.chat_monitor,
       onChange: async (on) => {
         if (on && !hub) ui.toast("The hub will accept chat alerts, but only the Android app can send them.", { kind: "warn" });
         try { if (hub?.setWatch) { const s = await hub.setWatch({ chat: on }); if (on && s && s.listenerEnabled === false) ui.toast("Turn on Notification access in Settings, Phone capture.", { kind: "warn" }); } }
@@ -118,9 +118,9 @@ export function init(container, ctx) {
         saveSettings({ chat_monitor: on }, () => { status.chat_monitor = !on; });
       } });
     const select = el("select", { "aria-label": "How often to check mail" }, INTERVALS.map(([v, l]) => el("option", { value: String(v), selected: v === status.interval_seconds }, l)));
-    if (!INTERVALS.some(([v]) => v === status.interval_seconds)) select.prepend(el("option", { value: String(status.interval_seconds), selected: true }, `Every ${Math.round(status.interval_seconds / 60)} min`));
+    if (!INTERVALS.some(([v]) => v === status.interval_seconds)) select.prepend(el("option", { value: String(status.interval_seconds), selected: true }, `${Math.round(status.interval_seconds / 60)} min`));
     select.addEventListener("change", () => saveSettings({ interval_seconds: Number(select.value) }));
-    const interval = el("div", { class: "ui-row" }, ui.tile("clock", "gray"), el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Check mail")), select);
+    const interval = el("div", { class: "ui-row" }, ui.tile("clock", "gray"), el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Check every")), select);
 
     const q = status.quiet_hours;
     const start = el("input", { type: "time", value: q?.start || "22:00", "aria-label": "Quiet from" });
@@ -129,7 +129,7 @@ export function init(container, ctx) {
       el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, "From"), start), el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, "Until"), end));
     const saveQuiet = () => saveSettings({ quiet_hours: { enabled: true, start: start.value, end: end.value } });
     start.addEventListener("change", saveQuiet); end.addEventListener("change", saveQuiet);
-    const quiet = switchRow({ icon: "moon", tone: "violet", title: "Quiet hours", sub: "Alerts are saved here but don't buzz you", checked: !!q?.enabled,
+    const quiet = switchRow({ icon: "moon", tone: "violet", title: "Quiet hours", sub: "Saved quietly, no buzz", checked: !!q?.enabled,
       onChange: (on) => { times.hidden = !on; saveSettings({ quiet_hours: on ? { enabled: true, start: start.value, end: end.value } : null }); } });
 
     const model = ui.segmented({ label: "Where urgency checks run", block: true, value: status.model || "local",
@@ -169,11 +169,10 @@ export function init(container, ctx) {
   function alertsSection() {
     const rows = alerts.map((a) => {
       const tone = a.level === "error" ? "bad" : a.level === "warn" ? "warn" : "info";
-      const meta = el("span", { class: "wt-alert__meta" }, ui.relTime(a.ts));
-      const sub = [a.from, a.reason || a.rule].filter(Boolean).join(" · ");
-      const row = ui.listRow({ icon: a.source === "chat" ? "talk" : "mail", tone, title: a.subject || a.snippet || "(no subject)", sub, meta, chevron: !!a.link,
+            const sub = [a.from, a.reason || a.rule].filter(Boolean).join(" · ");
+      const row = ui.listRow({ icon: a.source === "chat" ? "talk" : "mail", tone, title: a.subject || a.snippet || "(no subject)", sub, chevron: !!a.link,
         onClick: a.link ? () => ctx.open(a.link, undefined, a.uid != null ? { id: a.uid } : {}) : undefined, attrs: { "data-id": String(a.id) } });
-      const tags = el("span", { class: "wt-rule__tags" }, a.by ? el("span", { class: "ui-badge" }, BY_LABEL[a.by] || a.by) : null,
+      const tags = el("span", { class: "wt-rule__tags" }, el("span", { class: "wt-alert__meta" }, ui.relTime(a.ts)), a.by ? el("span", { class: "ui-badge" }, BY_LABEL[a.by] || a.by) : null,
         a.quiet ? ui.badge("Held back, quiet hours", "warn") : null, a.rule && a.by === "rule" ? el("span", { class: "ui-badge" }, a.rule) : null);
       row.querySelector(".ui-row__body").append(tags);
       if (String(highlight) === String(a.id)) { row.classList.add("wt-flash"); highlight = null; requestAnimationFrame(() => row.scrollIntoView({ block: "center" })); }
@@ -205,7 +204,7 @@ export function init(container, ctx) {
       quiet: !!rule?.quiet_override, level: rule?.level || "warn" };
     const field = (label, key, hint, ph) => {
       const input = el("input", { type: "text", value: f[key], placeholder: ph || "", autocapitalize: "off", autocomplete: "off", spellcheck: "false", "aria-label": label });
-      input.addEventListener("input", () => { f[key] = input.value; });
+      input.addEventListener("input", () => { f[key] = input.value; refresh(); });
       return el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, label), input, hint ? el("span", { class: "ui-hint" }, hint) : null);
     };
     const space = field("Chat space or person", "space", "Part of the chat's name, like “Project Atlas”.", "Project Atlas");

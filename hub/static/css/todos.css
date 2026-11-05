@@ -23,7 +23,7 @@
 #view-todos .td-echo__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--c-text-2); }
 
 /* chips */
-#view-todos .td-chips { gap: 6px; padding: 2px 0 4px; }
+#view-todos .td-chips { gap: 6px; padding-top: 2px; padding-bottom: 4px; }
 #view-todos .td-chip__n { font-size: var(--fs-xs); font-weight: var(--fw-bold); min-width: 18px; text-align: center; padding: 1px 6px; border-radius: var(--r-full); background: var(--c-surface-3); color: var(--c-text-2); }
 #view-todos .td-chip[aria-pressed="true"] .td-chip__n { background: var(--c-accent); color: var(--c-accent-ink); }
 #view-todos .td-chip--bad .td-chip__n { background: var(--c-bad); color: var(--c-accent-ink); }

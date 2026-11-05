@@ -167,7 +167,7 @@ export function init(container, ctx) {
   const note = el("div", { class: "ap-note", hidden: true });
   const live = el("p", { class: "ap-live", "aria-live": "polite" });
   const results = el("div", { class: "ap-results", id: "ap-results" });
-  const title = el("h2", { class: "ap-title", tabindex: "-1" }, "Apps");
+  const title = el("h2", { class: "ap-title sr-only", tabindex: "-1" }, "Apps");
   const subtitle = el("p", { class: "ap-desc" }, "");
   const dirPanel = el("section", { class: "ap-panel", "data-panel": "dir" },
     el("div", { class: "ap-runner-head" }, title, subtitle),
