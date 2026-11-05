@@ -1,7 +1,8 @@
 // Learn > Chat: ask questions about a source (or nothing), streamed from the laptop's model.
 // Model text is shown with textContent or renderMarkdown (sanitised); never raw innerHTML.
 import { api, sse, renderMarkdown, el } from "./api.js";
-import { createSourcePicker, createProviderSwitch, icon, store } from "./sourcepicker.js";
+import * as ui from "./ui.js";
+import { createSourceSheet, createProviderSwitch, ensureCss, store } from "./sourcepicker.js";
 
 const STARTERS = ["Explain this simply", "What are the key points?", "Test me with 3 questions", "Give an example"];
 const SESSION_KEY = "hub.learn.chat.session";
@@ -17,6 +18,7 @@ function newSessionId() {
 }
 
 export function init(container, ctx) {
+  ensureCss("/css/learn.css");
   let sessionId = store.get("sessionStorage", SESSION_KEY, "") || newSessionId();
   store.set("sessionStorage", SESSION_KEY, sessionId);
 
@@ -26,95 +28,51 @@ export function init(container, ctx) {
   let streaming = false;
   let controller = null;
   let stick = true;
-  let sheetOpen = false;
 
   container.classList.add("sc-pane");
   const root = el("div", { class: "sc-root" });
   container.append(root);
 
-  // ------------------------------------------------------------ header
-  const sourceText = el("span", { class: "sc-source-text" });
-  const changeButton = el("button", { type: "button", class: "sc-link", "aria-haspopup": "dialog",
-    onclick: () => openSheet() }, icon("edit"), "Change");
-  const sourceBar = el("div", { class: "sc-source" },
-    el("span", { class: "sc-source-label muted" }, "Source:"), sourceText, changeButton);
-
+  // ------------------------------------------------------------ header: source chip, model, new chat
+  const sourceText = el("span", { class: "sc-source-text ui-truncate" });
+  const sourceChip = el("button", { type: "button", class: "ui-chip sc-source", "aria-haspopup": "dialog",
+    "aria-label": "Change chat source", onclick: () => sources.open() }, ui.icon("book-open"), sourceText, ui.icon("chevron-down", { class: "sc-source-chev" }));
   const providerHost = el("div", { class: "sc-provider" });
   const provider = createProviderSwitch(providerHost, "Model for chat");
-  const newButton = el("button", { type: "button", class: "btn sc-new", onclick: () => newChat() },
-    icon("refresh"), "New chat");
-  const controls = el("div", { class: "sc-controls" }, providerHost, newButton);
-  const head = el("div", { class: "sc-head" }, sourceBar, controls);
+  const newButton = ui.button({ icon: "refresh", variant: "ghost", iconOnly: true, label: "New chat", onClick: () => newChat() });
+  const head = el("div", { class: "sc-head" }, el("div", { class: "sc-head-row" }, sourceChip, newButton), providerHost);
 
   // ------------------------------------------------------------ list
   const list = el("div", { class: "sc-list", role: "log", "aria-live": "polite", "aria-relevant": "additions",
     "aria-label": "Chat messages", tabindex: "0" });
-  const jump = el("button", { type: "button", class: "sc-jump", hidden: true, "aria-label": "Jump to latest message",
-    onclick: () => scrollToBottom(true) }, icon("down"), "Latest");
+  const jump = ui.button({ label: "Latest", icon: "arrow-down", variant: "secondary", size: "sm", class: "sc-jump", hidden: true,
+    onClick: () => scrollToBottom(true) });
   const listWrap = el("div", { class: "sc-listwrap" }, list, jump);
 
   // ------------------------------------------------------------ composer
   const input = el("textarea", { class: "sc-input", rows: "1", placeholder: "Ask about your source…",
     "aria-label": "Message", enterkeyhint: "send", maxlength: "4000" });
-  const sendButton = el("button", { type: "button", class: "sc-send", "aria-label": "Send message", disabled: true,
-    onclick: () => send(input.value) }, icon("send"));
-  const stopButton = el("button", { type: "button", class: "sc-send sc-stop", "aria-label": "Stop answer", hidden: true,
-    onclick: () => stop() }, icon("stop"));
+  const sendButton = ui.button({ icon: "send", variant: "primary", iconOnly: true, label: "Send message", class: "sc-send", disabled: true,
+    onClick: () => send(input.value) });
+  const stopButton = ui.button({ icon: "stop", variant: "danger", iconOnly: true, label: "Stop answer", class: "sc-send", hidden: true,
+    onClick: () => stop() });
   const composer = el("div", { class: "sc-composer" }, input, sendButton, stopButton);
 
   root.append(head, listWrap, composer);
 
-  // ------------------------------------------------------------ source sheet
-  const sheetHost = el("div", { class: "sc-sheet-host" });
-  const backdrop = el("div", { class: "sc-backdrop", hidden: true, onclick: () => closeSheet(false) });
-  const sheetBody = el("div", { class: "sc-sheet-body" });
-  const sheet = el("div", { class: "sheet sc-sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": "sc-sheet-title", hidden: true },
-    el("div", { class: "sc-sheet-head" },
-      el("h2", { id: "sc-sheet-title" }, "Chat source"),
-      el("button", { type: "button", class: "sc-iconbtn", "aria-label": "Close without changing", onclick: () => closeSheet(false) }, icon("x"))),
-    sheetBody,
-    el("div", { class: "sc-sheet-actions" },
-      el("button", { type: "button", class: "btn", onclick: () => closeSheet(false) }, "Cancel"),
-      el("button", { type: "button", class: "btn primary", onclick: () => closeSheet(true) }, "Use this source")));
-  sheetHost.append(backdrop, sheet);
-  container.append(sheetHost);
-  const picker = createSourcePicker(sheetBody, ctx, { required: false, allowNone: true });
-
-  function openSheet() {
-    sheetOpen = true;
-    backdrop.hidden = false;
-    sheet.hidden = false;
-    picker.focus();
-  }
-  function closeSheet(apply) {
-    if (!sheetOpen) return;
-    sheetOpen = false;
-    if (apply) {
-      source = picker.getSource();
-      sourceLabel = source ? picker.label() : "";
+  // ------------------------------------------------------------ source sheet (bottom sheet with tabs)
+  const sources = createSourceSheet(ctx, { title: "Chat source", allowNone: true, applyLabel: "Use this source",
+    onApply(next, label) {
+      source = next;
+      sourceLabel = next ? label : "";
       store.set("sessionStorage", SOURCE_KEY, JSON.stringify({ source, label: sourceLabel }));
       paintSource();
-    } else {
-      picker.setSource(source, sourceLabel.replace(/^[^:]*: /, ""));
-    }
-    backdrop.hidden = true;
-    sheet.hidden = true;
-    changeButton.focus();
-  }
-  sheet.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { event.stopPropagation(); closeSheet(false); return; }
-    if (event.key !== "Tab") return;
-    const focusable = [...sheet.querySelectorAll("button, input, textarea, [tabindex='0']")].filter((n) => !n.disabled && n.offsetParent !== null);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  });
+      paintEmpty();
+    } });
 
   function paintSource() {
-    sourceText.textContent = source ? sourceLabel : "None";
-    sourceText.title = source ? sourceLabel : "";
+    sourceText.textContent = source ? sourceLabel : "No source";
+    sourceChip.classList.toggle("is-on", !!source);
     input.placeholder = source ? "Ask about your source…" : "Ask a question…";
   }
 
@@ -123,7 +81,7 @@ export function init(container, ctx) {
     if (kind === "user") return el("div", { class: "sc-msg sc-user" }, el("div", { class: "sc-bubble" }, text));
     if (kind === "error") {
       return el("div", { class: "sc-msg sc-err" },
-        el("div", { class: "sc-bubble", role: "alert" }, icon("alert"), el("span", {}, text)));
+        el("div", { class: "sc-bubble", role: "alert" }, ui.icon("alert-circle"), el("span", {}, text)));
     }
     const body = el("div", { class: "sc-bubble markdown" });
     if (text) body.innerHTML = renderMarkdown(text); // sanitised by DOMPurify
@@ -133,13 +91,13 @@ export function init(container, ctx) {
   function paintEmpty() {
     if (messages.length || streaming) return;
     list.replaceChildren(el("div", { class: "sc-empty" },
-      el("div", { class: "sc-empty-icon" }, icon("edit")),
+      el("div", { class: "sc-empty-art" }, ui.icon("sparkles")),
       el("h2", {}, "Study chat"),
-      el("p", { class: "muted" }, source
+      el("p", {}, source
         ? "Ask anything about your source, or start with one of these."
-        : "Pick a source with Change, or just ask a question."),
+        : "Pick a source with the chip above, or just ask a question."),
       el("div", { class: "sc-starters" }, STARTERS.map((text) =>
-        el("button", { type: "button", class: "sc-starter", onclick: () => send(text) }, text)))));
+        el("button", { type: "button", class: "ui-chip", onclick: () => send(text) }, text)))));
   }
 
   function repaintAll() {
@@ -167,8 +125,7 @@ export function init(container, ctx) {
     sendButton.hidden = streaming;
     stopButton.hidden = !streaming;
     input.disabled = false;
-    newButton.disabled = false;
-  }
+      }
   function growInput() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
@@ -282,7 +239,7 @@ export function init(container, ctx) {
   // less whatever the on-screen keyboard covers.
   function fit() {
     const view = container.closest(".view");
-    const seg = view && view.querySelector(".learn-seg");
+    const seg = view && view.querySelector(".ln-head");
     if (!view || !seg || container.hidden) return;
     const cs = getComputedStyle(view);
     let free = view.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - seg.offsetHeight;
@@ -311,7 +268,7 @@ export function init(container, ctx) {
     if (savedSource && savedSource.source) {
       source = savedSource.source;
       sourceLabel = savedSource.label || "Saved source";
-      picker.setSource(source, sourceLabel.replace(/^[^:]*: /, ""));
+      sources.set(source, sourceLabel);
     }
   } catch (_) { /* start empty */ }
   paintSource();
@@ -323,8 +280,6 @@ export function init(container, ctx) {
       provider.refresh();
       requestAnimationFrame(() => { fit(); scrollToBottom(); });
     },
-    hide() {
-      if (sheetOpen) closeSheet(false);
-    },
+    hide() {},
   };
 }

@@ -1,5 +1,6 @@
 // Hub tab: laptop status, setup check, quick buttons, file upload, install help, log out.
 import { api, el } from "./api.js";
+import * as ui from "./ui.js";
 
 const REFRESH_MS = 15000;
 
@@ -11,26 +12,22 @@ function gaugeLevel(kind, value) {
 const LEVEL_WORD = { good: "OK", warn: "Getting high", bad: "Critical" };
 const BATTERY_WORD = { good: "OK", warn: "Low", bad: "Critical" };
 
-function gauge(label, kind, value, text, detail) {
+function gauge(label, kind, value, text, detail, ringText) {
   const level = gaugeLevel(kind, value);
   const word = (kind === "battery" ? BATTERY_WORD : LEVEL_WORD)[level];
   const pct = Math.max(0, Math.min(100, value));
-  const bar = el("div", {
-    class: `g-bar ${level}`, role: "meter", "aria-label": label,
-    "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(pct)),
-    "aria-valuetext": `${text}${detail ? ", " + detail : ""}, ${word}`,
-  }, el("span", { style: `width:${pct}%` }));
-  return el("div", { class: "gauge" },
-    el("div", { class: "g-head" },
-      el("span", { class: "g-label" }, label),
-      el("span", { class: "g-num" }, text),
-    ),
-    bar,
-    el("div", { class: "g-foot" },
-      el("span", { class: `g-state ${level}` }, word),
-      detail ? el("span", { class: "muted" }, detail) : null,
-    ),
-  );
+  const ring = ui.ringProgress({ value: pct / 100, size: 76, stroke: 8, tone: level, big: ringText || `${Math.round(pct)}%`, label });
+  ring.setAttribute("role", "meter");
+  ring.setAttribute("aria-valuemin", "0");
+  ring.setAttribute("aria-valuemax", "100");
+  ring.setAttribute("aria-valuenow", String(Math.round(pct)));
+  ring.setAttribute("aria-valuetext", `${text}${detail ? ", " + detail : ""}, ${word}`);
+  return el("div", { class: `gauge ui-card ui-card--flat ${level}` },
+    ring,
+    el("span", { class: "g-label" }, label),
+    el("span", { class: "g-num ui-num" }, text),
+    el("span", { class: `g-state ${level}` }, word),
+    detail ? el("span", { class: "g-detail" }, detail) : null);
 }
 
 function formatAgo(ms) {
@@ -50,12 +47,12 @@ export function init(container, ctx) {
   let installEvent = null;
 
   // ---- skeleton ---------------------------------------------------------------------
-  const laptopBody = el("div", { class: "hub-body" }, el("p", { class: "muted" }, "Loading…"));
+  const laptopBody = el("div", { class: "hub-body" }, ui.skeleton("card", 1));
   const updated = el("span", { class: "muted hub-updated", "aria-live": "off" }, "");
-  const refreshBtn = el("button", { type: "button", class: "btn hub-refresh", "aria-label": "Refresh status", onclick: () => refresh(true) }, "Refresh");
-  const laptopCard = el("section", { class: "card", "aria-labelledby": "hub-h-laptop" },
+  const refreshBtn = el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--icon hub-refresh", "aria-label": "Refresh status", onclick: () => refresh(true) }, ui.icon("refresh"));
+  const laptopCard = el("section", { class: "ui-card", "aria-labelledby": "hub-h-laptop" },
     el("div", { class: "hub-card-head" },
-      el("h2", { id: "hub-h-laptop" }, "This laptop"),
+      el("h2", { class: "ui-card__title", id: "hub-h-laptop" }, "This laptop"),
       refreshBtn,
     ),
     laptopBody,
@@ -63,21 +60,21 @@ export function init(container, ctx) {
   );
 
   const setupBody = el("div", { class: "hub-body" });
-  const setupCard = el("section", { class: "card", "aria-labelledby": "hub-h-setup" },
-    el("h2", { id: "hub-h-setup" }, "Setup check"), setupBody);
+  const setupCard = el("section", { class: "ui-card", "aria-labelledby": "hub-h-setup" },
+    el("h2", { class: "ui-card__title", id: "hub-h-setup" }, "Setup check"), setupBody);
 
-  const scriptsBody = el("div", { class: "hub-body" }, el("p", { class: "muted" }, "Loading…"));
-  const scriptsCard = el("section", { class: "card", "aria-labelledby": "hub-h-scripts" },
-    el("h2", { id: "hub-h-scripts" }, "Quick buttons"), scriptsBody);
+  const scriptsBody = el("div", { class: "hub-body" }, ui.skeleton("tiles", 4));
+  const scriptsCard = el("section", { class: "ui-card", "aria-labelledby": "hub-h-scripts" },
+    el("h2", { class: "ui-card__title", id: "hub-h-scripts" }, "Quick buttons"), scriptsBody);
 
   const uploadCard = buildUpload();
   const installCard = buildInstall();
 
   const versionEl = el("span", { class: "muted" }, "");
-  const logoutBtn = el("button", { type: "button", class: "btn", onclick: logout }, "Log out");
+  const logoutBtn = el("button", { type: "button", class: "ui-btn ui-btn--danger-soft", onclick: logout }, ui.icon("logout"), "Log out");
   const footer = el("footer", { class: "hub-footer" }, logoutBtn, versionEl);
 
-  container.append(el("div", { class: "hub-stack" }, laptopCard, setupCard, scriptsCard, uploadCard, installCard, footer));
+  container.append(el("div", { class: "hub-stack ui-stack ui-stack--lg" }, laptopCard, scriptsCard, uploadCard, setupCard, installCard, footer));
 
   // ---- status -----------------------------------------------------------------------
   function renderError(message) {
@@ -85,7 +82,7 @@ export function init(container, ctx) {
       el("div", { class: "hub-error", role: "alert" },
         el("strong", {}, "Can't reach your laptop"),
         el("p", {}, message),
-        el("button", { type: "button", class: "btn primary", onclick: () => refresh(true) }, "Retry"),
+        el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--sm", onclick: () => refresh(true) }, "Retry"),
       ));
     setupBody.replaceChildren(el("p", { class: "muted" }, "The setup check needs the laptop to answer."));
     updated.textContent = lastOk ? `Last good update ${formatAgo(Date.now() - lastOk)}` : "";
@@ -114,25 +111,25 @@ export function init(container, ctx) {
   }
 
   function gauge_battery(b) {
-    if (!b) return el("div", { class: "gauge" },
-      el("div", { class: "g-head" }, el("span", { class: "g-label" }, "Battery"), el("span", { class: "g-num" }, "No battery")),
-      el("div", { class: "g-foot" }, el("span", { class: "muted" }, "This laptop runs on mains power only.")));
-    return gauge("Battery", "battery", b.percent, `${b.percent}%`, b.plugged ? "Charging / plugged in" : "Not plugged in");
+    if (!b) return el("div", { class: "gauge ui-card ui-card--flat" },
+      ui.tile("battery", "gray", "lg"), el("span", { class: "g-label" }, "Battery"), el("span", { class: "g-num" }, "None"),
+      el("span", { class: "g-detail" }, "Mains power only"));
+    return gauge("Battery", "battery", b.percent, `${b.percent}%`, b.plugged ? "Plugged in" : "On battery");
   }
 
   function unavailable(label) {
-    return el("div", { class: "gauge" },
-      el("div", { class: "g-head" }, el("span", { class: "g-label" }, label), el("span", { class: "g-num" }, "Not available")),
-      el("div", { class: "g-foot" }, el("span", { class: "muted" }, "Install psutil on the laptop to see this.")));
+    return el("div", { class: "gauge ui-card ui-card--flat" },
+      ui.tile("cpu", "gray", "lg"), el("span", { class: "g-label" }, label), el("span", { class: "g-num" }, "Not available"),
+      el("span", { class: "g-detail" }, "Install psutil on the laptop"));
   }
 
   function check(ok, title, detail, fix) {
     return el("li", { class: `hub-check ${ok ? "ok" : "no"}` },
-      el("span", { class: "hub-mark", "aria-hidden": "true" }, ok ? "✓" : "!"),
+      el("span", { class: "hub-mark", "aria-hidden": "true" }, ui.icon(ok ? "check" : "alert", 16)),
       el("div", { class: "grow" },
         el("div", { class: "hub-check-title" }, title,
           el("span", { class: "sr-only" }, ok ? " — ready" : " — needs attention")),
-        detail ? el("div", { class: "muted hub-check-detail" }, detail) : null,
+        detail ? el("div", { class: "hub-check-detail" }, detail) : null,
         !ok && fix ? el("div", { class: "hub-fix" }, fix) : null,
       ));
   }
@@ -187,8 +184,8 @@ export function init(container, ctx) {
       renderScripts(list);
     } catch (error) {
       scriptsLoaded = false;
-      scriptsBody.replaceChildren(el("p", { class: "error", role: "alert" }, error.message),
-        el("button", { type: "button", class: "btn", onclick: loadScripts }, "Retry"));
+      scriptsBody.replaceChildren(ui.notice(error.message, { tone: "bad" }),
+        el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", onclick: loadScripts }, ui.icon("refresh"), "Retry"));
     }
   }
 
@@ -201,56 +198,55 @@ export function init(container, ctx) {
       );
       return;
     }
-    const grid = el("div", { class: "hub-buttons" });
-    const confirmBox = el("div", { class: "hub-confirm-slot" });
+    const grid = el("div", { class: "hub-buttons ui-stagger" });
     const result = el("div", { class: "hub-result", "aria-live": "polite" });
     let running = false;
     const buttons = [];
+    const TONES = ["accent", "teal", "violet", "orange", "info", "pink"];
 
     function setBusy(busy) {
       running = busy;
       for (const b of buttons) b.disabled = busy;
     }
-    function ask(item, trigger) {
-      confirmBox.replaceChildren(el("div", { class: "hub-confirm", role: "group", "aria-label": `Confirm ${item.label}` },
-        el("span", { class: "grow" }, `Run '${item.label}'?`),
-        el("button", { type: "button", class: "btn primary", onclick: () => run(item, trigger) }, "Run"),
-        el("button", { type: "button", class: "btn", onclick: () => { confirmBox.replaceChildren(); trigger.focus(); } }, "Cancel"),
-      ));
-      confirmBox.querySelector(".btn.primary").focus();
+    async function ask(item) {
+      const ok = await ui.confirm({ title: `Run '${item.label}'?`, message: "This runs the quick button on the laptop.", confirmLabel: "Run" });
+      if (ok) run(item);
     }
-    async function run(item, trigger) {
-      confirmBox.replaceChildren();
+    async function run(item) {
       setBusy(true);
-      result.replaceChildren(el("div", { class: "hub-running" }, el("span", { class: "hub-spinner", "aria-hidden": "true" }), `Running '${item.label}'…`));
+      result.replaceChildren(el("div", { class: "hub-running" }, el("span", { class: "ui-spinner", "aria-hidden": "true" }), `Running '${item.label}'…`));
       try {
         const out = await api(`/api/run/${encodeURIComponent(item.name)}`, { method: "POST" });
         const ok = out.exit === 0;
+        ui.haptic(ok ? "success" : "error");
         result.replaceChildren(
           el("div", { class: "hub-result-head" },
             el("strong", {}, item.label),
-            el("span", { class: `badge ${ok ? "good" : "bad"}` }, ok ? "Success" : "Failed"),
+            ui.badge(ok ? "Success" : "Failed", ok ? "good" : "bad"),
             el("span", { class: "muted" }, `exit code ${out.exit}`)),
           el("pre", { class: "hub-output", tabindex: "0", "aria-label": `Output of ${item.label}` }, out.output || "(no output)"),
         );
       } catch (error) {
-        result.replaceChildren(el("p", { class: "error", role: "alert" }, `Could not run '${item.label}': ${error.message}`));
+        result.replaceChildren(ui.notice(`Could not run '${item.label}': ${error.message}`, { tone: "bad" }));
       } finally {
         setBusy(false);
       }
     }
-    for (const item of list) {
-      const b = el("button", { type: "button", class: "btn hub-bigbtn", onclick: () => { if (!running) ask(item, b); } }, item.label);
+    list.forEach((item, i) => {
+      const b = el("button", { type: "button", class: "ui-card ui-card--interactive hub-bigbtn", style: `--i:${i}`,
+        onclick: () => { if (!running) ask(item); } },
+        ui.tile("zap", TONES[i % TONES.length]), el("span", { class: "hub-bigbtn-label" }, item.label));
       buttons.push(b);
       grid.append(b);
-    }
-    scriptsBody.replaceChildren(grid, confirmBox, result);
+    });
+    scriptsBody.replaceChildren(grid, result);
+    setTimeout(() => grid.classList.remove("ui-stagger"), 1000);
   }
 
   // ---- upload -------------------------------------------------------------------------
   function buildUpload() {
     const input = el("input", { type: "file", multiple: true, class: "sr-only", id: "hub-file-input", tabindex: "-1" });
-    const pick = el("label", { class: "btn primary hub-pick", for: "hub-file-input" }, "Choose files");
+    const pick = el("label", { class: "ui-btn ui-btn--primary ui-btn--lg ui-btn--block hub-pick", for: "hub-file-input" }, ui.icon("upload"), "Choose files");
     const list = el("ul", { class: "hub-uploads", "aria-live": "polite" });
     input.addEventListener("focus", () => pick.classList.add("focus"));
     input.addEventListener("blur", () => pick.classList.remove("focus"));
@@ -261,16 +257,16 @@ export function init(container, ctx) {
     });
 
     function send(file) {
-      const bar = el("progress", { max: "100", value: "0", "aria-label": `Uploading ${file.name}` });
+      const bar = ui.progressBar(0, `Uploading ${file.name}`);
       const status = el("div", { class: "muted hub-up-status" }, "Waiting…");
-      const row = el("li", { class: "hub-upload" }, el("div", { class: "hub-up-name" }, file.name), bar, status);
+      const row = el("li", { class: "hub-upload ui-card ui-card--flat" }, ui.tile("file", "accent", "sm"), el("div", { class: "hub-up-body" }, el("div", { class: "hub-up-name ui-truncate" }, file.name), bar, status));
       list.prepend(row);
       return new Promise((resolve) => {
         const xhr = new XMLHttpRequest();
         const fail = (message) => {
           bar.remove();
           row.classList.add("failed");
-          status.className = "error hub-up-status";
+          status.className = "hub-up-status bad";
           status.textContent = `Failed: ${message}`;
           resolve();
         };
@@ -279,7 +275,7 @@ export function init(container, ctx) {
         xhr.setRequestHeader("X-Hub", "1");
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            bar.value = (e.loaded / e.total) * 100;
+            bar.set(e.loaded / e.total);
             status.textContent = `Sending… ${Math.round((e.loaded / e.total) * 100)}%`;
           }
         };
@@ -288,7 +284,6 @@ export function init(container, ctx) {
           try { body = JSON.parse(xhr.responseText); } catch (_) { /* not JSON */ }
           if (xhr.status === 401) { window.dispatchEvent(new Event("hub:unauthorized")); return fail("Please log in again."); }
           if (xhr.status >= 200 && xhr.status < 300 && body && body.saved_as) {
-            bar.value = 100;
             bar.remove();
             row.classList.add("done");
             status.className = "hub-up-status good";
@@ -308,8 +303,8 @@ export function init(container, ctx) {
       });
     }
 
-    return el("section", { class: "card", "aria-labelledby": "hub-h-upload" },
-      el("h2", { id: "hub-h-upload" }, "Send a file to the laptop"),
+    return el("section", { class: "ui-card", "aria-labelledby": "hub-h-upload" },
+      el("h2", { class: "ui-card__title", id: "hub-h-upload" }, "Send a file to the laptop"),
       el("p", { class: "muted" }, "Files land in the ", el("code", {}, "HubInbox"), " folder on the laptop. A file with a name that is already there is saved under a new name."),
       el("div", { class: "hub-pick-wrap" }, input, pick),
       list,
@@ -325,8 +320,8 @@ export function init(container, ctx) {
   // ---- install ------------------------------------------------------------------------
   function buildInstall() {
     const body = el("div", { class: "hub-body" });
-    const card = el("section", { class: "card", "aria-labelledby": "hub-h-install" },
-      el("h2", { id: "hub-h-install" }, "Install this app"), body);
+    const card = el("section", { class: "ui-card", "aria-labelledby": "hub-h-install" },
+      el("h2", { class: "ui-card__title", id: "hub-h-install" }, "Install this app"), body);
     const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
 
     function render() {
@@ -336,7 +331,7 @@ export function init(container, ctx) {
       }
       const parts = [];
       if (installEvent) {
-        parts.push(el("button", { type: "button", class: "btn primary", onclick: async () => {
+        parts.push(el("button", { type: "button", class: "ui-btn ui-btn--primary", onclick: async () => {
           const ev = installEvent;
           installEvent = null;
           try { await ev.prompt(); await ev.userChoice; } catch (_) { /* dismissed */ }
@@ -357,6 +352,7 @@ export function init(container, ctx) {
 
   // ---- footer / logout -----------------------------------------------------------------
   async function logout() {
+    if (!(await ui.confirm({ title: "Log out?", message: "You will need your token to sign in again.", confirmLabel: "Log out", danger: true }))) return;
     logoutBtn.disabled = true;
     try {
       await api("/api/logout", { method: "POST" });

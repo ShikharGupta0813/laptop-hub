@@ -2,6 +2,7 @@
 // dictated command, read its log. Status is polled every 5 s, only while this panel is open and visible.
 import { api, ApiError, el } from "./api.js";
 import { icon, spinner } from "./laptop.js";
+import { confirm as uiConfirm, haptic, tile, switchControl } from "./ui.js";
 
 const POLL_MS = 5000;
 const MAX_RECORD_SECONDS = 60;
@@ -50,62 +51,65 @@ export function createJarvis(container, ctx) {
   let stateKey = "";
   let controlKey = "";
   let sending = false;
+  const HIST_KEY = "hub.jarvis.history";
   const sent = [];
+  try { const h = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); if (Array.isArray(h)) sent.push(...h.filter((x) => x && typeof x.text === "string").slice(0, 8)); } catch (_) { /* ignore */ }
   const rec = { phase: "idle", stream: null, recorder: null, chunks: [], started: 0, tick: null, limit: null, cancelled: false };
 
   // ---- skeleton -------------------------------------------------------------------------------
   const heading = el("h2", { class: "ap-title", tabindex: "-1" }, "Jarvis");
-  const stateCard = el("div", { class: "card ap-state", role: "status" });
-  const startBtn = el("button", { type: "button", class: "btn primary ap-big", onclick: () => startJarvis() });
-  const stopBtn = el("button", { type: "button", class: "btn ap-big ap-stop", onclick: () => askStop() });
+  const stateCard = el("div", { class: "ui-card ui-card--elevated ap-state", role: "status" });
+  const startBtn = el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--lg ap-big", onclick: () => startJarvis() });
+  const stopBtn = el("button", { type: "button", class: "ui-btn ui-btn--danger-soft ui-btn--lg ap-big ap-stop", onclick: () => askStop() });
   const controls = el("div", { class: "ap-bigrow" }, startBtn, stopBtn);
-  const stopConfirm = el("div", { class: "ap-confirm", role: "alertdialog", "aria-labelledby": "ap-jv-stop-h", hidden: true });
   const actionNote = el("p", { class: "ap-form-error", role: "alert", hidden: true });
 
   const composerNote = el("div", { class: "ap-card-info", hidden: true });
-  const input = el("input", { type: "text", class: "ap-say-input", id: "ap-jv-say", autocomplete: "off",
+  const input = el("input", { type: "text", class: "ap-say-input ui-input--lg", id: "ap-jv-say", autocomplete: "off",
     autocapitalize: "sentences", enterkeyhint: "send", placeholder: "e.g. open the Q3 report" });
-  const sendBtn = el("button", { type: "submit", class: "btn primary ap-send" }, icon("send", 18), "Send");
-  const micBtn = el("button", { type: "button", class: "btn ap-mic", "aria-label": "Record a command", onclick: () => toggleMic() }, icon("assistant", 22));
-  const micCancel = el("button", { type: "button", class: "btn", hidden: true, onclick: () => finishRecording(true) }, "Cancel");
+  const sendBtn = el("button", { type: "submit", class: "ui-btn ui-btn--primary ap-send" }, icon("send", 18), "Send");
+  const micBtn = el("button", { type: "button", class: "ui-btn ui-btn--tonal ui-btn--icon ap-mic", "aria-label": "Record a command", onclick: () => toggleMic() }, icon("assistant", 22));
+  const micCancel = el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--sm", hidden: true, onclick: () => finishRecording(true) }, "Cancel");
   const micStatus = el("p", { class: "muted ap-hint", "aria-live": "polite" });
-  const autoBox = el("input", { type: "checkbox", role: "switch", class: "ap-switch", id: "ap-jv-auto" });
+  const autoSwitch = switchControl({ label: "Send automatically after dictating" });
+  const autoBox = autoSwitch.input;
+  autoBox.id = "ap-jv-auto";
   try { autoBox.checked = localStorage.getItem(AUTO_KEY) === "1"; } catch (_) { /* ignore */ }
   autoBox.addEventListener("change", () => {
     try { localStorage.setItem(AUTO_KEY, autoBox.checked ? "1" : "0"); } catch (_) { /* ignore */ }
   });
   const sayMessage = el("p", { class: "ap-say-msg", role: "status", hidden: true });
-  const sentList = el("ul", { class: "ap-sent", "aria-label": "Commands sent from this phone" });
+  const sentList = el("div", { class: "ap-sent ui-hscroll", role: "group", "aria-label": "Recent commands, tap to reuse" });
   const sayForm = el("form", { class: "ap-say-form", autocomplete: "off" },
     el("label", { class: "sr-only", for: "ap-jv-say" }, "Command for Jarvis"),
     el("div", { class: "ap-say-row" }, input, sendBtn),
     el("div", { class: "ap-say-tools" }, micBtn, micCancel,
-      el("label", { class: "ap-auto", for: "ap-jv-auto" }, autoBox, el("span", {}, "Send automatically after dictating"))),
+      el("label", { class: "ap-auto", for: "ap-jv-auto" }, autoSwitch, el("span", {}, "Send automatically after dictating"))),
     micStatus, sayMessage);
   sayForm.addEventListener("submit", (event) => { event.preventDefault(); say(); });
-  const composerCard = el("section", { class: "card ap-composer", "aria-labelledby": "ap-jv-tell-h" },
-    el("h3", { id: "ap-jv-tell-h" }, "Tell Jarvis"), composerNote, sayForm, sentList);
+  const composerCard = el("section", { class: "ui-card ap-composer", "aria-labelledby": "ap-jv-tell-h" },
+    el("h3", { id: "ap-jv-tell-h", class: "ui-card__title" }, "Tell Jarvis"), composerNote, sayForm, sentList);
 
-  const exampleButtons = EXAMPLES.map((text) => el("button", { type: "button", class: "ap-example",
+  const exampleButtons = EXAMPLES.map((text) => el("button", { type: "button", class: "ui-chip ap-example",
     onclick: () => { input.value = text; input.focus(); } }, text));
-  const helpCard = el("section", { class: "card", "aria-labelledby": "ap-jv-help-h" },
-    el("h3", { id: "ap-jv-help-h" }, "Commands you can say"),
+  const helpCard = el("section", { class: "ui-card", "aria-labelledby": "ap-jv-help-h" },
+    el("h3", { id: "ap-jv-help-h", class: "ui-card__title" }, "Commands you can say"),
     el("p", { class: "muted" }, "Say \"Hey Jarvis\" near the laptop, then one of these. Or type it above."),
     el("div", { class: "ap-examples" }, exampleButtons));
 
   const whyPre = el("pre", { class: "ap-log ap-why-pre", tabindex: "0" });
-  const whyCard = el("section", { class: "card", "aria-labelledby": "ap-jv-why-h", hidden: true },
+  const whyCard = el("section", { class: "ui-card", "aria-labelledby": "ap-jv-why-h", hidden: true },
     el("h3", { id: "ap-jv-why-h" }, "Why it may have stopped"), whyPre);
 
   const logPre = el("pre", { class: "ap-log", tabindex: "0", role: "log", "aria-label": "Jarvis log" });
-  const moreBtn = el("button", { type: "button", class: "btn", "aria-pressed": "false", onclick: () => toggleLog() }, "Show more");
-  const logRefresh = el("button", { type: "button", class: "btn", onclick: () => refresh(true) }, icon("refresh", 18), "Refresh");
-  const logCard = el("section", { class: "card", "aria-labelledby": "ap-jv-log-h" },
-    el("h3", { id: "ap-jv-log-h" }, "Log"), logPre, el("div", { class: "ap-row wrap" }, logRefresh, moreBtn));
+  const moreBtn = el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", "aria-pressed": "false", onclick: () => toggleLog() }, "Show more");
+  const logRefresh = el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", onclick: () => refresh(true) }, icon("refresh", 18), "Refresh");
+  const logCard = el("section", { class: "ui-card", "aria-labelledby": "ap-jv-log-h" },
+    el("h3", { id: "ap-jv-log-h", class: "ui-card__title" }, "Log tail"), logPre, el("div", { class: "ap-row wrap" }, logRefresh, moreBtn));
 
   container.append(
     el("div", { class: "ap-runner-head" }, heading, el("p", { class: "muted ap-desc" }, "Your voice assistant on the laptop. Start or stop it, and send it commands from here.")),
-    stateCard, controls, stopConfirm, actionNote, composerCard, helpCard, whyCard, logCard);
+    stateCard, controls, actionNote, composerCard, helpCard, whyCard, logCard);
 
   // ---- status ----------------------------------------------------------------------------------
   const canSay = () => !!(status && status.configured && status.running && status.remote_ready);
@@ -121,17 +125,17 @@ export function createJarvis(container, ctx) {
     } else if (!status) {
       nodes.push(el("div", { class: "ap-card-error" }, icon("warn", 20),
         el("div", {}, el("strong", {}, "Can't reach the laptop"), el("p", {}, loadError),
-          el("button", { type: "button", class: "btn", onclick: () => refresh(true) }, icon("refresh", 18), "Retry"))));
+          el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", onclick: () => refresh(true) }, icon("refresh", 18), "Retry"))));
     } else if (!status.configured) {
-      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ap-dot off", "aria-hidden": "true" }),
+      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ui-dot ui-dot--bad", "aria-hidden": "true" }),
         el("strong", {}, "Jarvis isn't set up")),
         el("p", {}, status.reason || "Tell the hub where the Jarvis folder is in its settings (jarvis_dir)."));
     } else if (status.running) {
       const bits = [status.pid != null ? `pid ${status.pid}` : "", sinceText(status.started_at)].filter(Boolean);
-      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ap-dot on", "aria-hidden": "true" }),
+      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ui-dot ui-dot--good ui-dot--live", "aria-hidden": "true" }),
         el("strong", {}, "Jarvis is running")), bits.length ? el("p", { class: "muted" }, bits.join(" · ")) : null);
     } else {
-      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ap-dot off", "aria-hidden": "true" }),
+      nodes.push(el("div", { class: "ap-statehead" }, el("span", { class: "ui-dot", "aria-hidden": "true" }),
         el("strong", {}, "Jarvis is stopped")), el("p", { class: "muted" }, "Tap Start Jarvis to begin listening on the laptop."));
     }
     if (status && loadError) {
@@ -141,7 +145,7 @@ export function createJarvis(container, ctx) {
   }
 
   function renderControls() {
-    const key = JSON.stringify([status && status.configured, status && status.running, busy, stopConfirm.hidden]);
+    const key = JSON.stringify([status && status.configured, status && status.running, busy]);
     if (key === controlKey) return;
     controlKey = key;
     const configured = !!(status && status.configured);
@@ -286,32 +290,16 @@ export function createJarvis(container, ctx) {
     if (opened) render();
   }
 
-  function askStop() {
+  async function askStop() {
     if (busy) return;
-    const cancel = el("button", { type: "button", class: "btn", onclick: () => hideStop() }, "Cancel");
-    const yes = el("button", { type: "button", class: "btn danger", onclick: () => stopJarvis() }, "Yes, stop Jarvis");
-    stopConfirm.replaceChildren(
-      el("h3", { id: "ap-jv-stop-h" }, "Stop Jarvis?"),
-      el("p", { class: "muted" }, "It will stop listening on the laptop until you start it again."),
-      el("div", { class: "ap-row ap-confirm-row" }, cancel, yes));
-    stopConfirm.hidden = false;
-    controlKey = "";
-    renderControls();
-    cancel.focus();
-  }
-
-  function hideStop() {
-    stopConfirm.hidden = true;
-    stopConfirm.replaceChildren();
-    controlKey = "";
-    renderControls();
-    stopBtn.focus();
+    const ok = await uiConfirm({ title: "Stop Jarvis?", message: "It will stop listening on the laptop until you start it again.",
+      confirmLabel: "Yes, stop Jarvis", danger: true });
+    if (ok) stopJarvis();
+    else stopBtn.focus();
   }
 
   async function stopJarvis() {
     if (busy) return;
-    stopConfirm.hidden = true;
-    stopConfirm.replaceChildren();
     busy = "stop";
     setActionMessage("");
     controlKey = "";
@@ -337,7 +325,8 @@ export function createJarvis(container, ctx) {
   }
 
   function renderSent() {
-    sentList.replaceChildren(...sent.map((item) => el("li", {}, el("span", { class: "muted" }, item.time), " ", item.text)));
+    sentList.replaceChildren(...sent.map((item) => el("button", { type: "button", class: "ui-chip ap-hist", title: item.time || "",
+      onclick: () => { input.value = item.text; input.focus(); } }, icon("history", 14), el("span", { class: "ui-truncate" }, item.text))));
     sentList.hidden = sent.length === 0;
   }
 
@@ -351,8 +340,12 @@ export function createJarvis(container, ctx) {
     try {
       const data = await api("/api/jarvis/say", { method: "POST", json: { text } });
       const now = new Date();
+      const at = sent.findIndex((x) => x.text === text);
+      if (at >= 0) sent.splice(at, 1);
       sent.unshift({ text, time: `${pad(now.getHours())}:${pad(now.getMinutes())}` });
-      sent.length = Math.min(sent.length, 4);
+      sent.length = Math.min(sent.length, 8);
+      try { localStorage.setItem(HIST_KEY, JSON.stringify(sent)); } catch (_) { /* ignore */ }
+      haptic("success");
       renderSent();
       input.value = "";
       sayMessageShow(data && data.queued ? "Queued. Jarvis will run it and answer out loud on the laptop." : "Sent.", false);
@@ -537,8 +530,6 @@ export function createJarvis(container, ctx) {
     if (rec.phase === "recording") finishRecording(true);
     else releaseStream();
     if (rec.phase === "recording") setPhase("idle");
-    stopConfirm.hidden = true;
-    stopConfirm.replaceChildren();
     controlKey = "";
   }
 

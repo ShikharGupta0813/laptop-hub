@@ -2,65 +2,127 @@
 // Jarvis screen. Adding an option is one entry: built-in ones are the ENTRIES array below, laptop actions
 // come from GET /api/laptop/actions and appear automatically.
 import { api, el } from "./api.js";
-import { createRunner, icon } from "./laptop.js";
+import { createRunner } from "./laptop.js";
+import * as ui from "./ui.js";
 import { createJarvis } from "./jarvis.js";
 
 // ---- the data -------------------------------------------------------------------------------------
-// Entry: {id, title, description, category, keywords, kind: "view"|"jarvis"|"action", target, featured?, icon?}
+// Entry: {id, title, description, category, keywords, kind: "view"|"jarvis"|"action", target, featured?, isNew?, icon?}
 // "view" targets are {view, section?} and open with ctx.open(view, section).
+// Laptop actions from the API all land in the "files" category (Files & Laptop), tagged with their own group.
 const BUILTIN_CATEGORIES = [
-  { key: "assistant", title: "Assistant", icon: "assistant" },
-  { key: "work", title: "Work", icon: "work" },
-  { key: "learn", title: "Learn", icon: "learn" },
-  { key: "notes", title: "Notes", icon: "notes" },
-  { key: "laptop", title: "Laptop", icon: "laptop" },
+  { key: "talk", title: "Talk & AI", icon: "talk", tone: "violet" },
+  { key: "work", title: "Work", icon: "work", tone: "info" },
+  { key: "learn", title: "Learn", icon: "learn", tone: "teal" },
+  { key: "plan", title: "Notes & Planning", icon: "note", tone: "orange" },
+  { key: "money", title: "Money", icon: "trend", tone: "good" },
+  { key: "files", title: "Files & Laptop", icon: "laptop", tone: "accent" },
+  { key: "monitor", title: "Monitoring", icon: "eye", tone: "pink" },
+  { key: "system", title: "System", icon: "settings", tone: "gray" },
 ];
 
-const view = (id, title, description, category, keywords, target) =>
-  ({ id, title, description, category, keywords, kind: "view", target });
+const view = (id, title, description, category, keywords, target, extra = {}) =>
+  ({ id, title, description, category, keywords, kind: "view", target, ...extra });
 
 const ENTRIES = [
+  // Talk & AI
   { id: "jarvis", title: "Jarvis", description: "Start or stop your voice assistant on the laptop, and tell it what to do.",
-    category: "assistant", keywords: ["voice", "hey jarvis", "assistant", "control laptop", "start", "stop", "speak", "command"],
+    category: "talk", keywords: ["voice", "hey jarvis", "assistant", "control laptop", "start", "stop", "speak", "command"],
     kind: "jarvis", featured: true, icon: "jarvis" },
-  view("assistant", "Talk to assistant", "Ask for anything by voice or text. It can use your laptop.", "assistant",
-    ["chat", "ai", "claude", "ask", "help", "speak"], { view: "assistant" }),
+  view("assistant", "Talk to assistant", "Ask for anything by voice or text. It can use your laptop.", "talk",
+    ["chat", "ai", "claude", "ask", "help", "speak"], { view: "assistant" }, { icon: "talk" }),
+  view("assistant-voice", "Voice chat", "Hold a spoken conversation with the assistant.", "talk",
+    ["microphone", "speak", "hands free", "voice", "talk", "listen"], { view: "assistant", section: "voice" }, { icon: "mic" }),
 
+  // Work
   view("tasks", "Asana tasks", "What is due today, overdue and coming up.", "work",
-    ["todo", "work items", "assigned", "asana", "due", "overdue", "project"], { view: "work", section: "tasks" }),
+    ["todo", "work items", "assigned", "asana", "due", "overdue", "project"], { view: "work", section: "tasks" }, { icon: "list-checks" }),
   view("calendar", "Calendar", "Today's meetings, with join links.", "work",
-    ["meetings", "schedule", "agenda", "events", "zoom", "meet", "teams", "join"], { view: "work", section: "calendar" }),
+    ["meetings", "schedule", "agenda", "events", "zoom", "meet", "teams", "join"], { view: "work", section: "calendar" }, { icon: "calendar" }),
   view("email", "Send email", "Write a draft with AI, check it, then send.", "work",
-    ["mail", "gmail", "compose", "write", "message", "draft"], { view: "work", section: "email" }),
+    ["mail", "gmail", "compose", "write", "message", "draft"], { view: "work", section: "email" }, { icon: "mail" }),
   view("gchat", "Google Chat", "Send a message to one of your chat spaces.", "work",
-    ["chat", "message", "spaces", "team", "slack"], { view: "work", section: "chat" }),
+    ["chat", "message", "spaces", "team", "slack"], { view: "work", section: "chat" }, { icon: "talk" }),
 
+  // Learn
   view("study-chat", "Study chat", "Ask questions about a note, a file or any topic.", "learn",
-    ["study", "tutor", "explain", "questions", "learn", "ask"], { view: "learn", section: "chat" }),
+    ["study", "tutor", "explain", "questions", "learn", "ask"], { view: "learn", section: "chat" }, { icon: "book-open" }),
   view("quiz", "Quiz", "Test yourself on your notes or a topic.", "learn",
-    ["test", "mcq", "practice", "exam", "revise", "questions"], { view: "learn", section: "quiz" }),
+    ["test", "mcq", "practice", "exam", "revise", "questions"], { view: "learn", section: "quiz" }, { icon: "quiz" }),
+  view("cards", "Flashcards", "Review cards made from your notes, spaced for memory.", "learn",
+    ["flashcards", "review", "spaced repetition", "memorise", "deck", "anki"], { view: "cards" }, { icon: "layers", isNew: true }),
+  view("kb", "Knowledge base", "Ask questions across the documents you added.", "learn",
+    ["knowledge", "documents", "library", "search", "rag", "sources", "pdf"], { view: "kb" }, { icon: "book-open", isNew: true }),
   view("english-speak", "English coach", "Speak for a minute and get feedback on how you sounded.", "learn",
-    ["speaking", "pronunciation", "fluency", "practice", "talk", "english"], { view: "learn", section: "english/speak" }),
+    ["speaking", "pronunciation", "fluency", "practice", "talk", "english"], { view: "learn", section: "english/speak" }, { icon: "language" }),
   view("roleplay", "Role-play", "Practise a real conversation with a partner.", "learn",
-    ["conversation", "interview", "dialogue", "english", "practice"], { view: "learn", section: "english/roleplay" }),
+    ["conversation", "interview", "dialogue", "english", "practice"], { view: "learn", section: "english/roleplay" }, { icon: "users" }),
   view("correct", "Fix my writing", "Corrects your grammar and explains why.", "learn",
-    ["grammar", "proofread", "rewrite", "spelling", "edit", "english"], { view: "learn", section: "english/correct" }),
+    ["grammar", "proofread", "rewrite", "spelling", "edit", "english"], { view: "learn", section: "english/correct" }, { icon: "pen" }),
   view("vocab", "Vocabulary", "New words every day, with quick reviews.", "learn",
-    ["words", "flashcards", "dictionary", "meaning", "english", "review"], { view: "learn", section: "english/vocab" }),
+    ["words", "flashcards", "dictionary", "meaning", "english", "review"], { view: "learn", section: "english/vocab" }, { icon: "book" }),
   view("progress", "English progress", "Streaks, scores and trends over time.", "learn",
-    ["stats", "streak", "history", "score", "english", "trend"], { view: "learn", section: "english/progress" }),
+    ["stats", "streak", "history", "score", "english", "trend"], { view: "learn", section: "english/progress" }, { icon: "chart" }),
 
-  view("notes", "Notes", "Your notes, tagged for you.", "notes",
-    ["memo", "write", "jot", "ideas", "tags", "search notes"], { view: "notes" }),
-  view("voice-note", "Voice note", "Say a thought and it is written down.", "notes",
-    ["record", "dictate", "microphone", "audio", "speak", "mic"], { view: "notes" }),
+  // Notes & Planning
+  view("notes", "Notes", "Your notes, tagged for you.", "plan",
+    ["memo", "write", "jot", "ideas", "tags", "search notes"], { view: "notes" }, { icon: "note" }),
+  view("voice-note", "Voice note", "Say a thought and it is written down.", "plan",
+    ["record", "dictate", "microphone", "audio", "speak", "mic"], { view: "notes", section: "voice" }, { icon: "mic" }),
+  view("todos", "To-do", "A simple list for today, with due dates.", "plan",
+    ["tasks", "checklist", "list", "personal", "things to do"], { view: "todos" }, { icon: "list-checks", isNew: true }),
+  view("habits", "Habits", "Build streaks one day at a time.", "plan",
+    ["streak", "routine", "daily", "track", "goals"], { view: "habits" }, { icon: "flame", isNew: true }),
+  view("journal", "Journal", "A private page for each day.", "plan",
+    ["diary", "reflect", "mood", "write", "daily"], { view: "journal" }, { icon: "book", isNew: true }),
+  view("focus", "Focus timer", "A big timer for deep work, with breaks.", "plan",
+    ["pomodoro", "timer", "concentrate", "deep work", "study"], { view: "focus" }, { icon: "target", isNew: true }),
+  view("reminders", "Reminders", "Get a nudge at the right time.", "plan",
+    ["alarm", "remind", "notify", "later", "schedule"], { view: "reminders" }, { icon: "alarm", isNew: true }),
+  view("bookmarks", "Read later", "Save links and get a quick summary of each.", "plan",
+    ["bookmarks", "links", "articles", "save", "tldr", "web", "url"], { view: "bookmarks" }, { icon: "bookmark", isNew: true }),
+  view("countdowns", "Countdowns", "Days left to birthdays, trips and deadlines.", "plan",
+    ["days", "birthday", "event", "date", "anniversary", "trip"], { view: "tools", section: "countdowns" }, { icon: "calendar", isNew: true }),
 
-  view("files", "Files", "Browse and read the folders you share. Select text to explain it.", "laptop",
-    ["documents", "folder", "browse", "pdf", "read", "download", "images"], { view: "files" }),
-  view("terminal", "Terminal", "A real shell on the laptop: PowerShell, WSL or bash.", "laptop",
-    ["shell", "powershell", "bash", "command line", "cmd", "wsl", "console", "ssh"], { view: "terminal" }),
-  view("hub", "Hub status and upload", "Laptop health, quick buttons, send files to the laptop.", "laptop",
-    ["status", "battery", "cpu", "disk", "upload", "inbox", "logout", "install", "settings", "send file"], { view: "hub" }),
+  // Money
+  view("expenses", "Spending", "Type '450 lunch' and it is logged. See the month at a glance.", "money",
+    ["expenses", "budget", "money", "rupees", "cost", "finance", "bills"], { view: "expenses" }, { icon: "trend", isNew: true }),
+
+  // Files & Laptop
+  view("files", "Files", "Browse and read the folders you share. Select text to explain it.", "files",
+    ["documents", "folder", "browse", "pdf", "read", "download", "images"], { view: "files" }, { icon: "folder" }),
+  view("terminal", "Terminal", "A real shell on the laptop: PowerShell, WSL or bash.", "files",
+    ["shell", "powershell", "bash", "command line", "cmd", "wsl", "console", "ssh"], { view: "terminal" }, { icon: "terminal" }),
+  view("hub", "Laptop status and upload", "Laptop health, quick buttons, send files to the laptop.", "files",
+    ["status", "battery", "cpu", "disk", "upload", "logout", "install", "settings", "send file", "hub"], { view: "hub" }, { icon: "laptop" }),
+  view("inbox", "Inbox", "Files and links your phone sent to the laptop, and back.", "files",
+    ["received", "shared", "files", "capture", "share"], { view: "inbox" }, { icon: "inbox", isNew: true }),
+  view("screen", "Remote screen", "See the laptop screen and tap through it.", "files",
+    ["screenshot", "cast", "mirror", "view", "remote desktop", "display"], { view: "screen" }, { icon: "cast", isNew: true }),
+
+  // Monitoring
+  view("watch", "Watch", "Get told when a page, price or file changes.", "monitor",
+    ["monitor", "alerts", "track", "change", "website", "price"], { view: "watch" }, { icon: "eye", isNew: true }),
+  view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
+    ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
+
+  // System
+  view("settings", "Settings", "Appearance, notifications and how the hub behaves.", "system",
+    ["theme", "accent", "dark", "light", "preferences", "options", "appearance"], { view: "settings" }, { icon: "settings" }),
+  view("automations", "Automations", "When this happens, do that, on the laptop or phone.", "system",
+    ["rules", "workflow", "triggers", "schedule", "if this then that"], { view: "automations" }, { icon: "zap", isNew: true }),
+  view("tools", "Tools", "Calculator, converter, world clock, snippets and more.", "system",
+    ["utilities", "calc", "convert", "clock", "snippets", "clipboard"], { view: "tools" }, { icon: "sliders", isNew: true }),
+  view("calculator", "Calculator", "Type a sum like 12% of 480 and get the answer.", "system",
+    ["calc", "maths", "arithmetic", "percent", "sum", "expression"], { view: "tools", section: "calculator" }, { icon: "hash", isNew: true }),
+  view("converter", "Unit converter", "Length, weight, temperature, data and more.", "system",
+    ["convert", "units", "km", "miles", "celsius", "fahrenheit", "kg", "lb"], { view: "tools", section: "converter" }, { icon: "arrow-right", isNew: true }),
+  view("world-clock", "World clock", "What time it is in your cities.", "system",
+    ["time", "timezone", "zones", "utc", "clock", "india", "london"], { view: "tools", section: "clock" }, { icon: "globe", isNew: true }),
+  view("snippets", "Snippets", "Text you paste often, one tap to copy.", "system",
+    ["text", "templates", "paste", "saved", "boilerplate", "reply"], { view: "tools", section: "snippets" }, { icon: "note-plus", isNew: true }),
+  view("clipboard-history", "Clipboard history", "The last things you copied, and a phone-to-laptop paste.", "system",
+    ["clip", "copy", "paste", "history", "clipboard"], { view: "tools", section: "clipboard" }, { icon: "clipboard", isNew: true }),
 ];
 
 const FAV_KEY = "hub.apps.fav";
@@ -88,7 +150,6 @@ export function init(container, ctx) {
   let favs = readList(FAV_KEY) || [...DEFAULT_FAVS];
   let recent = readList(RECENT_KEY) || [];
   let actionEntries = [];
-  let actionCategories = [];
   let actionState = "idle"; // idle | loading | ok | error
   let actionError = "";
   let actionsAt = 0;
@@ -98,24 +159,24 @@ export function init(container, ctx) {
   let dirScroll = 0;
 
   // ---- panels -------------------------------------------------------------------------------------
-  const search = el("input", { type: "search", id: "ap-search", class: "ap-search-input", placeholder: "Search every feature",
+  const search = el("input", { type: "search", id: "ap-search", class: "ap-search-input ui-input--lg", placeholder: "Search every feature",
     autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-controls": "ap-results" });
-  const clearBtn = el("button", { type: "button", class: "ap-clear", "aria-label": "Clear search", hidden: true,
-    onclick: () => { search.value = ""; renderAll(); search.focus(); } }, icon("close", 20));
-  const chips = el("div", { class: "ap-chips", role: "group", "aria-label": "Categories" });
+  const clearBtn = el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--icon ap-clear", "aria-label": "Clear search", hidden: true,
+    onclick: () => { search.value = ""; renderAll(); search.focus(); } }, ui.icon("close", 18));
+  const chips = el("div", { class: "ap-chips ui-hscroll", role: "group", "aria-label": "Categories" });
   const note = el("div", { class: "ap-note", hidden: true });
-  const live = el("p", { class: "muted ap-live", "aria-live": "polite" });
+  const live = el("p", { class: "ap-live", "aria-live": "polite" });
   const results = el("div", { class: "ap-results", id: "ap-results" });
   const title = el("h2", { class: "ap-title", tabindex: "-1" }, "Apps");
-  const subtitle = el("p", { class: "muted ap-desc" }, "");
+  const subtitle = el("p", { class: "ap-desc" }, "");
   const dirPanel = el("section", { class: "ap-panel", "data-panel": "dir" },
     el("div", { class: "ap-runner-head" }, title, subtitle),
-    el("div", { class: "ap-search" }, icon("search", 20), el("label", { class: "sr-only", for: "ap-search" }, "Search apps and actions"), search, clearBtn),
+    el("div", { class: "ap-search ui-input-wrap" }, ui.icon("search", 20), el("label", { class: "sr-only", for: "ap-search" }, "Search apps and actions"), search, clearBtn),
     chips, note, live, results);
 
   const runnerBody = el("div", {});
   const jarvisBody = el("div", {});
-  const mkBack = () => el("button", { type: "button", class: "btn ap-linkbtn ap-back", onclick: () => back() }, icon("back", 18), "Back to Apps");
+  const mkBack = () => el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--sm ap-back", onclick: () => back() }, ui.icon("arrow-left", 18), "Back to Apps");
   const runnerPanel = el("section", { class: "ap-panel", "data-panel": "runner", hidden: true }, mkBack(), runnerBody);
   const jarvisPanel = el("section", { class: "ap-panel", "data-panel": "jarvis", hidden: true }, mkBack(), jarvisBody);
   container.append(dirPanel, runnerPanel, jarvisPanel);
@@ -136,19 +197,18 @@ export function init(container, ctx) {
   function back() {
     showPanel("dir");
     renderAll();
-    search.focus({ preventScroll: true });
   }
 
   // ---- entries ------------------------------------------------------------------------------------
   const allEntries = () => [...ENTRIES, ...actionEntries];
-  const allCategories = () => [...BUILTIN_CATEGORIES, ...actionCategories];
+  const allCategories = () => BUILTIN_CATEGORIES;
   const byId = (id) => allEntries().find((e) => e.id === id);
-  const categoryOf = (e) => allCategories().find((c) => c.key === e.category);
+  const categoryOf = (e) => BUILTIN_CATEGORIES.find((c) => c.key === e.category);
 
   function haystack(e) {
     if (!e._hay) {
       const cat = categoryOf(e);
-      e._hay = [e.title, e.description, ...(e.keywords || []), cat ? cat.title : ""].join(" ").toLowerCase();
+      e._hay = [e.title, e.description, ...(e.keywords || []), cat ? cat.title : "", e.group || ""].join(" ").toLowerCase();
     }
     return e._hay;
   }
@@ -158,6 +218,9 @@ export function init(container, ctx) {
     return query.split(/\s+/).every((word) => hay.includes(word));
   }
 
+  const ACTION_ICON = { system: "info", processes: "activity", launch: "external", screen: "monitor", clipboard: "clipboard",
+    media: "volume", apps: "grid", buttons: "zap" };
+
   async function loadActions() {
     if (loading) return loading;
     actionState = "loading";
@@ -166,15 +229,11 @@ export function init(container, ctx) {
       try {
         const data = await api("/api/laptop/actions");
         const titles = new Map((data.categories || []).map((c) => [c.id, c.title]));
-        const order = (data.categories || []).map((c) => c.id);
-        for (const a of data.actions || []) if (!order.includes(a.category)) order.push(a.category);
-        actionCategories = order
-          .filter((id) => (data.actions || []).some((a) => a.category === id))
-          .map((id) => ({ key: `x-${id}`, title: titles.get(id) || id, icon: id }));
         actionEntries = (data.actions || []).map((a) => ({
-          id: `action:${a.id}`, title: a.title, description: a.description || "", category: `x-${a.category}`,
-          keywords: [a.id.replace(/[_:]/g, " "), a.category, titles.get(a.category) || ""],
-          kind: "action", target: a.id, action: a, available: a.available !== false,
+          id: `action:${a.id}`, title: a.title, description: a.description || "", category: "files",
+          keywords: [a.id.replace(/[_:]/g, " "), a.category, titles.get(a.category) || "", "laptop", "action"],
+          kind: "action", target: a.id, action: a, available: a.available !== false, group: titles.get(a.category) || a.category,
+          icon: ACTION_ICON[a.category] || "laptop",
           reason: a.unavailable_reason || "Not available on this laptop.",
         }));
         actionState = "ok";
@@ -197,6 +256,7 @@ export function init(container, ctx) {
   function toggleFav(id) {
     favs = isFav(id) ? favs.filter((x) => x !== id) : [...favs, id];
     writeList(FAV_KEY, favs);
+    ui.haptic("select");
   }
   function pushRecent(id) {
     recent = [id, ...recent.filter((x) => x !== id)].slice(0, RECENT_MAX);
@@ -227,26 +287,33 @@ export function init(container, ctx) {
     note.replaceChildren();
     if (actionState === "error") {
       note.hidden = false;
-      note.append(el("span", {}, "Laptop actions couldn't be loaded. The built-in apps still work."),
-        el("button", { type: "button", class: "btn", onclick: () => loadActions() }, "Retry"));
-      if (actionError) note.append(el("span", { class: "muted ap-note-why" }, actionError));
+      note.append(ui.notice(el("span", {}, "Laptop actions couldn't be loaded. The built-in apps still work. ", actionError ? el("span", { class: "ap-note-why" }, actionError) : null,
+        " ", el("button", { type: "button", class: "ui-link", onclick: () => loadActions() }, "Retry")), { tone: "warn" }));
     } else if (actionState === "loading") {
       note.hidden = false;
-      note.append(el("span", { class: "muted" }, "Loading laptop actions…"));
+      note.append(el("div", { class: "ap-loading" }, el("span", { class: "ui-spinner", "aria-hidden": "true" }), "Loading laptop actions…"));
     } else {
       note.hidden = true;
     }
   }
 
+  function toneFor(e) {
+    const cat = categoryOf(e);
+    return cat ? cat.tone : "accent";
+  }
+
   function card(e, section) {
     const off = e.kind === "action" && e.available === false;
-    const cat = categoryOf(e);
     const fav = isFav(e.id);
+    const featured = !!e.featured;
     const open = el("button", { type: "button", class: "ap-open", "data-id": e.id, "aria-disabled": off ? "true" : null,
       onclick: () => openEntry(e) },
-      el("span", { class: "ap-ico-wrap", "aria-hidden": "true" }, icon(e.icon || (cat && cat.icon) || "apps", 22)),
-      el("span", { class: "ap-card-title" }, e.title),
-      el("span", { class: "ap-card-desc" }, off ? `Unavailable: ${e.reason}` : e.description));
+      featured ? el("span", { class: "ap-ico-wrap" }, ui.icon(e.icon || "apps", 28)) : ui.tile(e.icon || "apps", toneFor(e)),
+      el("span", { class: "ap-card-text" },
+        el("span", { class: "ap-card-title" }, e.title,
+          e.isNew && !featured ? ui.badge("New", "accent") : null),
+        e.group ? el("span", { class: "ap-card-group" }, e.group) : null,
+        el("span", { class: "ap-card-desc" }, off ? `Unavailable: ${e.reason}` : e.description)));
     const star = el("button", { type: "button", class: "ap-star", "data-id": e.id, "aria-pressed": String(fav),
       "aria-label": `Favourite ${e.title}`, onclick: () => {
         toggleFav(e.id);
@@ -254,14 +321,22 @@ export function init(container, ctx) {
         const again = results.querySelector(`[data-section="${section}"] .ap-star[data-id="${CSS.escape(e.id)}"]`)
           || results.querySelector(`.ap-star[data-id="${CSS.escape(e.id)}"]`);
         if (again) again.focus({ preventScroll: true });
-      } }, icon("star", 20));
-    return el("div", { class: `ap-card${off ? " off" : ""}${e.featured ? " featured" : ""}`, "data-kind": e.kind }, open, star);
+      } }, ui.icon("star", 18));
+    const cls = featured ? "ui-card ui-card--gradient ui-card--interactive" : "ui-card ui-card--interactive";
+    return el("div", { class: `${cls} ap-card${off ? " off" : ""}${featured ? " featured" : ""}`, "data-kind": e.kind }, open, star);
+  }
+
+  // A compact tile for the Favourites row.
+  function favTile(e) {
+    return el("button", { type: "button", class: "ap-fav", "data-id": e.id, onclick: () => openEntry(e) },
+      ui.tile(e.icon || "apps", toneFor(e), "lg"), el("span", { class: "ap-fav-label" }, e.title));
   }
 
   function section(key, heading, entries) {
     return el("section", { class: "ap-section", "data-section": key, "aria-labelledby": `ap-h-${key}` },
-      el("h3", { id: `ap-h-${key}` }, heading, el("span", { class: "ap-count" }, String(entries.length))),
-      el("div", { class: "ap-grid" }, entries.map((e) => card(e, key))));
+      el("div", { class: "ui-section-head" }, el("h3", { id: `ap-h-${key}`, class: "ui-section-title" }, heading),
+        el("span", { class: "ap-count" }, String(entries.length))),
+      el("div", { class: "ap-grid ui-stagger" }, entries.map((e) => card(e, key))));
   }
 
   function rank(e, query) {
@@ -270,64 +345,75 @@ export function init(container, ctx) {
   }
 
   function renderChips(query) {
-    const all = allEntries();
     const counts = new Map();
     let total = 0;
-    for (const e of all) {
+    for (const e of allEntries()) {
       if (!matches(e, query)) continue;
       total += 1;
       counts.set(e.category, (counts.get(e.category) || 0) + 1);
     }
-    const make = (key, label, count) => el("button", { type: "button", class: "chip ap-chip", "aria-pressed": String(category === key),
-      "data-cat": key, onclick: () => { category = key; renderAll(); } }, label, el("span", { class: "ap-chip-n" }, String(count)));
-    chips.replaceChildren(make("all", "All", total),
-      ...allCategories().map((c) => make(c.key, c.title, counts.get(c.key) || 0)));
+    const make = (key, label, count, icon) => el("button", { type: "button", class: `ui-chip ap-chip${category === key ? " is-on" : ""}`,
+      "aria-pressed": String(category === key), "data-cat": key, onclick: () => { category = key; renderAll(); } },
+      icon ? ui.icon(icon) : null, label, el("span", { class: "ap-chip-n" }, String(count)));
+    chips.replaceChildren(make("all", "All", total, "grid"),
+      ...allCategories().map((c) => make(c.key, c.title, counts.get(c.key) || 0, c.icon)));
     return total;
   }
 
+  let firstRender = true;
   function renderAll() {
     const query = search.value.trim().toLowerCase();
     clearBtn.hidden = !search.value;
-    if (category !== "all" && !allCategories().some((c) => c.key === category)) category = "all";
     renderNote();
     renderChips(query);
-    subtitle.textContent = `${allEntries().length} options in one place. Star the ones you use most.`;
+    subtitle.textContent = `${allEntries().length} things you can do. Star the ones you use most.`;
 
     const pool = allEntries().filter((e) => matches(e, query) && (category === "all" || e.category === category));
     results.replaceChildren();
     if (!pool.length) {
-      live.textContent = query ? `Nothing matches "${search.value.trim()}"` : "Nothing here yet.";
-      results.append(el("div", { class: "ap-empty card" },
-        el("p", {}, query ? `Nothing matches "${search.value.trim()}"` : "Nothing in this category yet."),
-        query ? el("button", { type: "button", class: "btn", onclick: () => { search.value = ""; category = "all"; renderAll(); search.focus(); } }, "Clear search") : null));
+      live.textContent = "";
+      results.append(ui.emptyState({ icon: "search", title: query ? `Nothing matches "${search.value.trim()}"` : "Nothing in this category yet",
+        body: query ? "Try a different word, like a feature or an app name." : "",
+        action: query ? { label: "Clear search", icon: "close", onClick: () => { search.value = ""; category = "all"; renderAll(); search.focus(); } } : null }));
       return;
     }
-    live.textContent = query
-      ? `${pool.length} ${pool.length === 1 ? "match" : "matches"} for "${search.value.trim()}"`
-      : (category === "all" ? "" : `${pool.length} in ${allCategories().find((c) => c.key === category)?.title || category}`);
+    live.textContent = query ? `${pool.length} ${pool.length === 1 ? "match" : "matches"} for "${search.value.trim()}"` : "";
 
     const featured = pool.filter((e) => e.featured);
     const rest = pool.filter((e) => !e.featured);
     if (featured.length) {
       results.append(el("section", { class: "ap-section ap-featured", "data-section": "featured", "aria-label": "Featured" },
-        el("div", { class: "ap-grid one" }, featured.map((e) => card(e, "featured")))));
+        featured.map((e) => card(e, "featured"))));
     }
     if (query) {
       rest.sort((a, b) => rank(a, query) - rank(b, query));
       results.append(section("results", "Results", rest));
-      return;
-    }
-    if (category === "all") {
+    } else if (category === "all") {
       const favEntries = favs.map(byId).filter((e) => e && !e.featured);
       const recentEntries = recent.map(byId).filter(Boolean);
-      if (favEntries.length) results.append(section("fav", "Favourites", favEntries));
-      if (recentEntries.length) results.append(section("recent", "Recent", recentEntries));
+      if (favEntries.length) {
+        results.append(el("section", { class: "ap-section", "data-section": "fav", "aria-labelledby": "ap-h-fav" },
+          el("div", { class: "ui-section-head" }, el("h3", { id: "ap-h-fav", class: "ui-section-title" }, "Favourites")),
+          el("div", { class: "ap-favs ui-hscroll" }, favEntries.map(favTile))));
+      }
+      if (recentEntries.length) {
+        results.append(el("section", { class: "ap-section", "data-section": "recent", "aria-labelledby": "ap-h-recent" },
+          el("div", { class: "ui-section-head" }, el("h3", { id: "ap-h-recent", class: "ui-section-title" }, "Recent")),
+          el("div", { class: "ap-recents ui-hscroll" }, recentEntries.map((e) => el("button", { type: "button", class: "ui-chip ap-recent",
+            "data-id": e.id, onclick: () => openEntry(e) }, ui.icon(e.icon || "apps"), e.title)))));
+      }
       for (const cat of allCategories()) {
         const inCat = rest.filter((e) => e.category === cat.key);
         if (inCat.length) results.append(section(`cat-${cat.key}`, cat.title, inCat));
       }
     } else if (rest.length) {
       results.append(section("list", allCategories().find((c) => c.key === category)?.title || "Apps", rest));
+    }
+    if (firstRender) {
+      firstRender = false;
+      setTimeout(() => results.querySelectorAll(".ui-stagger").forEach((n) => n.classList.remove("ui-stagger")), 1000);
+    } else {
+      results.querySelectorAll(".ui-stagger").forEach((n) => n.classList.remove("ui-stagger"));
     }
   }
 
@@ -359,5 +445,6 @@ export function init(container, ctx) {
         back();
       }
     },
+    refresh() { loadActions(); },
   };
 }

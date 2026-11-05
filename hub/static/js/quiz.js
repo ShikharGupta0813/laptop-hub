@@ -2,7 +2,8 @@
 // Questions, answers, explanations and sources come from models, files and the web, so they are
 // only ever put on screen with textContent (via el()).
 import { api, el } from "./api.js";
-import { createSourcePicker, createProviderSwitch, icon, store } from "./sourcepicker.js";
+import * as ui from "./ui.js";
+import { createSourceSheet, createProviderSwitch, ensureCss, store } from "./sourcepicker.js";
 
 const PREFS_KEY = "hub.quiz.prefs";
 const LEVELS = [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]];
@@ -20,6 +21,7 @@ function prettyDate(iso) {
 function pct(score) { return `${Math.round(score * 100)}%`; }
 
 export function init(container, ctx) {
+  ensureCss("/css/learn.css");
   const root = el("div", { class: "qz-root" });
   container.append(root);
   const stage = el("div", { class: "qz-stage" });
@@ -53,14 +55,25 @@ export function init(container, ctx) {
   let lastSettings = null;
   let genController = null;
   let genTimer = null;
-  let confirmQuit = false;
 
-  // The setup form is built once so the picker keeps its state between screens.
-  const setupRoot = el("div", { class: "qz-setup" });
-  const pickerHost = el("div", { class: "qz-picker" });
-  const picker = createSourcePicker(pickerHost, ctx, { required: true, allowNone: false });
+  // The setup form is built once so the source keeps its state between screens.
+  const setupRoot = el("div", { class: "qz-setup ui-stack ui-stack--lg" });
+  let pickedSource = null;
+  let pickedLabel = "";
+  const sources = createSourceSheet(ctx, { title: "Quiz source", applyLabel: "Use this source",
+    onApply(next, label) { pickedSource = next; pickedLabel = label; paintSourceRow(); paintMake(); setupError = ""; paintError(); } });
+  const sourceTitle = el("span", { class: "ui-row__title" });
+  const sourceSub = el("span", { class: "ui-row__sub" });
+  const sourceRow = el("button", { type: "button", class: "ui-card ui-card--interactive qz-source", "aria-haspopup": "dialog",
+    onclick: () => sources.open() }, ui.tile("book-open", "accent"), el("span", { class: "ui-row__body" }, sourceTitle, sourceSub),
+  ui.icon("chevron-right", { class: "ui-row__chev" }));
+  function paintSourceRow() {
+    sourceTitle.textContent = pickedSource ? pickedLabel : "Choose what to study";
+    sourceSub.textContent = pickedSource ? "Tap to change" : "A note, file, web page, pasted text or topic";
+    sourceRow.classList.toggle("is-set", !!pickedSource);
+  }
 
-  const countValue = el("output", { class: "qz-countval", for: "qz-count" }, String(prefs.count));
+  const countValue = el("output", { class: "qz-countval ui-num", for: "qz-count" }, String(prefs.count));
   const countInput = el("input", { id: "qz-count", type: "range", min: "3", max: "15", step: "1", value: String(prefs.count),
     class: "qz-range", "aria-label": "Number of questions" });
   countInput.addEventListener("input", () => {
@@ -69,68 +82,57 @@ export function init(container, ctx) {
     savePrefs();
   });
 
-  const mcqBox = el("input", { type: "checkbox", id: "qz-mcq" });
-  const shortBox = el("input", { type: "checkbox", id: "qz-short" });
-  const kindHint = el("div", { class: "muted qz-small", "aria-live": "polite" });
+  const kindHint = el("div", { class: "qz-small", "aria-live": "polite" });
+  const mcqChip = el("button", { type: "button", class: "ui-chip", onclick: () => toggleKind("mcq") }, ui.icon("list-checks"), "Multiple choice");
+  const shortChip = el("button", { type: "button", class: "ui-chip", onclick: () => toggleKind("short") }, ui.icon("pen"), "Short answer");
+  function toggleKind(k) {
+    prefs[k] = !prefs[k];
+    if (!prefs.mcq && !prefs.short) { prefs[k === "mcq" ? "short" : "mcq"] = true; }
+    paintKinds(); savePrefs();
+  }
   function paintKinds() {
-    mcqBox.checked = prefs.mcq;
-    shortBox.checked = prefs.short;
-    // Keep at least one on: the only checked box is locked.
-    mcqBox.disabled = prefs.mcq && !prefs.short;
-    shortBox.disabled = prefs.short && !prefs.mcq;
-    kindHint.textContent = (mcqBox.disabled || shortBox.disabled) ? "At least one type stays on." : "";
+    mcqChip.setAttribute("aria-pressed", String(prefs.mcq));
+    shortChip.setAttribute("aria-pressed", String(prefs.short));
+    mcqChip.classList.toggle("is-on", prefs.mcq);
+    shortChip.classList.toggle("is-on", prefs.short);
   }
-  mcqBox.addEventListener("change", () => { prefs.mcq = mcqBox.checked; if (!prefs.mcq && !prefs.short) prefs.short = true; paintKinds(); savePrefs(); });
-  shortBox.addEventListener("change", () => { prefs.short = shortBox.checked; if (!prefs.mcq && !prefs.short) prefs.mcq = true; paintKinds(); savePrefs(); });
 
-  const levelBar = el("div", { class: "qz-chips", role: "radiogroup", "aria-label": "Difficulty" });
-  const levelButtons = {};
-  for (const [id, text] of LEVELS) {
-    const button = el("button", { type: "button", class: "qz-chip", role: "radio", onclick: () => { prefs.difficulty = id; paintLevels(); savePrefs(); } }, text);
-    levelButtons[id] = button;
-    levelBar.append(button);
-  }
-  function paintLevels() {
-    for (const [id, b] of Object.entries(levelButtons)) b.setAttribute("aria-checked", String(id === prefs.difficulty));
-  }
+  const levelSeg = ui.segmented({ options: LEVELS.map(([value, label]) => ({ value, label })), value: prefs.difficulty,
+    label: "Difficulty", block: true, onChange(v) { prefs.difficulty = v; savePrefs(); } });
+  function paintLevels() { levelSeg.value = prefs.difficulty; }
 
   const providerHost = el("div", { class: "qz-provider" });
   const provider = createProviderSwitch(providerHost, "Model for the quiz");
 
-  const makeButton = el("button", { type: "button", class: "btn primary qz-make", disabled: true, onclick: () => generate(currentSettings()) }, "Make my quiz");
-  const makeHint = el("div", { class: "muted qz-small qz-makehint", "aria-live": "polite" });
-  const errorBox = el("div", { class: "qz-error", role: "alert", hidden: true });
+  const makeButton = ui.button({ label: "Make my quiz", icon: "sparkles", variant: "primary", size: "lg", block: true, disabled: true,
+    onClick: () => generate(currentSettings()) });
+  const makeHint = el("div", { class: "qz-small qz-makehint", "aria-live": "polite" });
+  const errorHost = el("div", { class: "qz-error", role: "alert", hidden: true });
 
-  function field(labelText, ...children) {
-    return el("div", { class: "qz-field" }, el("div", { class: "qz-label" }, labelText), ...children);
-  }
-  const setupCard = el("section", { class: "card qz-card", "aria-labelledby": "qz-setup-title" },
-    el("h2", { id: "qz-setup-title" }, "Make a quiz"),
-    field("Study from", pickerHost),
+  const field = (labelText, ...children) => el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, labelText), ...children);
+  const setupCard = el("section", { class: "ui-card qz-card ui-stack", "aria-labelledby": "qz-setup-title" },
+    el("h2", { id: "qz-setup-title", class: "qz-h" }, "Make a quiz"),
+    sourceRow,
     field("Questions", el("div", { class: "qz-countrow" }, countInput, countValue)),
-    el("fieldset", { class: "qz-field qz-kinds" }, el("legend", { class: "qz-label" }, "Question types"),
-      el("label", { class: "qz-check", for: "qz-mcq" }, mcqBox, el("span", {}, "Multiple choice")),
-      el("label", { class: "qz-check", for: "qz-short" }, shortBox, el("span", {}, "Short answer")),
-      kindHint),
-    field("Difficulty", levelBar),
+    field("Question types", el("div", { class: "qz-chips" }, mcqChip, shortChip), kindHint),
+    field("Difficulty", levelSeg),
     field("Model", providerHost),
-    el("div", { class: "qz-makebar" }, errorBox, makeButton, makeHint));
+    el("div", { class: "qz-makebar ui-stack" }, errorHost, makeButton, makeHint));
   const historyBox = el("section", { class: "qz-history", "aria-labelledby": "qz-history-title" });
   setupRoot.append(setupCard, historyBox);
 
   function currentSettings() {
     const kinds = [prefs.mcq ? "mcq" : null, prefs.short ? "short" : null].filter(Boolean);
-    return { source: picker.getSource(), label: picker.label(), count: prefs.count, kinds, difficulty: prefs.difficulty };
+    return { source: pickedSource, label: pickedLabel, count: prefs.count, kinds, difficulty: prefs.difficulty };
   }
   function paintMake() {
-    const has = !!picker.getSource();
+    const has = !!pickedSource;
     makeButton.disabled = !has;
     makeHint.textContent = has ? "" : "Choose a source above to make a quiz.";
   }
-  picker.onChange(() => { setupError = ""; paintError(); paintMake(); });
   function paintError() {
-    errorBox.hidden = !setupError;
-    errorBox.replaceChildren(...(setupError ? [icon("alert"), el("span", {}, setupError)] : []));
+    errorHost.hidden = !setupError;
+    errorHost.replaceChildren(...(setupError ? [ui.notice(setupError, { tone: "bad" })] : []));
   }
 
   // -------------------------------------------------------------- screens
@@ -139,7 +141,7 @@ export function init(container, ctx) {
     stopGenTimer();
     if (name === "setup") {
       stage.replaceChildren(setupRoot);
-      paintKinds(); paintLevels(); paintMake(); paintError();
+      paintKinds(); paintLevels(); paintSourceRow(); paintMake(); paintError();
       loadHistory();
     } else if (name === "generating") {
       stage.replaceChildren(renderGenerating());
@@ -147,7 +149,7 @@ export function init(container, ctx) {
       renderQuestion();
     } else if (name === "result") {
       stage.replaceChildren(renderResult());
-      stage.querySelector(".qz-result-title")?.focus({ preventScroll: false });
+      stage.querySelector(".qz-result-title")?.focus({ preventScroll: true });
     }
     container.closest(".view")?.scrollTo?.({ top: 0 });
   }
@@ -155,16 +157,16 @@ export function init(container, ctx) {
   // ---- generating
   function stopGenTimer() { if (genTimer) { clearInterval(genTimer); genTimer = null; } }
   function renderGenerating() {
-    const elapsed = el("span", {}, "0 s");
+    const elapsed = el("span", { class: "ui-num" }, "0 s");
     const started = Date.now();
     genTimer = setInterval(() => { elapsed.textContent = `${Math.round((Date.now() - started) / 1000)} s`; }, 1000);
-    return el("section", { class: "card qz-card qz-loading", "aria-busy": "true" },
-      el("div", { class: "qz-spinner", "aria-hidden": "true" }),
-      el("h2", { role: "status" }, "Making your quiz…"),
-      el("p", { class: "muted" }, lastSettings ? `From ${lastSettings.label || "your source"}.` : ""),
-      el("p", { class: "muted" }, "A local model can take a minute or two. Keep this screen open."),
-      el("p", { class: "muted qz-small" }, "Waiting: ", elapsed),
-      el("button", { type: "button", class: "btn qz-cancel", onclick: () => { genController?.abort(); } }, "Cancel"));
+    return el("section", { class: "ui-card qz-card qz-loading ui-stack", "aria-busy": "true" },
+      el("div", { class: "ui-spinner", "aria-hidden": "true" }),
+      el("h2", { role: "status", class: "qz-h" }, "Making your quiz…"),
+      el("p", { class: "qz-small" }, lastSettings ? `From ${lastSettings.label || "your source"}.` : ""),
+      el("p", { class: "qz-small" }, "A local model can take a minute or two. Keep this screen open."),
+      el("p", { class: "qz-small" }, "Waiting: ", elapsed),
+      ui.button({ label: "Cancel", variant: "tonal", onClick: () => { genController?.abort(); } }));
   }
 
   async function generate(settings) {
@@ -181,13 +183,13 @@ export function init(container, ctx) {
       });
       if (!data || !Array.isArray(data.questions) || !data.questions.length) throw new Error("The laptop sent a quiz with no questions. Try again.");
       quiz = data;
-      idx = 0; answers = []; selected = null; draft = ""; phase = "answering"; qError = null; result = null; confirmQuit = false;
+      idx = 0; answers = []; selected = null; draft = ""; phase = "answering"; qError = null; result = null;
       showScreen("question");
     } catch (error) {
       if (error.name === "AbortError") { setupError = ""; }
       else { setupError = error.message || "Couldn't make the quiz."; }
       showScreen("setup");
-      if (setupError) errorBox.scrollIntoView({ block: "center" });
+      if (setupError) errorHost.scrollIntoView({ block: "center" });
     } finally {
       if (genController === mine) genController = null;
     }
@@ -196,6 +198,13 @@ export function init(container, ctx) {
   // ---- one question
   function current() { return quiz.questions[idx]; }
 
+  async function quit() {
+    if (await ui.confirm({ title: "Leave this quiz?", message: "Your answers so far will be lost.", confirmLabel: "Leave quiz", cancelLabel: "Keep going", danger: true })) {
+      quiz = null;
+      showScreen("setup");
+    }
+  }
+
   function renderQuestion() {
     const q = current();
     const total = quiz.questions.length;
@@ -203,81 +212,67 @@ export function init(container, ctx) {
     const checking = phase === "checking";
     const shownCount = phase === "feedback" ? idx + 1 : idx;
 
-    const quitRow = confirmQuit
-      ? el("div", { class: "qz-quit-confirm", role: "group", "aria-label": "Leave this quiz?" },
-        el("span", {}, "Leave this quiz? Your answers so far will be lost."),
-        el("div", { class: "row wrap" },
-          el("button", { type: "button", class: "btn", onclick: () => { confirmQuit = false; renderQuestion(); } }, "Keep going"),
-          el("button", { type: "button", class: "btn danger", onclick: () => { confirmQuit = false; quiz = null; showScreen("setup"); } }, "Leave quiz")))
-      : null;
-
+    const progress = ui.progressBar(shownCount / total, "Quiz progress");
+    progress.setAttribute("aria-valuetext", `${shownCount} of ${total} answered`);
     const head = el("div", { class: "qz-progress-head" },
-      el("div", { class: "qz-progress-text", "aria-live": "polite" }, `Question ${idx + 1} of ${total}`),
-      el("button", { type: "button", class: "qz-quit", "aria-label": "Quit quiz", onclick: () => { confirmQuit = true; renderQuestion(); } }, icon("x"), "Quit"));
-    const bar = el("div", { class: "qz-bar", role: "progressbar", "aria-label": "Quiz progress", "aria-valuemin": "0",
-      "aria-valuemax": String(total), "aria-valuenow": String(shownCount), "aria-valuetext": `${shownCount} of ${total} answered` },
-      el("div", { class: "qz-bar-fill", style: `width:${(shownCount / total) * 100}%` }));
+      el("div", { class: "qz-progress-text ui-num", "aria-live": "polite" }, `Question ${idx + 1} of ${total}`),
+      ui.button({ label: "Quit", icon: "close", variant: "ghost", size: "sm", "aria-label": "Quit quiz", onClick: quit }));
 
-    const questionHead = el("h2", { class: "qz-question", tabindex: "-1" }, q.question);
-    const children = [q.topic ? el("div", { class: "qz-topic" }, q.topic) : null, questionHead];
+    const children = [
+      q.topic ? ui.badge(q.topic, "accent") : null,
+      el("h2", { class: "qz-question", tabindex: "-1" }, q.question),
+    ];
 
     if (q.kind === "mcq") {
       const group = el("div", { class: "qz-options", role: "radiogroup", "aria-label": "Answer choices" });
       (q.choices || []).forEach((choice, i) => {
         const isSel = selected === i;
+        let cls = "ui-btn ui-btn--secondary qz-option";
         let mark = null;
-        let cls = "qz-option";
         if (phase === "feedback" && done) {
           const correctIdx = q.choices.indexOf(done.result.correct_answer);
-          if (i === correctIdx) { cls += " right"; mark = ["check", "Correct answer"]; }
-          if (i === done.choice && i !== correctIdx) { cls += " wrong"; mark = ["x", "Your answer"]; }
-          if (i === done.choice && i === correctIdx) mark = ["check", "Your answer, correct"];
+          if (i === correctIdx) { cls += " is-right"; mark = ["check-circle", "Correct answer"]; }
+          else if (i === done.choice) { cls += " is-wrong"; mark = ["x", "Your answer"]; }
+          else cls += " is-dim";
         }
         group.append(el("button", { type: "button", class: cls, role: "radio", "aria-checked": String(isSel),
           disabled: checking || phase === "feedback", "data-choice": String(i),
-          onclick: () => { selected = i; qError = null; renderQuestion(); focusOption(i); } },
-          el("span", { class: "qz-letter", "aria-hidden": "true" }, LETTERS[i] || String(i + 1)),
-          el("span", { class: "qz-option-text" }, choice),
-          mark ? el("span", { class: "qz-option-mark" }, icon(mark[0]), el("span", {}, mark[1])) : null));
+          onclick: () => { selected = i; qError = null; ui.haptic("select"); renderQuestion(); focusOption(i); } },
+        el("span", { class: "qz-letter", "aria-hidden": "true" }, LETTERS[i] || String(i + 1)),
+        el("span", { class: "qz-option-text" }, choice),
+        mark ? el("span", { class: "qz-option-mark" }, ui.icon(mark[0], { label: mark[1] })) : null));
       });
       children.push(group);
     } else {
-      const area = el("textarea", { class: "qz-answer", rows: "3", placeholder: "Type your answer", "aria-label": "Your answer",
+      const area = el("textarea", { class: "qz-answer", rows: "4", placeholder: "Type your answer", "aria-label": "Your answer",
         maxlength: "2000", disabled: checking || phase === "feedback" });
       area.value = draft;
       area.addEventListener("input", () => { draft = area.value; qError = null; syncCheck(); });
       children.push(area);
     }
 
-    // Check button, error and retry
     let checkBtn = null;
     const canCheck = q.kind === "mcq" ? selected !== null : draft.trim().length > 0;
     function syncCheck() { if (checkBtn) checkBtn.disabled = !(q.kind === "mcq" ? selected !== null : draft.trim().length > 0); }
     if (phase !== "feedback") {
-      if (qError) {
-        children.push(el("div", { class: "qz-error", role: "alert" }, icon("alert"),
-          el("span", {}, qError.message)));
-      }
+      if (qError) children.push(ui.notice(qError.message, { tone: "bad" }));
       if (qError && qError.status === 404) {
-        children.push(el("button", { type: "button", class: "btn primary qz-big", onclick: () => { quiz = null; showScreen("setup"); } }, "Back to setup"));
+        children.push(ui.button({ label: "Back to setup", variant: "primary", size: "lg", block: true, onClick: () => { quiz = null; showScreen("setup"); } }));
       } else {
-        checkBtn = el("button", { type: "button", class: "btn primary qz-big", id: "qz-check",
-          disabled: checking || !canCheck, "aria-busy": String(checking), onclick: () => submitAnswer() },
-        checking ? "Checking…" : qError ? "Retry" : "Check answer");
+        checkBtn = ui.button({ label: checking ? "Checking…" : qError ? "Retry" : "Check answer", variant: "primary", size: "lg", block: true,
+          id: "qz-check", disabled: checking || !canCheck, onClick: () => submitAnswer() });
+        if (checking) checkBtn.classList.add("is-loading");
         children.push(checkBtn);
-        if (checking && q.kind === "short") children.push(el("p", { class: "muted qz-small" }, "The model is marking your answer. This can take a moment."));
+        if (checking && q.kind === "short") children.push(el("p", { class: "qz-small" }, "The model is marking your answer. This can take a moment."));
       }
     }
 
-    const card = el("section", { class: "card qz-card" }, ...children);
-    stage.replaceChildren(...[quitRow, head, bar, card].filter(Boolean));
+    const card = el("section", { class: "qz-qcard ui-stack" }, ...children);
+    stage.replaceChildren(head, progress, card);
     if (phase === "feedback" && done) stage.append(renderFeedback(q, done));
-    stage.querySelector(".qz-quit-confirm .btn")?.focus();
   }
 
-  function focusOption(i) {
-    stage.querySelector(`[data-choice="${i}"]`)?.focus({ preventScroll: true });
-  }
+  function focusOption(i) { stage.querySelector(`[data-choice="${i}"]`)?.focus({ preventScroll: true }); }
 
   async function submitAnswer() {
     const q = current();
@@ -293,10 +288,11 @@ export function init(container, ctx) {
       });
       answers[idx] = { choice: q.kind === "mcq" ? given : null, text: q.kind === "mcq" ? q.choices[given] : given, result: data };
       phase = "feedback";
+      ui.haptic(data.correct ? "success" : "warn");
       renderQuestion();
       const fb = stage.querySelector(".qz-feedback-title");
       fb?.focus({ preventScroll: true });
-      fb?.scrollIntoView({ block: "nearest" });
+      fb?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     } catch (error) {
       phase = "answering";
       qError = { message: error.message || "That didn't work.", status: error.status };
@@ -307,10 +303,10 @@ export function init(container, ctx) {
 
   function verdict(r) {
     const score = typeof r.score === "number" ? r.score : (r.correct ? 1 : 0);
-    if (r.correct && score >= 1) return { cls: "good", ico: "check", text: "Correct" };
-    if (r.correct) return { cls: "good", ico: "check", text: `Mostly right (${pct(score)})` };
-    if (score > 0) return { cls: "warn", ico: "half", text: `Partly right (${pct(score)})` };
-    return { cls: "bad", ico: "x", text: "Not quite" };
+    if (r.correct && score >= 1) return { cls: "good", ico: "check-circle", text: "Correct" };
+    if (r.correct) return { cls: "good", ico: "check-circle", text: `Mostly right (${pct(score)})` };
+    if (score > 0) return { cls: "warn", ico: "alert", text: `Partly right (${pct(score)})` };
+    return { cls: "bad", ico: "alert-circle", text: "Not quite" };
   }
 
   function renderFeedback(q, done) {
@@ -318,16 +314,19 @@ export function init(container, ctx) {
     const v = verdict(r);
     const last = idx === quiz.questions.length - 1;
     const rows = [];
-    if (q.kind === "short") rows.push(el("p", { class: "qz-fb-row" }, el("strong", {}, "Your answer: "), done.text));
-    rows.push(el("p", { class: "qz-fb-row" }, el("strong", {}, "Correct answer: "), r.correct_answer));
-    if (r.explanation) rows.push(el("p", { class: "qz-fb-row" }, el("strong", {}, "Why: "), r.explanation));
-    if (r.feedback) rows.push(el("p", { class: "qz-fb-row" }, el("strong", {}, "Feedback: "), r.feedback));
-    const nextButton = el("button", { type: "button", class: "btn primary qz-big", disabled: finishing, "aria-busy": String(finishing),
-      onclick: () => (last ? finishQuiz() : nextQuestion()) }, finishing ? "Finishing…" : (last && qError ? "Retry" : last ? "Finish" : "Next question"));
-    return el("section", { class: `card qz-card qz-feedback ${v.cls}`, "aria-live": "polite" },
-      el("h3", { class: "qz-feedback-title", tabindex: "-1" }, icon(v.ico), el("span", {}, v.text)),
+    const row = (k, text) => el("p", { class: "qz-fb-row" }, el("strong", {}, `${k}: `), text);
+    if (q.kind === "short") rows.push(row("Your answer", done.text));
+    rows.push(row("Correct answer", r.correct_answer));
+    if (r.explanation) rows.push(row("Why", r.explanation));
+    if (r.feedback) rows.push(row("Feedback", r.feedback));
+    const nextButton = ui.button({ label: finishing ? "Finishing…" : (last && qError ? "Retry" : last ? "Finish" : "Next question"),
+      icon: last ? "check" : "arrow-right", variant: "primary", size: "lg", block: true, disabled: finishing,
+      onClick: () => (last ? finishQuiz() : nextQuestion()) });
+    if (finishing) nextButton.classList.add("is-loading");
+    return el("section", { class: `qz-feedback is-${v.cls} ui-stack`, "aria-live": "polite" },
+      el("h3", { class: "qz-feedback-title", tabindex: "-1" }, ui.icon(v.ico), el("span", {}, v.text)),
       ...rows,
-      last && qError ? el("div", { class: "qz-error", role: "alert" }, icon("alert"), el("span", {}, qError.message)) : null,
+      last && qError ? ui.notice(qError.message, { tone: "bad" }) : null,
       nextButton);
   }
 
@@ -359,82 +358,82 @@ export function init(container, ctx) {
   function renderResult() {
     const r = result;
     const percent = Math.max(0, Math.min(100, Number(r.percent) || 0));
-    const tone = percent >= 80 ? "Great work" : percent >= 50 ? "Good effort" : "Keep practising";
+    const tone = percent >= 80 ? "good" : percent >= 50 ? "warn" : "bad";
+    const headline = percent >= 80 ? "Great work" : percent >= 50 ? "Good effort" : "Keep practising";
+    const ring = ui.ringProgress({ value: percent / 100, size: 148, stroke: 12, tone, big: `${percent}%`, small: `${r.score} of ${r.total}`, label: "Quiz score" });
+    ring.classList.add("qz-ring");
     const parts = [
-      el("div", { class: "qz-score" },
-        el("div", { class: "qz-score-main", "aria-label": `Score ${r.score} out of ${r.total}` }, `${r.score} / ${r.total}`),
-        el("div", { class: "qz-score-pct" }, `${percent}%`)),
-      el("div", { class: "qz-bar", role: "progressbar", "aria-label": "Score", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percent) },
-        el("div", { class: "qz-bar-fill", style: `width:${percent}%` })),
+      el("div", { class: "qz-hero" }, ring,
+        el("h2", { class: "qz-result-title qz-h", tabindex: "-1" }, headline),
+        el("p", { class: "qz-small" }, r.title || "Quiz finished")),
     ];
     const weak = r.weak_topics || [];
     if (weak.length) {
-      parts.push(el("div", { class: "qz-field" }, el("div", { class: "qz-label" }, "Topics to revisit"),
-        el("div", { class: "qz-chips" }, weak.map((t) => el("span", { class: "qz-tag" }, t)))));
+      parts.push(el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Topics to revisit"),
+        el("div", { class: "qz-chips" }, weak.map((t) => ui.badge(t, "warn")))));
     }
     const missed = r.missed || [];
     if (missed.length) {
-      parts.push(el("div", { class: "qz-field" }, el("div", { class: "qz-label" }, `Missed questions (${missed.length})`),
-        el("div", { class: "qz-missed" }, missed.map((m) =>
+      parts.push(el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, `Missed questions (${missed.length})`),
+        el("div", { class: "qz-missed ui-list ui-list--inset" }, missed.map((m) =>
           el("details", { class: "qz-miss" },
-            el("summary", {}, el("span", { class: "qz-miss-q" }, clip(m.question, 110))),
+            el("summary", {}, el("span", { class: "qz-miss-q" }, clip(m.question, 110)), ui.icon("chevron-down", { class: "qz-miss-chev" })),
             el("div", { class: "qz-miss-body" },
               clip(m.question, 110) !== String(m.question).replace(/\s+/g, " ").trim()
                 ? el("p", {}, el("strong", {}, "Question: "), m.question) : null,
               el("p", {}, el("strong", {}, "Your answer: "), m.your_answer),
               el("p", {}, el("strong", {}, "Correct answer: "), m.correct_answer),
               m.explanation ? el("p", {}, el("strong", {}, "Why: "), m.explanation) : null,
-              m.topic ? el("p", { class: "muted qz-small" }, `Topic: ${m.topic}`) : null))))));
+              m.topic ? el("p", { class: "qz-small" }, `Topic: ${m.topic}`) : null))))));
     } else {
-      parts.push(el("p", { class: "qz-perfect" }, icon("check"), "You got every question right."));
+      parts.push(ui.notice("You got every question right.", { tone: "good" }));
     }
-    return el("section", { class: "card qz-card qz-result" },
-      el("h2", { class: "qz-result-title", tabindex: "-1" }, `${tone}: ${r.title || "Quiz finished"}`),
+    return el("section", { class: "qz-result ui-stack ui-stack--lg" },
       ...parts,
       el("div", { class: "qz-actions" },
-        el("button", { type: "button", class: "btn qz-big", onclick: () => { quiz = null; showScreen("setup"); } }, "New quiz"),
-        el("button", { type: "button", class: "btn primary qz-big", disabled: !lastSettings,
-          onclick: () => lastSettings && generate({ ...lastSettings }) }, "Same source again")));
+        ui.button({ label: "New quiz", variant: "secondary", size: "lg", onClick: () => { quiz = null; showScreen("setup"); } }),
+        ui.button({ label: "Same source again", icon: "refresh", variant: "primary", size: "lg", disabled: !lastSettings,
+          onClick: () => lastSettings && generate({ ...lastSettings }) })));
   }
 
   // -------------------------------------------------------------- history
   let historySeq = 0;
   let showAllHistory = false;
+  let lastStreak = 0;
   async function loadHistory() {
     const mine = ++historySeq;
-    historyBox.replaceChildren(el("h2", { id: "qz-history-title" }, "History"), el("p", { class: "muted" }, "Loading history…"));
+    historyBox.replaceChildren(el("h2", { id: "qz-history-title", class: "qz-h" }, "History"), ui.skeleton("list", 2));
     try {
       const data = await api("/api/learn/history");
       if (mine !== historySeq) return;
+      lastStreak = data.streak_days || 0;
       paintHistory(data);
     } catch (error) {
       if (mine !== historySeq) return;
-      historyBox.replaceChildren(el("h2", { id: "qz-history-title" }, "History"),
-        el("div", { class: "qz-error", role: "alert" }, icon("alert"), el("span", {}, error.message)),
-        el("button", { type: "button", class: "btn", onclick: () => loadHistory() }, "Retry"));
+      historyBox.replaceChildren(el("h2", { id: "qz-history-title", class: "qz-h" }, "History"),
+        ui.notice(error.message, { tone: "bad" }),
+        ui.button({ label: "Try again", icon: "refresh", variant: "tonal", size: "sm", onClick: () => loadHistory() }));
     }
   }
   function paintHistory(data) {
     const quizzes = data.quizzes || [];
     const days = data.streak_days || 0;
-    const streak = el("div", { class: `qz-streak${days ? " on" : ""}` }, icon("flame"),
-      el("span", {}, days ? `${days} day streak` : "No streak yet"));
-    const head = el("div", { class: "qz-history-head" }, el("h2", { id: "qz-history-title" }, "History"), streak);
+    const streak = el("span", { class: `ui-badge ${days ? "ui-badge--warn" : ""} qz-streak` }, ui.icon("flame"), days ? `${days} day streak` : "No streak yet");
+    const head = el("div", { class: "qz-history-head" }, el("h2", { id: "qz-history-title", class: "qz-h" }, "History"), streak);
     if (!quizzes.length) {
-      historyBox.replaceChildren(head, el("p", { class: "muted qz-empty" }, "No finished quizzes yet. Your results will show up here."));
+      historyBox.replaceChildren(head, ui.emptyState({ icon: "quiz", compact: true, title: "No finished quizzes yet", body: "Your results will show up here." }));
       return;
     }
     const visible = showAllHistory ? quizzes : quizzes.slice(0, 8);
-    const items = visible.map((e) => el("li", { class: "qz-hist-item" },
-      el("div", { class: "qz-hist-main" },
-        el("div", { class: "qz-hist-title" }, e.title || "Quiz"),
-        el("div", { class: "muted qz-small" }, [prettyDate(e.date), e.source_label ? clip(e.source_label, 40) : ""].filter(Boolean).join(" · "))),
-      el("div", { class: `qz-hist-pct ${e.percent >= 80 ? "good" : e.percent >= 50 ? "warn" : "bad"}`, "aria-label": `${e.percent} percent` }, `${e.percent}%`)));
+    const rows = visible.map((e) => ui.listRow({ icon: "quiz", tone: e.percent >= 80 ? "good" : e.percent >= 50 ? "warn" : "bad",
+      title: e.title || "Quiz",
+      sub: [prettyDate(e.date), e.source_label ? clip(e.source_label, 40) : ""].filter(Boolean).join(" · "),
+      meta: ui.badge(`${e.percent}%`, e.percent >= 80 ? "good" : e.percent >= 50 ? "warn" : "bad") }));
     const more = quizzes.length > 8
-      ? el("button", { type: "button", class: "btn qz-more", onclick: () => { showAllHistory = !showAllHistory; paintHistory(data); } },
-        showAllHistory ? "Show fewer" : `Show all (${quizzes.length})`)
+      ? ui.button({ label: showAllHistory ? "Show fewer" : `Show all (${quizzes.length})`, variant: "ghost", size: "sm",
+        onClick: () => { showAllHistory = !showAllHistory; paintHistory(data); } })
       : null;
-    historyBox.replaceChildren(...[head, el("ul", { class: "qz-hist-list" }, items), more].filter(Boolean));
+    historyBox.replaceChildren(...[head, el("div", { class: "ui-list ui-list--inset ui-list--icons" }, rows), more].filter(Boolean));
   }
 
   showScreen("setup");

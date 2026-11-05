@@ -2,6 +2,7 @@
 // Five parts: Speak (record and get feedback), Role-play, Fix writing, Words, Progress.
 // Everything that comes from the transcriber or a model is put on the page with textContent only.
 import { api, sse, el } from "./api.js";
+import * as ui from "./ui.js";
 
 const MAX_SPEAK_SECONDS = 180;
 const MAX_ROLEPLAY_SECONDS = 90;
@@ -12,14 +13,9 @@ const SECTIONS = [
   { id: "vocab", label: "Words" },
   { id: "progress", label: "Progress" },
 ];
-
-const ICONS = {
-  mic: "M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z",
-  stop: "M7 7h10v10H7z",
-  send: "M3 20.5v-6.7l9-1.8-9-1.8V3.5L22 12 3 20.5Z",
-  speaker: "M3 9v6h4l5 4V5L7 9H3Zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z",
-  copy: "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z",
-};
+const SCENARIO_ICONS = ["users", "coffee", "phone", "calendar", "mail", "globe", "star", "heart"];
+const SCENARIO_TONES = ["accent", "teal", "violet", "orange", "pink", "info"];
+const WAVE_BARS = 34;
 
 // ---------- small helpers ----------
 
@@ -35,10 +31,7 @@ function svg(tag, attrs = {}, ...children) {
   }
   return node;
 }
-function icon(name) {
-  return svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false", class: "eng-icon" },
-    svg("path", { d: ICONS[name] }));
-}
+const icon = (name, size) => ui.icon(name, size ? { size } : {});
 
 const store = {
   get(key, fallback = "") {
@@ -69,7 +62,7 @@ function clock(seconds) {
 function sr(text) { return el("span", { class: "eng-sr" }, text); }
 
 function loadingBox(text) {
-  return el("div", { class: "eng-loading", role: "status" }, el("span", { class: "eng-spinner", "aria-hidden": "true" }), el("span", {}, text));
+  return el("div", { class: "eng-loading", role: "status" }, el("span", { class: "ui-spinner", "aria-hidden": "true" }), el("span", {}, text));
 }
 
 // A calm message for a failed request. 422 and 503 mean the server understood but could not do it.
@@ -83,13 +76,13 @@ function friendly(error) {
 }
 
 function errorBox(error, retry, retryLabel = "Try again") {
-  const box = el("div", { class: "eng-error", role: "alert" }, el("p", {}, friendly(error)));
-  if (retry) box.append(el("button", { class: "btn", type: "button", onclick: retry }, retryLabel));
+  const box = el("div", { class: "eng-error", role: "alert" }, ui.notice(friendly(error), { tone: "bad" }));
+  if (retry) box.append(ui.button({ label: retryLabel, icon: "refresh", variant: "tonal", size: "sm", onClick: retry }));
   return box;
 }
 
-function emptyBox(title, text) {
-  return el("div", { class: "eng-empty" }, el("strong", {}, title), text ? el("p", { class: "muted" }, text) : null);
+function emptyBox(title, text, ic = "sparkles", action) {
+  return el("div", { class: "ui-card ui-card--flat" }, ui.emptyState({ icon: ic, title, body: text, action, compact: true }));
 }
 
 async function copyText(text) {
@@ -130,43 +123,78 @@ function friendlyDue(iso) {
   return shortDate(iso);
 }
 
-// ---------- shared pieces: correction, score meter, word card ----------
+// ---------- shared pieces: correction cards, score rings, flip cards ----------
 
+// Before/after card. Compact is the gentle one-line version shown under a role-play message.
 function correctionBlock(item, compact = false) {
-  const block = el("div", { class: "eng-corr" + (compact ? " compact" : "") },
-    el("div", { class: "eng-corr-line" },
-      el("span", { class: "said" }, sr("You said: "), String(item.said || item.from || "")),
-      el("span", { class: "arrow", "aria-hidden": "true" }, "→"),
-      el("span", { class: "better" }, sr(" Better: "), String(item.better || item.to || ""))));
+  const said = String(item.said || item.from || "");
+  const better = String(item.better || item.to || "");
+  if (compact) {
+    const block = el("div", { class: "eng-corr compact" },
+      el("span", { class: "eng-corr-ico", "aria-hidden": "true" }, icon("sparkles", 16)),
+      el("div", { class: "eng-corr-body" },
+        el("div", { class: "eng-corr-line" },
+          sr("A gentler way to say it: "), el("span", { class: "better" }, better),
+          said ? el("span", { class: "said" }, sr(" You said: "), said) : null),
+        item.why ? el("div", { class: "why" }, String(item.why)) : null));
+    return block;
+  }
+  const block = el("div", { class: "eng-corr" },
+    el("div", { class: "eng-corr-pair" },
+      el("div", { class: "eng-corr-card before" }, el("span", { class: "eng-corr-tag" }, "You said"), el("span", { class: "said" }, said)),
+      el("span", { class: "eng-corr-arrow", "aria-hidden": "true" }, icon("arrow-down", 18)),
+      el("div", { class: "eng-corr-card after" }, el("span", { class: "eng-corr-tag" }, "Better"), el("span", { class: "better" }, better))));
   if (item.why) block.append(el("div", { class: "why" }, String(item.why)));
   return block;
 }
 
-function meter(label, value, max = 10) {
+function toneFor(fraction) {
+  if (fraction >= 0.7) return "good";
+  if (fraction >= 0.5) return "accent";
+  return "warn";
+}
+
+// A ring showing a 1-10 score. Returns a labelled block.
+function scoreRing(label, value, { size = 64, stroke = 7, max = 10 } = {}) {
   const n = Number(value);
   const ok = Number.isFinite(n);
-  const pct = ok ? Math.max(0, Math.min(100, (n / max) * 100)) : 0;
-  const bar = el("div", {
-    class: "eng-meter-bar", role: "meter", "aria-label": `${label} score`,
-    "aria-valuemin": "0", "aria-valuemax": String(max), "aria-valuenow": ok ? String(n) : null,
-    "aria-valuetext": ok ? `${n} out of ${max}` : "no score",
-  }, el("span", { class: "fill", style: `width:${pct}%` }));
-  return el("div", { class: "eng-meter" },
-    el("div", { class: "eng-meter-head" }, el("span", {}, label), el("strong", {}, ok ? `${n}/${max}` : "-")), bar);
+  const ring = ui.ringProgress({ value: ok ? n / max : 0, size, stroke, tone: ok ? toneFor(n / max) : "gray",
+    big: ok ? String(Math.round(n * 10) / 10) : "-", label: `${label} score` });
+  ring.setAttribute("aria-label", ok ? `${label}: ${n} out of ${max}` : `${label}: no score`);
+  return el("div", { class: "eng-score" }, ring, el("span", { class: "eng-score-label" }, label));
 }
 
-function wordCard(w, ctx) {
-  return el("div", { class: "card eng-word" },
-    el("div", { class: "eng-word-head" },
-      el("h4", { class: "eng-word-title" }, String(w.word)),
-      w.level ? el("span", { class: "eng-badge" }, sr("Level "), String(w.level)) : null,
-      el("button", { class: "eng-iconbtn", type: "button", "aria-label": `Listen to the word ${w.word}`,
-        onclick: () => ctx.speak(`${w.word}. ${w.example || ""}`) }, icon("speaker"))),
-    el("p", { class: "eng-word-meaning" }, String(w.meaning || "")),
-    w.example ? el("p", { class: "eng-word-example" }, String(w.example)) : null);
+// Word card that flips on tap: word on the front, meaning and example on the back.
+function flipCard(w, ctx, { tall = false, onFlip } = {}) {
+  const wrap = el("div", { class: "eng-flip" + (tall ? " eng-flip--tall" : "") });
+  const front = el("span", { class: "eng-face eng-face--front" },
+    w.level ? el("span", { class: "ui-badge ui-badge--accent eng-level" }, sr("Level "), String(w.level)) : null,
+    el("span", { class: "eng-flip-word" }, String(w.word)),
+    el("span", { class: "eng-flip-hint" }, icon("refresh", 14), "Tap to see the meaning"));
+  const back = el("span", { class: "eng-face eng-face--back", "aria-hidden": "true" },
+    el("span", { class: "eng-flip-word eng-flip-word--sm" }, String(w.word)),
+    el("span", { class: "eng-word-meaning" }, String(w.meaning || "")),
+    w.example ? el("span", { class: "eng-word-example" }, String(w.example)) : null);
+  const inner = el("button", { class: "eng-flip__inner", type: "button", "aria-pressed": "false",
+    "aria-label": `${w.word}. Show the meaning` }, front, back);
+  function setFlipped(flipped, user) {
+    wrap.classList.toggle("is-flipped", flipped);
+    inner.setAttribute("aria-pressed", String(flipped));
+    inner.setAttribute("aria-label", flipped ? `${w.word}. Meaning shown. Tap to flip back` : `${w.word}. Show the meaning`);
+    front.setAttribute("aria-hidden", String(flipped));
+    back.setAttribute("aria-hidden", String(!flipped));
+    if (user) ui.haptic("select");
+    if (onFlip) onFlip(flipped);
+  }
+  inner.addEventListener("click", () => setFlipped(!wrap.classList.contains("is-flipped"), true));
+  const listen = el("button", { class: "ui-btn ui-btn--icon ui-btn--ghost eng-flip-listen", type: "button",
+    "aria-label": `Listen to the word ${w.word}`, onclick: () => ctx.speak(`${w.word}. ${w.example || ""}`) }, icon("volume"));
+  wrap.append(inner, listen);
+  wrap.flip = (v) => setFlipped(v, false);
+  return wrap;
 }
 
-// ---------- recorder: tap to start, tap to stop ----------
+// ---------- recorder: tap to start, tap to stop, with a live level and waveform ----------
 
 const recorders = new Set();
 
@@ -195,24 +223,71 @@ function createRecorder(ctx, { big, name, maxSeconds, startLabel, stopLabel, idl
   })();
 
   const button = el("button", { class: "eng-mic" + (big ? " big" : ""), type: "button", "aria-label": startLabel });
-  const micIcon = icon("mic");
+  const micIcon = el("span", { class: "eng-mic-ico" }, icon("mic"));
   button.append(micIcon);
-  const timer = el("span", { class: "eng-timer", "aria-hidden": "true" }, "0:00");
+  const timer = el("span", { class: "eng-timer ui-num", "aria-hidden": "true" }, "0:00");
   const status = el("p", { class: "eng-mic-status", role: "status", "aria-live": "polite" }, idleText);
-  const note = el("p", { class: "eng-note", role: "status", hidden: !problem }, problem);
+  const note = el("div", { class: "eng-note", role: "status", hidden: !problem });
+  if (problem) note.append(ui.notice(problem, { tone: "warn", icon: "mic-off" }));
   if (problem) button.disabled = true;
 
-  const rec = { recorder: null, stream: null, chunks: [], started: 0, tick: null, limit: null, cancelled: false, busy: false };
+  // live waveform: a scrolling strip of recent loudness values
+  const bars = [];
+  const wave = el("div", { class: "eng-wave", "aria-hidden": "true" });
+  for (let i = 0; i < WAVE_BARS; i += 1) { const b = el("span", { class: "eng-wave-bar" }); bars.push(b); wave.append(b); }
+  const levels = new Array(WAVE_BARS).fill(0);
+
+  const rec = { recorder: null, stream: null, chunks: [], started: 0, tick: null, limit: null, cancelled: false, busy: false,
+    audio: null, raf: 0 };
+
+  function paintLevels(current) {
+    bars.forEach((b, i) => b.style.setProperty("--l", (0.1 + levels[i] * 0.9).toFixed(2)));
+    button.style.setProperty("--level", current.toFixed(2));
+  }
+  function startMeter(stream) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const audio = new AC();
+      const source = audio.createMediaStreamSource(stream);
+      const analyser = audio.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      rec.audio = audio;
+      const buf = new Uint8Array(analyser.fftSize);
+      let last = 0;
+      const loop = (t) => {
+        rec.raf = requestAnimationFrame(loop);
+        if (t - last < 70) return;
+        last = t;
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) { const d = (buf[i] - 128) / 128; sum += d * d; }
+        const level = Math.min(1, Math.sqrt(sum / buf.length) * 4.5);
+        levels.push(level); levels.shift();
+        paintLevels(level);
+      };
+      rec.raf = requestAnimationFrame(loop);
+    } catch (_) { /* the level display is optional */ }
+  }
+  function stopMeter() {
+    cancelAnimationFrame(rec.raf);
+    if (rec.audio) { rec.audio.close().catch(() => {}); rec.audio = null; }
+    levels.fill(0);
+    paintLevels(0);
+  }
 
   function setIcon(recording) {
-    micIcon.firstChild.setAttribute("d", recording ? ICONS.stop : ICONS.mic);
+    micIcon.replaceChildren(icon(recording ? "stop" : "mic"));
     button.classList.toggle("recording", recording);
+    wave.classList.toggle("on", recording);
     button.setAttribute("aria-label", recording ? stopLabel : startLabel);
     timer.classList.toggle("on", recording);
     button.setAttribute("aria-pressed", recording ? "true" : "false");
   }
   function showProblem(message) {
-    note.textContent = message;
+    note.replaceChildren();
+    if (message) note.append(ui.notice(message, { tone: "warn", icon: "mic-off" }));
     note.hidden = !message;
   }
   function release() {
@@ -220,6 +295,7 @@ function createRecorder(ctx, { big, name, maxSeconds, startLabel, stopLabel, idl
     rec.stream = null;
     clearInterval(rec.tick); clearTimeout(rec.limit);
     rec.tick = null; rec.limit = null;
+    stopMeter();
   }
   function tickTimer() {
     timer.textContent = clock(Math.floor((Date.now() - rec.started) / 1000));
@@ -260,6 +336,8 @@ function createRecorder(ctx, { big, name, maxSeconds, startLabel, stopLabel, idl
     recorder.start(1000);
     rec.started = Date.now();
     setIcon(true);
+    ui.haptic("medium");
+    startMeter(stream);
     status.textContent = `Recording. Tap again to stop. Up to ${clock(maxSeconds)}.`;
     tickTimer();
     rec.tick = setInterval(tickTimer, 500);
@@ -290,6 +368,7 @@ function createRecorder(ctx, { big, name, maxSeconds, startLabel, stopLabel, idl
     status.textContent = idleText;
     if (onStateChange) onStateChange("idle");
     if (rec.cancelled || !recorder) { rec.chunks = []; return; }
+    ui.haptic("light");
     const type = recorder.mimeType || pickMimeType() || "audio/webm";
     const blob = new Blob(rec.chunks, { type });
     rec.chunks = [];
@@ -302,8 +381,14 @@ function createRecorder(ctx, { big, name, maxSeconds, startLabel, stopLabel, idl
 
   button.addEventListener("click", () => { if (rec.recorder) stop(false); else start(); });
 
+  // The big recorder is a stage: waveform, button inside a pulsing ring, timer, status.
+  const stage = el("div", { class: "eng-stage" },
+    wave,
+    el("div", { class: "eng-mic-wrap" }, el("span", { class: "eng-mic-halo", "aria-hidden": "true" }), button),
+    timer, status, note);
+
   const api2 = {
-    button, timer, status, note, problem,
+    button, timer, status, note, stage, problem,
     isRecording: () => !!rec.recorder,
     cancel() { if (rec.recorder) stop(true); else release(); },
     setBusy(busy) {
@@ -364,59 +449,96 @@ function markTranscript(text, fillerKeys, lowWords) {
   return out;
 }
 
-// ---------- charts (inline SVG) ----------
+
+// ---------- word diff (Fix writing) ----------
+
+// Returns [{t:"eq"|"del"|"add", w}] turning the words of `a` into the words of `b`.
+function diffWords(a, b) {
+  const x = a.split(/\s+/).filter(Boolean);
+  const y = b.split(/\s+/).filter(Boolean);
+  const n = x.length, m = y.length;
+  if (n * m > 600000) return [...x.map((w) => ({ t: "del", w })), ...y.map((w) => ({ t: "add", w }))];
+  const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      lcs[i][j] = x[i] === y[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (x[i] === y[j]) { ops.push({ t: "eq", w: x[i] }); i += 1; j += 1; }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) { ops.push({ t: "del", w: x[i] }); i += 1; }
+    else { ops.push({ t: "add", w: y[j] }); j += 1; }
+  }
+  while (i < n) { ops.push({ t: "del", w: x[i] }); i += 1; }
+  while (j < m) { ops.push({ t: "add", w: y[j] }); j += 1; }
+  return ops;
+}
+
+function diffNodes(ops) {
+  const out = [];
+  ops.forEach((op, i) => {
+    if (i) out.push(" ");
+    if (op.t === "eq") out.push(op.w);
+    else if (op.t === "del") out.push(el("del", { class: "eng-del" }, sr("removed: "), op.w));
+    else out.push(el("ins", { class: "eng-ins" }, sr("added: "), op.w));
+  });
+  return out;
+}
+
+// ---------- charts ----------
 
 function niceMax(value, step) { return Math.max(step, Math.ceil(value / step) * step); }
 
-function lineChart({ title, caption, unit, values, dates, max, ticks, format, tone }) {
-  const W = 320, H = 190, L = 40, R = 16, T = 20, B = 46;
+function lineChart({ title, unit, values, dates, max, ticks, format, tone }) {
+  const W = 320, H = 180, L = 36, R = 14, T = 18, B = 34;
   const plotW = W - L - R, plotH = H - T - B;
   const n = values.length;
   const xAt = (i) => (n === 1 ? L + plotW / 2 : L + (plotW * i) / (n - 1));
   const yAt = (v) => T + plotH - (Math.max(0, Math.min(max, v)) / max) * plotH;
   const present = values.map((v, i) => ({ v, i })).filter((p) => Number.isFinite(p.v));
   const first = present[0], last = present[present.length - 1];
-  const noData = present.length === 0;
   const summary = present.length
     ? `${title}. ${present.length} sessions. First ${format(first.v)}, latest ${format(last.v)}.`
     : `${title}. No data yet.`;
   const chart = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: `eng-chart ${tone}`, role: "img", "aria-label": summary, preserveAspectRatio: "xMidYMid meet" });
-  // grid lines and y axis labels
   for (const t of ticks) {
     const y = yAt(t);
     chart.append(svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "grid" }));
     chart.append(svg("text", { x: L - 6, y: y + 4, "text-anchor": "end", class: "tick" }, format(t, true)));
   }
-  chart.append(svg("text", { x: 4, y: 10, "text-anchor": "start", class: "axis-title" }, unit));
-  chart.append(svg("line", { x1: L, x2: L, y1: T, y2: T + plotH, class: "axis" }));
-  chart.append(svg("line", { x1: L, x2: W - R, y1: T + plotH, y2: T + plotH, class: "axis" }));
-  // the line, broken where a session has no value
   let d = "";
   let pen = false;
+  let area = "";
+  let runStart = -1;
   values.forEach((v, i) => {
-    if (!Number.isFinite(v)) { pen = false; return; }
+    if (!Number.isFinite(v)) {
+      if (runStart >= 0) area += `L${xAt(i - 1).toFixed(1)} ${T + plotH} L${xAt(runStart).toFixed(1)} ${T + plotH}Z `;
+      runStart = -1; pen = false; return;
+    }
     d += `${pen ? "L" : "M"}${xAt(i).toFixed(1)} ${yAt(v).toFixed(1)} `;
+    if (runStart < 0) { runStart = i; area += `M${xAt(i).toFixed(1)} ${yAt(v).toFixed(1)} `; } else area += `L${xAt(i).toFixed(1)} ${yAt(v).toFixed(1)} `;
     pen = true;
   });
+  if (runStart >= 0) area += `L${xAt(n - 1).toFixed(1)} ${T + plotH} L${xAt(runStart).toFixed(1)} ${T + plotH}Z`;
+  if (d && present.length > 1) chart.append(svg("path", { d: area, class: "area" }));
   if (d) chart.append(svg("path", { d, class: "line", fill: "none" }));
   values.forEach((v, i) => {
-    if (Number.isFinite(v)) chart.append(svg("circle", { cx: xAt(i), cy: yAt(v), r: 3.5, class: "dot" }));
+    if (Number.isFinite(v)) chart.append(svg("circle", { cx: xAt(i), cy: yAt(v), r: i === (last && last.i) ? 4.5 : 3, class: "dot" }));
   });
   if (last) {
     const lx = xAt(last.i);
     const anchor = lx > W - 50 ? "end" : "middle";
-    chart.append(svg("text", { x: anchor === "end" ? lx + 4 : lx, y: yAt(last.v) - 9, "text-anchor": anchor, class: "val" }, format(last.v)));
+    chart.append(svg("text", { x: anchor === "end" ? lx + 4 : lx, y: yAt(last.v) - 10, "text-anchor": anchor, class: "val" }, format(last.v)));
   }
-  // x axis: first and latest date, and the axis title
   if (n > 0) {
-    chart.append(svg("text", { x: xAt(0), y: T + plotH + 16, "text-anchor": n === 1 ? "middle" : "start", class: "tick" }, `#1 ${shortDate(dates[0])}`.trim()));
-    if (n > 1) chart.append(svg("text", { x: xAt(n - 1), y: T + plotH + 16, "text-anchor": "end", class: "tick" }, `#${n} ${shortDate(dates[n - 1])}`.trim()));
+    chart.append(svg("text", { x: xAt(0), y: H - 10, "text-anchor": n === 1 ? "middle" : "start", class: "tick" }, `#1 ${shortDate(dates[0])}`.trim()));
+    if (n > 1) chart.append(svg("text", { x: xAt(n - 1), y: H - 10, "text-anchor": "end", class: "tick" }, `#${n} ${shortDate(dates[n - 1])}`.trim()));
   }
-  if (noData) chart.append(svg("text", { x: L + plotW / 2, y: T + plotH / 2, "text-anchor": "middle", class: "tick" }, "No data for this yet"));
-  chart.append(svg("text", { x: L + plotW / 2, y: H - 8, "text-anchor": "middle", class: "axis-title" },
-    n > 1 ? `Sessions, oldest to newest (${n})` : "Session"));
-  return el("figure", { class: "card eng-chart-card" },
-    el("figcaption", {}, el("strong", {}, title), el("span", { class: "muted" }, caption)), chart);
+  if (!present.length) chart.append(svg("text", { x: L + plotW / 2, y: T + plotH / 2, "text-anchor": "middle", class: "tick" }, "No data for this yet"));
+  chart.append(svg("title", {}, `${title} (${unit})`));
+  return chart;
 }
 
 // ---------- the module ----------
@@ -424,6 +546,9 @@ function lineChart({ title, caption, unit, values, dates, max, ticks, format, to
 export function init(container, ctx) {
   const root = el("div", { class: "english-root" });
   container.append(root);
+  if (!document.querySelector('link[href$="english.css"]')) {
+    document.head.append(el("link", { rel: "stylesheet", href: "/css/english.css", "data-eng-css": "1" }));
+  }
 
   let provider = store.get("hub.provider.english", "local") === "claude" ? "claude" : "local";
 
@@ -436,39 +561,67 @@ export function init(container, ctx) {
     }
     return scenarioPromise;
   }
-  function fillScenarioSelect(select, { allowFree, remember }) {
-    select.replaceChildren();
-    if (allowFree) select.append(el("option", { value: "" }, "Free talk (no scenario)"));
-    return loadScenarios().then((list) => {
-      for (const s of list) select.append(el("option", { value: s.id }, s.title));
-      const saved = store.get(remember);
-      if (saved && list.some((s) => s.id === saved)) select.value = saved;
-      else if (!allowFree && list[0]) select.value = list[0].id;
-      select.dispatchEvent(new Event("change"));
-      return list;
-    });
-  }
-  function describe(list, id) {
-    const found = list.find((s) => s.id === id);
-    return found ? found.description : "";
+
+  // Scenario picker: chips (Speak) or cards (Role-play). `value` is the scenario id ("" is free talk).
+  function createPicker({ allowFree, remember, mode, label, onChange }) {
+    const node = el("div", { class: `eng-picker eng-picker--${mode}` + (mode === "chips" ? " ui-hscroll" : ""), role: "radiogroup", "aria-label": label });
+    const desc = el("p", { class: "eng-picker-desc" });
+    let list = [];
+    let value = "";
+    const items = () => (allowFree ? [{ id: "", title: "Free talk", description: "Talk about anything you like." }] : []).concat(list);
+    function render(refocus) {
+      node.replaceChildren();
+      items().forEach((s, i) => {
+        const on = s.id === value;
+        const ic = s.id === "" ? "waveform" : SCENARIO_ICONS[i % SCENARIO_ICONS.length];
+        const tone = s.id === "" ? "gray" : SCENARIO_TONES[i % SCENARIO_TONES.length];
+        const common = { type: "button", role: "radio", "aria-checked": String(on), onclick: () => set(s.id, true) };
+        node.append(mode === "chips"
+          ? el("button", { ...common, class: "ui-chip" + (on ? " is-on" : "") }, icon(ic), s.title)
+          : el("button", { ...common, class: "eng-scn" + (on ? " is-on" : "") },
+            ui.tile(ic, tone),
+            el("span", { class: "eng-scn-body" }, el("strong", {}, s.title), el("span", { class: "eng-scn-desc" }, s.description || "")),
+            el("span", { class: "eng-scn-check", "aria-hidden": "true" }, on ? icon("check-circle") : null)));
+      });
+      const found = items().find((s) => s.id === value);
+      desc.textContent = found ? found.description || "" : "";
+      desc.hidden = mode !== "chips";
+      if (refocus) node.querySelector('[aria-checked="true"]')?.focus();
+    }
+    function set(id, user) {
+      value = id;
+      store.set(remember, id);
+      render(user);
+      if (onChange) onChange(id);
+    }
+    function load() {
+      node.replaceChildren(ui.skeleton(mode === "chips" ? "tiles" : "list", mode === "chips" ? 3 : 3));
+      return loadScenarios().then((l) => {
+        list = l;
+        const saved = store.get(remember, null);
+        if (saved != null && items().some((s) => s.id === saved)) value = saved;
+        else value = items()[0] ? items()[0].id : "";
+        render(false);
+        if (onChange) onChange(value);
+        return l;
+      }).catch((error) => {
+        node.replaceChildren(errorBox(error, () => load()));
+        throw error;
+      });
+    }
+    return { node, desc, load, get value() { return value; }, get list() { return list; } };
   }
 
-  // ----- top: model switch and section bar
-  const providerBar = el("div", { class: "eng-provider", role: "group", "aria-label": "Which model gives the feedback" },
-    el("span", { class: "muted" }, "Feedback from"));
-  const providerButtons = {};
-  for (const [id, label] of [["local", "Local"], ["claude", "Claude"]]) {
-    const button = el("button", { class: "chip", type: "button", "aria-pressed": String(provider === id),
-      onclick: () => {
-        provider = id;
-        store.set("hub.provider.english", id);
-        for (const [pid, b] of Object.entries(providerButtons)) b.setAttribute("aria-pressed", String(pid === id));
-      } }, label);
-    providerButtons[id] = button;
-    providerBar.append(button);
-  }
+  // ----- top: model switch and section tabs
+  const providerSeg = ui.segmented({
+    options: [{ value: "local", label: "Local", icon: "laptop" }, { value: "claude", label: "Claude", icon: "sparkles" }],
+    value: provider, label: "Which model gives the feedback",
+    onChange: (v) => { provider = v; store.set("hub.provider.english", v); },
+  });
+  const providerBar = el("div", { class: "eng-provider" },
+    el("span", { class: "eng-provider-label" }, "Feedback from"), providerSeg);
 
-  const nav = el("div", { class: "eng-seg", role: "tablist", "aria-label": "English practice" });
+  const nav = el("div", { class: "ui-tabs eng-tabs", role: "tablist", "aria-label": "English practice" });
   root.append(providerBar, nav);
 
   const parts = {};
@@ -489,11 +642,13 @@ export function init(container, ctx) {
       tab.tabIndex = s.id === id ? 0 : -1;
     }
     store.set("hub.english.section", id);
+    const tab = nav.querySelector(`[data-part="${id}"]`);
+    if (tab && tab.scrollIntoView) tab.scrollIntoView({ inline: "center", block: "nearest" });
     parts[id].enter?.();
-    if (focus) nav.querySelector(`[data-part="${id}"]`).focus();
+    if (focus) tab.focus();
   }
   for (const s of SECTIONS) {
-    nav.append(el("button", { class: "eng-tab", type: "button", role: "tab", "data-part": s.id, onclick: () => select(s.id) }, s.label));
+    nav.append(el("button", { type: "button", role: "tab", "data-part": s.id, onclick: () => { ui.haptic("select"); select(s.id); } }, s.label));
   }
   nav.addEventListener("keydown", (event) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
@@ -508,17 +663,24 @@ export function init(container, ctx) {
   // =========================================================================================
   function buildSpeak() {
     const pane = el("section", { class: "eng-pane", "aria-label": "Speak" });
-    const scenarioSelect = el("select", { id: "eng-speak-scenario", "aria-describedby": "eng-speak-scenario-desc" });
-    const scenarioDesc = el("p", { class: "muted eng-small", id: "eng-speak-scenario-desc" });
-    const promptBtn = el("button", { class: "btn", type: "button" }, "Give me a topic");
-    const promptBox = el("div", { class: "eng-prompt-slot", "aria-live": "polite" });
+    const picker = createPicker({
+      allowFree: true, remember: "hub.english.scenario.speak", mode: "chips", label: "Scenario",
+      onChange: (id) => { if (id !== lastScenario) { lastScenario = id; } },
+    });
+    let lastScenario = null;
+    const promptBtn = ui.button({ label: "Give me a topic", icon: "sparkles", variant: "tonal", size: "sm" });
+    const promptBody = el("div", { class: "eng-prompt-body", "aria-live": "polite" },
+      el("p", { class: "eng-prompt-empty" }, "Not sure what to say? Get a topic to talk about."));
+    const promptCard = el("div", { class: "ui-card eng-prompt" },
+      el("div", { class: "eng-prompt-head" },
+        el("span", { class: "ui-caps" }, "Your topic"), promptBtn),
+      promptBody);
     const result = el("div", { class: "eng-result" });
     const announce = el("div", { class: "eng-sr", role: "status", "aria-live": "polite" });
     let promptText = "";
     let loaded = false;
     let lastBlob = null;
     let busy = false;
-    let scenarioList = [];
 
     function setBusy(b) {
       busy = b;
@@ -534,46 +696,56 @@ export function init(container, ctx) {
       onStateChange: (state) => { if (state === "recording") result.replaceChildren(); },
     });
 
-    scenarioSelect.addEventListener("change", () => {
-      store.set("hub.english.scenario.speak", scenarioSelect.value);
-      scenarioDesc.textContent = scenarioSelect.value ? describe(scenarioList, scenarioSelect.value) : "Talk about anything you like.";
-    });
-
     promptBtn.addEventListener("click", async () => {
-      promptBtn.disabled = true;
-      promptBox.replaceChildren(loadingBox("Thinking of a topic..."));
+      promptText = "";
+      promptBody.replaceChildren(ui.skeleton("lines", 2));
       try {
-        const data = await api("/api/english/practice-prompt", {
-          method: "POST", json: { scenario: scenarioSelect.value, provider } });
+        const data = await ui.busy(promptBtn, api("/api/english/practice-prompt", {
+          method: "POST", json: { scenario: picker.value, provider } }));
         promptText = String(data.prompt || "");
-        promptBox.replaceChildren(el("div", { class: "card eng-prompt" },
-          el("div", { class: "eng-label" }, "Your topic"),
+        promptBody.replaceChildren(
           el("p", { class: "eng-prompt-text" }, promptText),
           data.source === "builtin"
-            ? el("p", { class: "muted eng-small" }, "This is a built-in prompt, because the model wasn't available just now.")
-            : null));
+            ? el("p", { class: "eng-small muted" }, "A built-in prompt, because the model wasn't available just now.")
+            : null);
+        promptBtn.lastChild.textContent = "New topic";
       } catch (error) {
-        promptBox.replaceChildren(errorBox(error));
-      } finally {
-        promptBtn.disabled = false;
+        promptBody.replaceChildren(errorBox(error));
       }
     });
+
+    function analysing() {
+      const steps = ["Listening to what you said", "Counting pace and filler words", "Writing your feedback"];
+      const status = el("span", {}, steps[0]);
+      const card = el("div", { class: "ui-card eng-analysing" },
+        el("div", { class: "eng-analysing-head" }, el("span", { class: "ui-spinner", "aria-hidden": "true" }), status),
+        ui.progressBar(null, "Analysing your recording"),
+        ui.skeleton("lines", 3),
+        el("p", { class: "eng-small muted" }, "This can take up to a minute on a laptop without a graphics card."));
+      let i = 0;
+      const timer = setInterval(() => {
+        if (!card.isConnected) { clearInterval(timer); return; }
+        i = Math.min(steps.length - 1, i + 1);
+        status.textContent = steps[i];
+      }, 6000);
+      return card;
+    }
 
     async function submit() {
       if (!lastBlob || busy) return;
       setBusy(true);
       announce.textContent = "";
-      result.replaceChildren(el("div", { class: "card" }, loadingBox("Listening to what you said..."),
-        el("p", { class: "muted eng-small" }, "This can take up to a minute on a laptop without a graphics card.")));
+      result.replaceChildren(analysing());
       result.scrollIntoView({ block: "nearest" });
       const form = new FormData();
       form.append("file", lastBlob.blob, lastBlob.filename);
-      form.append("scenario", scenarioSelect.value);
+      form.append("scenario", picker.value);
       form.append("prompt", promptText);
       form.append("provider", provider);
       try {
         const data = await api("/api/english/speak", { method: "POST", form });
         renderResult(data);
+        ui.haptic("success");
         const overall = data.feedback && data.feedback.scores && data.feedback.scores.overall;
         announce.textContent = `Your feedback is ready.${overall != null ? ` Overall score ${overall} out of 10.` : ""}`;
       } catch (error) {
@@ -583,11 +755,9 @@ export function init(container, ctx) {
       }
     }
 
-    function metricCard(label, value, unit, extra) {
-      return el("div", { class: "card eng-metric" },
-        el("div", { class: "eng-label" }, label),
-        el("div", { class: "eng-metric-value" }, el("strong", {}, String(value)), unit ? el("span", { class: "muted" }, ` ${unit}`) : null),
-        extra || null);
+    function section(title, ic, tone, ...body) {
+      return el("div", { class: "ui-card eng-block" },
+        el("div", { class: "eng-block-head" }, ui.tile(ic, tone, "sm"), el("h3", {}, title)), ...body);
     }
 
     function renderResult(data) {
@@ -598,80 +768,96 @@ export function init(container, ctx) {
       const low = Array.isArray(data.low_confidence_words) ? data.low_confidence_words : [];
       const rate = String(data.rate || "");
       const rateWord = { slow: "A little slow", good: "Good pace", fast: "A little fast" }[rate] || rate;
+      const wpm = Number(data.wpm) || 0;
 
-      const fillerList = Object.entries(fillerItems).length
-        ? el("ul", { class: "eng-pills" }, Object.entries(fillerItems).map(([word, count]) => el("li", {}, `${word} ×${count}`)))
-        : el("p", { class: "muted eng-small" }, "None. Nice and clean.");
+      // hero: overall score ring plus the three sub-scores
+      const overallNum = Number(scores.overall);
+      const hero = el("div", { class: "ui-card ui-card--elevated eng-hero" },
+        el("div", { class: "eng-hero-top" },
+          scoreRing("Overall", scores.overall, { size: 104, stroke: 9 }),
+          el("div", { class: "eng-hero-text" },
+            el("span", { class: "ui-caps" }, "Your result"),
+            el("h3", {}, Number.isFinite(overallNum) ? (overallNum >= 8 ? "Excellent speaking" : overallNum >= 6 ? "Good job" : "Keep practising") : "Session saved"),
+            fb.summary ? el("p", { class: "eng-summary" }, String(fb.summary)) : null)),
+        el("div", { class: "eng-subscores" },
+          scoreRing("Fluency", scores.fluency, { size: 56, stroke: 6 }),
+          scoreRing("Grammar", scores.grammar, { size: 56, stroke: 6 }),
+          scoreRing("Vocabulary", scores.vocabulary, { size: 56, stroke: 6 })));
 
-      const metrics = el("div", { class: "eng-metrics" },
-        metricCard("Pace", data.wpm, "words/min", el("div", {},
-          el("span", { class: `eng-tag ${rate}` }, rateWord),
-          el("p", { class: "eng-small" }, String(data.rate_advice || "")))),
-        metricCard("Filler words", fillerCount, `(${data.fillers_per_100 ?? 0} per 100 words)`, fillerList),
-        metricCard("Long pauses", data.long_pauses ?? 0, "", el("p", { class: "muted eng-small" }, "Gaps longer than about a second and a half.")),
-        metricCard("Total words", data.words ?? 0, "", el("p", { class: "muted eng-small" }, `${Math.round(Number(data.duration_s) || 0)} seconds of speaking.`)));
+      // pace gauge
+      const pace = el("div", { class: "ui-card eng-pace" },
+        ui.ringProgress({ value: Math.min(1, wpm / 200), size: 104, stroke: 9, tone: rate === "good" ? "good" : "warn",
+          big: String(Math.round(wpm)), small: "words/min", label: "Speaking pace" }),
+        el("div", { class: "eng-pace-text" },
+          el("span", { class: "ui-caps" }, "Pace"),
+          el("span", { class: `ui-badge ui-badge--${rate === "good" ? "good" : "warn"}` }, rateWord),
+          el("p", { class: "eng-small" }, String(data.rate_advice || "")),
+          el("p", { class: "eng-small muted" }, "A comfortable pace is about 110 to 160.")));
 
-      const transcript = el("div", { class: "card eng-transcript" },
-        el("h3", {}, "What I heard"),
+      // filler words
+      const fillerEntries = Object.entries(fillerItems);
+      const fillers = el("div", { class: "ui-card eng-fillers" },
+        el("div", { class: "eng-fillers-head" },
+          el("div", {}, el("span", { class: "ui-caps" }, "Filler words"),
+            el("div", { class: "eng-bignum" }, el("strong", { class: "ui-num" }, String(fillerCount)),
+              el("span", { class: "muted" }, ` ${data.fillers_per_100 ?? 0} per 100 words`))),
+          ui.tile("waveform", fillerCount ? "warn" : "good")),
+        fillerEntries.length
+          ? el("ul", { class: "eng-chips" }, fillerEntries.map(([word, count]) =>
+            el("li", { class: "ui-chip ui-chip--static eng-filler-chip" }, word, el("span", { class: "eng-count ui-num" }, `×${count}`))))
+          : el("p", { class: "eng-small eng-good" }, "None. Nice and clean."));
+
+      const stats = el("div", { class: "ui-card eng-trio" },
+        [["Words", data.words ?? 0, "spoken"], ["Pauses", data.long_pauses ?? 0, "over 1.5 s"], ["Time", `${Math.round(Number(data.duration_s) || 0)}s`, "speaking"]].map(([label, value, hint]) =>
+          el("div", { class: "eng-trio-item" }, el("strong", { class: "ui-num" }, String(value)), el("span", {}, label), el("span", { class: "muted eng-hint" }, hint))));
+
+      const transcript = section("What I heard", "note", "info",
         el("p", { class: "eng-transcript-text", lang: "en" }, markTranscript(String(data.transcript || ""), Object.keys(fillerItems), low.map((w) => String(w.word)))),
         el("p", { class: "eng-legend" },
           el("span", {}, el("mark", { class: "unclear" }, "word"), " may have been unclear"),
           el("span", {}, el("mark", { class: "filler" }, "um"), " filler word")),
         el("p", { class: "muted eng-small" }, "Highlighted words are only a hint that they may have been unclear to the speech recogniser. They are not a grade."));
 
-      const meters = el("div", { class: "card" },
-        el("h3", {}, "Your scores"),
-        el("div", { class: "eng-meters" },
-          meter("Fluency", scores.fluency), meter("Grammar", scores.grammar),
-          meter("Vocabulary", scores.vocabulary), meter("Overall", scores.overall)));
-
-      const out = [metrics, transcript, meters];
-
-      if (fb.summary) out.push(el("div", { class: "card" }, el("h3", {}, "Coach summary"), el("p", {}, String(fb.summary))));
+      const out = [hero, pace, fillers, stats, transcript];
 
       if (Array.isArray(fb.grammar) && fb.grammar.length) {
-        out.push(el("div", { class: "card" }, el("h3", {}, "Fix these"),
-          el("ul", { class: "eng-list" }, fb.grammar.map((g) => el("li", {}, correctionBlock(g))))));
+        out.push(section("Fix these", "pen", "bad", el("ul", { class: "eng-list" }, fb.grammar.map((g) => el("li", {}, correctionBlock(g))))));
       }
       if (Array.isArray(fb.vocabulary) && fb.vocabulary.length) {
-        out.push(el("div", { class: "card" }, el("h3", {}, "Better words"),
-          el("ul", { class: "eng-list" }, fb.vocabulary.map((v) => el("li", {}, correctionBlock(v))))));
+        out.push(section("Better words", "sparkles", "violet", el("ul", { class: "eng-list" }, fb.vocabulary.map((v) => el("li", {}, correctionBlock(v))))));
       }
       if (fb.rewrite) {
         const rewrite = String(fb.rewrite);
-        out.push(el("div", { class: "card" }, el("h3", {}, "A clearer way to say it"),
+        out.push(section("A clearer way to say it", "wand", "teal",
           el("p", { class: "eng-rewrite", lang: "en" }, rewrite),
-          el("div", { class: "row wrap" },
-            el("button", { class: "btn", type: "button", onclick: async () => ctx.toast(await copyText(rewrite) ? "Copied" : "Couldn't copy. Select the text instead.") },
-              icon("copy"), "Copy"),
-            el("button", { class: "btn", type: "button", onclick: () => ctx.speak(rewrite) }, icon("speaker"), "Listen"))));
+          el("div", { class: "eng-actions" },
+            ui.button({ label: "Copy", icon: "copy", variant: "tonal", size: "sm", onClick: async () => ctx.toast(await copyText(rewrite) ? "Copied" : "Couldn't copy. Select the text instead.") }),
+            ui.button({ label: "Listen", icon: "volume", variant: "tonal", size: "sm", onClick: () => ctx.speak(rewrite) }))));
       }
       if (Array.isArray(fb.tips) && fb.tips.length) {
-        out.push(el("div", { class: "card" }, el("h3", {}, "Tips for next time"),
-          el("ul", { class: "eng-tips" }, fb.tips.map((t) => el("li", {}, String(t))))));
+        out.push(section("Tips for next time", "target", "orange", el("ul", { class: "eng-tips" }, fb.tips.map((t) => el("li", {}, String(t))))));
       }
+      out.push(ui.button({ label: "Try again", icon: "mic", variant: "primary", size: "lg", block: true, onClick: () => {
+        result.replaceChildren();
+        announce.textContent = "";
+        recorder.stage.scrollIntoView({ block: "center", behavior: "smooth" });
+        recorder.button.focus({ preventScroll: true });
+      } }));
       result.replaceChildren(...out);
-      result.scrollIntoView({ block: "start" });
+      hero.scrollIntoView({ block: "start" });
     }
 
     pane.append(
-      el("div", { class: "card eng-setup" },
-        el("label", { for: "eng-speak-scenario" }, "Scenario"), scenarioSelect, scenarioDesc,
-        promptBtn, promptBox),
-      el("div", { class: "eng-recorder" },
-        recorder.button, recorder.timer, recorder.status,
-        recorder.note),
-      announce, result);
+      el("div", { class: "ui-card eng-setup" },
+        el("span", { class: "ui-caps" }, "Scenario"), picker.node, picker.desc),
+      promptCard, recorder.stage, announce, result);
 
     return {
       node: pane,
       enter() {
         if (loaded) return;
         loaded = true;
-        fillScenarioSelect(scenarioSelect, { allowFree: true, remember: "hub.english.scenario.speak" })
-          .then((list) => { scenarioList = list; scenarioSelect.dispatchEvent(new Event("change")); })
-          .catch((error) => { loaded = false; scenarioDesc.textContent = ""; scenarioDesc.append(friendly(error), " ",
-            el("button", { class: "eng-link", type: "button", onclick: () => { scenarioDesc.textContent = ""; this.enter(); } }, "Retry")); });
+        picker.load().catch(() => { loaded = false; });
       },
     };
   }
@@ -681,38 +867,39 @@ export function init(container, ctx) {
   // =========================================================================================
   function buildRoleplay() {
     const pane = el("section", { class: "eng-pane", "aria-label": "Role-play" });
-    const scenarioSelect = el("select", { id: "eng-rp-scenario", "aria-describedby": "eng-rp-desc" });
-    const scenarioDesc = el("p", { class: "muted eng-small", id: "eng-rp-desc" });
-    const startBtn = el("button", { class: "btn primary", type: "button" }, "Start");
-    const setupError = el("div", { "aria-live": "polite" });
-    const setup = el("div", { class: "card eng-setup" },
-      el("label", { for: "eng-rp-scenario" }, "Pick a conversation"), scenarioSelect, scenarioDesc, startBtn, setupError);
+    const picker = createPicker({ allowFree: false, remember: "hub.english.scenario.roleplay", mode: "cards", label: "Pick a conversation" });
+    const startBtn = ui.button({ label: "Start conversation", icon: "play", variant: "primary", size: "lg", block: true });
+    const setup = el("div", { class: "eng-rp-setup" },
+      el("div", { class: "eng-rp-intro" }, el("h3", {}, "Practise a real conversation"),
+        el("p", { class: "muted" }, "Pick a scene. I'll play the other person and gently fix your English as we go.")),
+      picker.node, startBtn);
 
     const log = el("div", { class: "eng-log", role: "log", "aria-live": "polite", "aria-label": "Conversation" });
-    const speakToggle = el("input", { type: "checkbox", id: "eng-rp-aloud" });
-    speakToggle.checked = store.get("hub.english.aloud") === "1";
-    speakToggle.addEventListener("change", () => store.set("hub.english.aloud", speakToggle.checked ? "1" : "0"));
-    const resetBtn = el("button", { class: "btn", type: "button" }, "New conversation");
-    const title = el("strong", { class: "grow" }, "");
-    const head = el("div", { class: "eng-rp-head" },
-      el("div", { class: "row" }, title, resetBtn),
-      el("label", { class: "eng-check", for: "eng-rp-aloud" }, speakToggle, "Read partner replies aloud"));
+    let aloud = store.get("hub.english.aloud") === "1";
+    const aloudSwitch = ui.switchControl({ checked: aloud, label: "Read partner replies aloud", onChange: (v) => { aloud = v; store.set("hub.english.aloud", v ? "1" : "0"); } });
+    const resetBtn = ui.button({ label: "New", icon: "refresh", variant: "ghost", size: "sm", "aria-label": "Start a new conversation" });
+    const titleNode = el("strong", { class: "eng-rp-title ui-truncate" }, "");
+    let sceneTile = el("span", {});
+    const head = el("div", { class: "ui-card ui-card--flat eng-rp-head" },
+      el("div", { class: "eng-rp-headrow" }, sceneTile, el("div", { class: "eng-rp-headtext" }, el("span", { class: "ui-caps" }, "Scene"), titleNode), resetBtn),
+      el("label", { class: "eng-aloud" }, el("span", {}, "Read partner replies aloud"), aloudSwitch));
 
-    const composerInput = el("textarea", { id: "eng-rp-input", rows: "2", placeholder: "Type your answer, or tap the microphone", "aria-label": "Your answer", maxlength: "2000" });
-    const sendBtn = el("button", { class: "btn primary eng-send", type: "button", "aria-label": "Send your answer" }, icon("send"));
-    const micStatus = el("p", { class: "eng-small muted", role: "status", "aria-live": "polite" });
+    const composerInput = el("textarea", { id: "eng-rp-input", rows: "1", placeholder: "Type your answer, or tap the microphone", "aria-label": "Your answer", maxlength: "2000" });
+    const sendBtn = el("button", { class: "ui-btn ui-btn--primary ui-btn--icon eng-send", type: "button", "aria-label": "Send your answer" }, icon("send"));
+    const micStatus = el("p", { class: "eng-small muted eng-mic-line", role: "status", "aria-live": "polite" });
     const recorder = createRecorder(ctx, {
       big: false, name: "answer", maxSeconds: MAX_ROLEPLAY_SECONDS,
       startLabel: "Record your answer", stopLabel: "Stop recording",
       onAudio: (blob, filename) => transcribe(blob, filename),
     });
     const composer = el("div", { class: "eng-composer" },
-      recorder.note,
-      micStatus,
-      el("div", { class: "eng-composer-row" }, recorder.button, recorder.timer, composerInput, sendBtn));
+      recorder.note, micStatus,
+      el("div", { class: "eng-composer-row" },
+        recorder.button,
+        el("div", { class: "eng-input-wrap" }, composerInput, recorder.timer),
+        sendBtn));
     const conversation = el("div", { class: "eng-conversation", hidden: true }, head, log, composer);
 
-    let scenarioList = [];
     let loaded = false;
     let sessionId = "";
     let scenarioId = "";
@@ -733,19 +920,20 @@ export function init(container, ctx) {
       recorder.setBusy(streaming || transcribing);
       resetBtn.disabled = false;
     }
-
-    scenarioSelect.addEventListener("change", () => {
-      store.set("hub.english.scenario.roleplay", scenarioSelect.value);
-      scenarioDesc.textContent = describe(scenarioList, scenarioSelect.value);
-    });
+    function autosize() {
+      composerInput.style.height = "auto";
+      composerInput.style.height = `${Math.min(140, composerInput.scrollHeight)}px`;
+    }
+    composerInput.addEventListener("input", autosize);
 
     function bubble(role, text) {
       const body = el("div", { class: "eng-bubble-text", lang: "en" }, text);
+      const bub = el("div", { class: "eng-bubble" }, sr(role === "user" ? "You: " : "Partner: "), body);
       const node = el("div", { class: `eng-msg ${role}` },
-        el("div", { class: "eng-bubble" }, el("span", { class: "eng-sr" }, role === "user" ? "You: " : "Partner: "), body));
+        role === "partner" ? ui.tile("bot", "accent", "sm") : null, el("div", { class: "eng-msg-col" }, bub));
       log.append(node);
       node.scrollIntoView({ block: "nearest" });
-      return { node, body };
+      return { node, body, col: node.querySelector(".eng-msg-col") };
     }
 
     // One turn: send `message` (or null for the opening) and stream the partner's reply.
@@ -754,12 +942,12 @@ export function init(container, ctx) {
       refresh();
       const partner = bubble("partner", "");
       partner.node.classList.add("waiting");
-      const wait = el("span", { class: "eng-dots", "aria-hidden": "true" }, "...");
+      const wait = el("span", { class: "eng-dots", "aria-hidden": "true" }, el("i"), el("i"), el("i"));
       partner.body.append(wait);
       let checking = null;
       if (userBubble) {
-        checking = el("div", { class: "eng-corr-slot muted eng-small" }, "Checking your English...");
-        userBubble.node.append(checking);
+        checking = el("div", { class: "eng-corr-slot muted eng-small" }, el("span", { class: "ui-spinner eng-mini-spin", "aria-hidden": "true" }), "Checking your English...");
+        userBubble.col.append(checking);
       }
       controller = new AbortController();
       let reply = "";
@@ -788,15 +976,16 @@ export function init(container, ctx) {
         wait.remove();
         if (!reply) partner.node.remove();
         else partner.body.append(" ");
-        log.append(el("div", { class: "eng-error", role: "alert" }, el("p", {}, failed)));
+        log.append(errorBox({ message: failed }));
         if (userBubble && message) {
           // Not answered: put the text back so nothing is lost.
           userBubble.node.remove();
           composerInput.value = message;
+          autosize();
         } else if (!reply && !userBubble) {
-          log.append(el("button", { class: "btn", type: "button", onclick: () => { log.replaceChildren(); turn(null, null); } }, "Try the opening again"));
+          log.append(ui.button({ label: "Try the opening again", icon: "refresh", variant: "tonal", size: "sm", onClick: () => { log.replaceChildren(); turn(null, null); } }));
         }
-      } else if (reply && speakToggle.checked) {
+      } else if (reply && aloud) {
         ctx.speak(reply);
       }
       if (checking && !gotCorrection) checking.remove();
@@ -807,12 +996,11 @@ export function init(container, ctx) {
 
     function showCorrection(slot, correction) {
       if (!slot) return;
+      slot.className = "eng-corr-slot";
       if (!correction) {
-        slot.replaceChildren(el("span", { class: "eng-good" }, "Sounded good"));
-        slot.className = "eng-corr-slot";
+        slot.replaceChildren(el("span", { class: "eng-good-tag" }, icon("check-circle", 15), "Sounded natural"));
         return;
       }
-      slot.className = "eng-corr-slot";
       slot.replaceChildren(correctionBlock(correction, true));
     }
 
@@ -820,6 +1008,7 @@ export function init(container, ctx) {
       const text = composerInput.value.trim();
       if (!text || streaming || transcribing) return;
       composerInput.value = "";
+      autosize();
       const userBubble = bubble("user", text);
       await turn(text, userBubble);
     }
@@ -841,6 +1030,7 @@ export function init(container, ctx) {
           micStatus.textContent = "I didn't catch any words. Try again, a little closer to the microphone.";
         } else {
           composerInput.value = composerInput.value.trim() ? `${composerInput.value.trim()} ${text}` : text;
+          autosize();
           micStatus.textContent = "Here is what I heard. Edit it if you like, then send.";
           composerInput.focus();
         }
@@ -853,22 +1043,24 @@ export function init(container, ctx) {
     }
 
     async function begin() {
-      scenarioId = scenarioSelect.value;
+      scenarioId = picker.value;
       if (!scenarioId) return;
       sessionId = sessionFor(scenarioId);
-      setupError.replaceChildren();
       started = true;
       setup.hidden = true;
       conversation.hidden = false;
-      title.textContent = (scenarioList.find((s) => s.id === scenarioId) || {}).title || "Conversation";
+      const idx = picker.list.findIndex((s) => s.id === scenarioId);
+      titleNode.textContent = (picker.list[idx] || {}).title || "Conversation";
+      sceneTile.replaceWith(sceneTile = ui.tile(SCENARIO_ICONS[Math.max(0, idx) % SCENARIO_ICONS.length], SCENARIO_TONES[Math.max(0, idx) % SCENARIO_TONES.length]));
       log.replaceChildren();
       composerInput.value = "";
+      autosize();
       micStatus.textContent = "";
       await turn(null, null);
     }
     startBtn.addEventListener("click", begin);
 
-    resetBtn.addEventListener("click", async () => {
+    async function resetConversation() {
       if (controller) controller.abort();
       recorder.cancel();
       resetBtn.disabled = true;
@@ -885,7 +1077,14 @@ export function init(container, ctx) {
       log.replaceChildren();
       refresh();
       ctx.toast("Conversation cleared. Pick one to start again.");
-      scenarioSelect.focus();
+      picker.node.querySelector('[aria-checked="true"]')?.focus();
+    }
+    resetBtn.addEventListener("click", async () => {
+      if (log.querySelector(".eng-msg.user")) {
+        const ok = await ui.confirm({ title: "Start a new conversation?", message: "This clears the current conversation.", confirmLabel: "Start over", danger: true });
+        if (!ok) return;
+      }
+      resetConversation();
     });
 
     pane.append(setup, conversation);
@@ -896,12 +1095,7 @@ export function init(container, ctx) {
       enter() {
         if (loaded) return;
         loaded = true;
-        fillScenarioSelect(scenarioSelect, { allowFree: false, remember: "hub.english.scenario.roleplay" })
-          .then((list) => { scenarioList = list; scenarioSelect.dispatchEvent(new Event("change")); })
-          .catch((error) => {
-            loaded = false;
-            setupError.replaceChildren(errorBox(error, () => this.enter(), "Try again"));
-          });
+        picker.load().catch(() => { loaded = false; });
       },
       get started() { return started; },
     };
@@ -913,48 +1107,67 @@ export function init(container, ctx) {
   function buildCorrect() {
     const pane = el("section", { class: "eng-pane", "aria-label": "Fix writing" });
     const input = el("textarea", { id: "eng-correct-text", rows: "6", maxlength: "5000",
-      placeholder: "Paste or write an email, message or paragraph here." });
-    const button = el("button", { class: "btn primary", type: "button" }, "Fix my English");
-    const clear = el("button", { class: "btn", type: "button" }, "Clear");
+      placeholder: "Paste or write an email, message or paragraph here.", "aria-label": "Your text" });
+    const counter = el("span", { class: "eng-counter ui-num muted" }, "0 / 5000");
+    input.addEventListener("input", () => { counter.textContent = `${input.value.length} / 5000`; });
+    const button = ui.button({ label: "Fix my English", icon: "wand", variant: "primary", size: "lg", block: true });
+    const clear = ui.button({ label: "Clear", variant: "ghost" });
     const result = el("div", { class: "eng-result", "aria-live": "polite" });
 
     async function run() {
       const text = input.value.trim();
-      if (!text) { result.replaceChildren(emptyBox("Nothing to check yet", "Write or paste some text first.")); input.focus(); return; }
-      button.disabled = true;
+      if (!text) { result.replaceChildren(emptyBox("Nothing to check yet", "Write or paste some text first.", "pen")); input.focus(); return; }
       result.setAttribute("aria-busy", "true");
-      result.replaceChildren(el("div", { class: "card" }, loadingBox("Reading your text...")));
+      result.replaceChildren(el("div", { class: "ui-card eng-analysing" }, loadingBox("Reading your text..."), ui.skeleton("lines", 4)));
       try {
-        const data = await api("/api/english/correct", { method: "POST", json: { text, provider } });
+        const data = await ui.busy(button, api("/api/english/correct", { method: "POST", json: { text, provider } }));
         const corrected = String(data.corrected || "");
         const changes = Array.isArray(data.changes) ? data.changes : [];
-        const out = [el("div", { class: "card" }, el("h3", {}, "Corrected text"),
-          el("p", { class: "eng-rewrite", lang: "en" }, corrected),
-          el("div", { class: "row wrap" },
-            el("button", { class: "btn", type: "button", onclick: async () => ctx.toast(await copyText(corrected) ? "Copied" : "Couldn't copy. Select the text instead.") }, icon("copy"), "Copy"),
-            el("button", { class: "btn", type: "button", onclick: () => ctx.speak(corrected) }, icon("speaker"), "Listen")))];
+        const ops = diffWords(text, corrected);
+        const edits = ops.filter((o) => o.t !== "eq").length;
+        const view = el("p", { class: "eng-diff", lang: "en" });
+        const showClean = (clean) => {
+          if (clean) view.replaceChildren(corrected);
+          else view.replaceChildren(...diffNodes(ops));
+        };
+        showClean(false);
+        const seg = ui.segmented({ options: [{ value: "diff", label: "Changes" }, { value: "clean", label: "Clean" }], value: "diff",
+          label: "How to show the corrected text", onChange: (v) => showClean(v === "clean") });
+        const out = [el("div", { class: "ui-card eng-block" },
+          el("div", { class: "eng-block-head" }, ui.tile("check-circle", "good", "sm"), el("h3", {}, "Corrected text"), edits ? null : ui.badge("No changes", "good")),
+          edits ? seg : null,
+          view,
+          edits ? el("p", { class: "eng-legend" }, el("span", {}, el("del", { class: "eng-del" }, "removed")), el("span", {}, el("ins", { class: "eng-ins" }, "added"))) : null,
+          el("div", { class: "eng-actions" },
+            ui.button({ label: "Copy", icon: "copy", variant: "tonal", size: "sm", onClick: async () => ctx.toast(await copyText(corrected) ? "Copied" : "Couldn't copy. Select the text instead.") }),
+            ui.button({ label: "Listen", icon: "volume", variant: "tonal", size: "sm", onClick: () => ctx.speak(corrected) })))];
         if (changes.length) {
-          out.push(el("div", { class: "card" }, el("h3", {}, "What changed"),
+          out.push(el("div", { class: "ui-card eng-block" },
+            el("div", { class: "eng-block-head" }, ui.tile("pen", "bad", "sm"), el("h3", {}, "What changed"), ui.badge(String(changes.length), "accent")),
             el("ul", { class: "eng-list" }, changes.map((c) => el("li", {}, correctionBlock(c))))));
         } else {
-          out.push(el("div", { class: "card" }, el("h3", {}, "What changed"), el("p", { class: "muted" }, "Nothing needed changing. Well written.")));
+          out.push(emptyBox("Nothing needed changing", "Well written.", "check-circle"));
         }
-        if (data.tone_note) out.push(el("div", { class: "card" }, el("h3", {}, "Tone"), el("p", {}, String(data.tone_note))));
+        if (data.tone_note) {
+          out.push(el("div", { class: "ui-card eng-block" },
+            el("div", { class: "eng-block-head" }, ui.tile("smile", "violet", "sm"), el("h3", {}, "Tone")), el("p", {}, String(data.tone_note))));
+        }
         result.replaceChildren(...out);
+        ui.haptic("success");
       } catch (error) {
         result.replaceChildren(errorBox(error, run));
       } finally {
-        button.disabled = false;
         result.setAttribute("aria-busy", "false");
       }
     }
     button.addEventListener("click", run);
-    clear.addEventListener("click", () => { input.value = ""; result.replaceChildren(); input.focus(); });
+    clear.addEventListener("click", () => { input.value = ""; counter.textContent = "0 / 5000"; result.replaceChildren(); input.focus(); });
 
     pane.append(
-      el("div", { class: "card eng-setup" },
-        el("label", { for: "eng-correct-text" }, "Your text"), input,
-        el("div", { class: "row wrap" }, button, clear)),
+      el("div", { class: "ui-card eng-setup" },
+        el("div", { class: "eng-field-head" }, el("label", { for: "eng-correct-text", class: "ui-caps" }, "Your text"), counter),
+        input,
+        button, el("div", { class: "eng-center" }, clear)),
       result);
     return { node: pane };
   }
@@ -967,11 +1180,11 @@ export function init(container, ctx) {
     const today = el("div", { class: "eng-today" });
     const reviewBox = el("div", { class: "eng-review" });
     const addInput = el("input", { id: "eng-add-word", type: "text", maxlength: "60", placeholder: "A word or phrase, like \"touch base\"", autocomplete: "off", autocapitalize: "none", "aria-label": "Word or phrase to add" });
-    const addBtn = el("button", { class: "btn primary", type: "submit" }, "Add");
-    const addForm = el("form", { class: "card eng-setup" },
-      el("h3", {}, "Add a word"),
+    const addBtn = ui.button({ label: "Add", icon: "plus", variant: "primary", type: "submit" });
+    const addForm = el("form", { class: "ui-card eng-setup" },
+      el("div", { class: "eng-block-head" }, ui.tile("plus", "accent", "sm"), el("h3", {}, "Add a word")),
       el("p", { class: "muted eng-small" }, "Type a word or phrase you met today. I'll explain it and add it to your review."),
-      el("div", { class: "row" }, el("div", { class: "grow" }, addInput), addBtn));
+      el("div", { class: "eng-add-row" }, el("div", { class: "grow" }, addInput), addBtn));
     const added = el("div", { class: "eng-added", "aria-live": "polite" });
     let data = null;
     let loading = false;
@@ -980,8 +1193,7 @@ export function init(container, ctx) {
     async function load() {
       if (loading) return;
       loading = true;
-      today.replaceChildren(el("div", { class: "card" }, loadingBox("Getting today's words..."),
-        el("p", { class: "muted eng-small" }, "The first time each day this can take a little while.")));
+      today.replaceChildren(ui.skeleton("card", 2), el("p", { class: "muted eng-small" }, "The first time each day this can take a little while."));
       reviewBox.replaceChildren();
       try {
         data = await api(`/api/english/vocab/today?provider=${provider}`);
@@ -998,90 +1210,84 @@ export function init(container, ctx) {
 
     function renderToday() {
       const words = data.new_words || [];
-      today.replaceChildren(el("h3", {}, "New words today"));
-      if (!words.length) today.append(emptyBox("No new words today", "Add a word of your own below."));
-      else today.append(...words.map((w) => wordCard(w, ctx)));
+      today.replaceChildren(el("div", { class: "ui-section-head" }, el("h3", { class: "ui-section-title" }, "New words today"),
+        words.length ? el("span", { class: "muted eng-small" }, "Tap a card to flip") : null));
+      if (!words.length) today.append(emptyBox("No new words today", "Add a word of your own below.", "book"));
+      else today.append(el("div", { class: "eng-cards" }, words.map((w) => flipCard(w, ctx))));
     }
 
     function renderReviewStart() {
       const due = data.due || [];
-      reviewBox.replaceChildren(el("h3", {}, "Review"));
+      reviewBox.replaceChildren(el("div", { class: "ui-section-head" }, el("h3", { class: "ui-section-title" }, "Review")));
       if (!due.length) {
-        reviewBox.append(el("div", { class: "card" },
-          el("p", {}, "Nothing is due for review right now."),
-          el("p", { class: "muted eng-small" }, "Come back tomorrow, or after you have added more words.")));
+        reviewBox.append(emptyBox("Nothing due right now", "Come back tomorrow, or after you have added more words.", "check-circle"));
         return;
       }
-      reviewBox.append(el("div", { class: "card" },
-        el("p", {}, `${due.length} ${due.length === 1 ? "word is" : "words are"} ready to review.`),
-        el("button", { class: "btn primary", type: "button", onclick: () => startReview(due) }, "Start review")));
+      reviewBox.append(el("div", { class: "ui-card ui-card--elevated eng-due" },
+        ui.ringProgress({ value: 1, size: 64, stroke: 7, tone: "accent", big: String(due.length), label: "Words due" }),
+        el("div", { class: "eng-due-text" },
+          el("strong", {}, `${due.length} ${due.length === 1 ? "word is" : "words are"} ready`),
+          el("span", { class: "muted eng-small" }, "A few minutes keeps them fresh.")),
+        ui.button({ label: "Start review", icon: "play", variant: "primary", onClick: () => startReview(due) })));
     }
 
-    // Flashcards: word -> Show meaning -> Again / Hard / Good / Easy.
+    // Flashcards: word -> flip to the meaning -> Again / Hard / Good / Easy.
     function startReview(due) {
       const queue = due.slice();
       let index = 0;
       const total = queue.length;
-      const stage = el("div", { class: "card eng-flash" });
-      reviewBox.replaceChildren(el("h3", {}, "Review"), stage);
+      const stage = el("div", { class: "eng-flash" });
+      reviewBox.replaceChildren(el("div", { class: "ui-section-head" }, el("h3", { class: "ui-section-title" }, "Review")), stage);
 
       function renderCard() {
         if (index >= total) {
-          stage.replaceChildren(
-            el("h4", {}, "All done"),
-            el("p", {}, `You reviewed ${total} ${total === 1 ? "word" : "words"}. Nicely done.`),
-            el("button", { class: "btn primary", type: "button", onclick: () => {
+          stage.replaceChildren(el("div", { class: "ui-card ui-card--elevated eng-done" },
+            ui.ringProgress({ value: 1, size: 96, stroke: 8, tone: "good", big: String(total), small: total === 1 ? "word" : "words", label: "Words reviewed" }),
+            el("h3", {}, "All done"),
+            el("p", { class: "muted" }, `You reviewed ${total} ${total === 1 ? "word" : "words"}. Nicely done.`),
+            ui.button({ label: "Finish", icon: "check", variant: "primary", size: "lg", block: true, onClick: () => {
               data.due = [];
               renderReviewStart();
-            } }, "Finish"));
+            } })));
+          ui.haptic("success");
           return;
         }
         const w = queue[index];
-        const meaning = el("div", { class: "eng-flash-answer", hidden: true, tabindex: "-1" },
-          el("p", { class: "eng-word-meaning" }, String(w.meaning || "")),
-          w.example ? el("p", { class: "eng-word-example" }, String(w.example)) : null);
-        const feedback = el("p", { class: "eng-small eng-good", role: "status", "aria-live": "polite" });
-        const showBtn = el("button", { class: "btn primary", type: "button" }, "Show meaning");
+        const feedback = el("p", { class: "eng-small eng-good eng-feedback", role: "status", "aria-live": "polite" });
+        const showBtn = ui.button({ label: "Show meaning", icon: "eye", variant: "primary", size: "lg", block: true });
         const ratings = el("div", { class: "eng-ratings", hidden: true, role: "group", "aria-label": "How well did you know it?" });
+        const card = flipCard(w, ctx, { tall: true, onFlip: (flipped) => {
+          if (flipped && ratings.hidden) { ratings.hidden = false; showBtn.hidden = true; }
+        } });
         const buttons = [];
         for (const [value, label] of [["again", "Again"], ["hard", "Hard"], ["good", "Good"], ["easy", "Easy"]]) {
-          const b = el("button", { class: `btn eng-rate ${value}`, type: "button", onclick: () => rate(value) }, label);
+          const b = el("button", { class: `ui-btn ui-btn--secondary eng-rate ${value}`, type: "button", onclick: () => rate(value) }, label);
           buttons.push(b);
           ratings.append(b);
         }
         async function rate(value) {
           buttons.forEach((b) => { b.disabled = true; });
-          feedback.className = "eng-small muted";
+          feedback.className = "eng-small muted eng-feedback";
           feedback.textContent = "Saving...";
           try {
             const res = await api(`/api/english/vocab/${encodeURIComponent(w.id)}/review`, { method: "POST", json: { rating: value } });
-            feedback.className = "eng-small eng-good";
+            ui.haptic("select");
+            feedback.className = "eng-small eng-good eng-feedback";
             feedback.textContent = `Saved. You'll see it again ${friendlyDue(res.next_due)}.`;
             setTimeout(() => { index += 1; renderCard(); }, 1300);
           } catch (error) {
             buttons.forEach((b) => { b.disabled = false; });
-            feedback.className = "eng-small error";
+            feedback.className = "eng-small error eng-feedback";
             feedback.textContent = friendly(error);
           }
         }
-        showBtn.addEventListener("click", () => {
-          showBtn.hidden = true;
-          meaning.hidden = false;
-          ratings.hidden = false;
-          meaning.focus();
-        });
+        showBtn.addEventListener("click", () => { card.flip(true); showBtn.hidden = true; ratings.hidden = false; });
+        const bar = ui.progressBar(index / total, "Review progress");
         stage.replaceChildren(
           el("div", { class: "eng-flash-top" },
-            el("span", { class: "muted eng-small" }, `Word ${index + 1} of ${total}`),
-            el("div", { class: "eng-progress", role: "progressbar", "aria-label": "Review progress",
-              "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(index) },
-              el("span", { style: `width:${(index / total) * 100}%` }))),
-          el("div", { class: "eng-flash-word" },
-            el("h4", {}, String(w.word)),
-            w.level ? el("span", { class: "eng-badge" }, sr("Level "), String(w.level)) : null,
-            el("button", { class: "eng-iconbtn", type: "button", "aria-label": `Listen to the word ${w.word}`, onclick: () => ctx.speak(String(w.word)) }, icon("speaker"))),
-          showBtn, meaning, ratings, feedback);
-        showBtn.focus();
+            el("span", { class: "muted eng-small ui-num" }, `Word ${index + 1} of ${total}`), bar),
+          card, showBtn, ratings, feedback);
+        showBtn.focus({ preventScroll: true });
       }
       renderCard();
     }
@@ -1090,16 +1296,14 @@ export function init(container, ctx) {
       event.preventDefault();
       const word = addInput.value.trim();
       if (!word) { addInput.focus(); return; }
-      addBtn.disabled = true;
       added.replaceChildren(loadingBox(`Looking up "${word}"...`));
       try {
-        const entry = await api("/api/english/vocab/add", { method: "POST", json: { word, provider } });
+        const entry = await ui.busy(addBtn, api("/api/english/vocab/add", { method: "POST", json: { word, provider } }));
         addInput.value = "";
-        added.replaceChildren(el("div", { class: "eng-label" }, "Added to your words"), wordCard(entry, ctx));
+        ui.haptic("success");
+        added.replaceChildren(el("span", { class: "ui-caps" }, "Added to your words"), flipCard(entry, ctx));
       } catch (error) {
         added.replaceChildren(errorBox(error));
-      } finally {
-        addBtn.disabled = false;
       }
     });
 
@@ -1119,18 +1323,11 @@ export function init(container, ctx) {
     pane.append(body);
     let loading = false;
 
-    function stat(label, value, hint) {
-      return el("div", { class: "card eng-stat" },
-        el("div", { class: "eng-label" }, label),
-        el("strong", { class: "eng-stat-value" }, String(value)),
-        hint ? el("span", { class: "muted eng-small" }, hint) : null);
-    }
-
     async function load() {
       if (loading) return;
       loading = true;
       body.setAttribute("aria-busy", "true");
-      if (!body.children.length) body.replaceChildren(el("div", { class: "card" }, loadingBox("Loading your progress...")));
+      if (!body.children.length) body.replaceChildren(ui.skeleton("card", 3));
       try {
         const [data, scenarios] = await Promise.all([api("/api/english/overview"), loadScenarios().catch(() => [])]);
         render(data, scenarios);
@@ -1142,37 +1339,92 @@ export function init(container, ctx) {
       }
     }
 
+    function weekBars(trend) {
+      const days = [];
+      const now = new Date();
+      for (let i = 6; i >= 0; i -= 1) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        days.push({ d, count: 0, today: i === 0 });
+      }
+      for (const t of trend) {
+        const d = parseDay(t.date);
+        if (!d) continue;
+        const hit = days.find((x) => x.d.getTime() === d.getTime());
+        if (hit) hit.count += 1;
+      }
+      const max = Math.max(2, ...days.map((x) => x.count));
+      const total = days.reduce((s, x) => s + x.count, 0);
+      return el("div", { class: "ui-card eng-block" },
+        el("div", { class: "eng-block-head" }, ui.tile("calendar", "teal", "sm"), el("h3", {}, "This week"),
+          el("span", { class: "ui-badge" }, `${total} ${total === 1 ? "session" : "sessions"}`)),
+        el("div", { class: "eng-week", role: "img", "aria-label": `Sessions in the last 7 days: ${days.map((x) => `${x.d.toLocaleDateString(undefined, { weekday: "long" })} ${x.count}`).join(", ")}` },
+          days.map((x) => el("div", { class: "eng-day" + (x.today ? " is-today" : "") },
+            el("span", { class: "eng-day-count ui-num" }, x.count ? String(x.count) : ""),
+            el("span", { class: "eng-day-bar" + (x.count ? " has" : ""), style: `--h:${x.count ? Math.max(0.18, x.count / max) : 0.06}` }),
+            el("span", { class: "eng-day-label" }, x.d.toLocaleDateString(undefined, { weekday: "narrow" }))))));
+    }
+
+    function badges(data, trend) {
+      const streak = data.streak_days || 0;
+      const sessions = data.sessions_total || 0;
+      const last = data.last_session || {};
+      const best = Math.max(0, ...trend.map((t) => Number(t.overall) || 0));
+      const list = [
+        { icon: "mic", tone: "accent", title: "First session", hint: "Record one practice", on: sessions >= 1 },
+        { icon: "flame", tone: "orange", title: "3-day streak", hint: "Practise 3 days in a row", on: streak >= 3 },
+        { icon: "zap", tone: "warn", title: "Week warrior", hint: "A 7-day streak", on: streak >= 7 },
+        { icon: "award", tone: "violet", title: "Ten sessions", hint: "Complete 10 practices", on: sessions >= 10 },
+        { icon: "waveform", tone: "teal", title: "Smooth talker", hint: "Under 3 fillers per 100 words", on: sessions > 0 && Number.isFinite(Number(last.fillers_per_100)) && Number(last.fillers_per_100) <= 3 },
+        { icon: "timer", tone: "info", title: "Steady pace", hint: "110 to 160 words a minute", on: Number(last.wpm) >= 110 && Number(last.wpm) <= 160 },
+        { icon: "star", tone: "pink", title: "High scorer", hint: "An overall score of 8 or more", on: best >= 8 },
+        { icon: "book", tone: "good", title: "Words on track", hint: "No words waiting for review", on: sessions > 0 && (data.vocab_due || 0) === 0 },
+      ];
+      const earned = list.filter((b) => b.on).length;
+      return el("div", { class: "ui-card eng-block" },
+        el("div", { class: "eng-block-head" }, ui.tile("award", "violet", "sm"), el("h3", {}, "Badges"), el("span", { class: "ui-badge" }, `${earned} of ${list.length}`)),
+        el("ul", { class: "eng-badges" }, list.map((b) => el("li", { class: "eng-badge-item" + (b.on ? " is-on" : " is-locked") },
+          el("span", { class: "eng-badge-art" }, ui.tile(b.on ? b.icon : "lock", b.on ? b.tone : "gray")),
+          el("strong", {}, b.title),
+          el("span", { class: "eng-badge-hint" }, sr(b.on ? "Earned. " : "Locked. "), b.hint)))));
+    }
+
     function render(data, scenarios) {
       const streak = data.streak_days || 0;
-      const out = [el("div", { class: "eng-stats" },
-        stat("Streak", streak, streak === 1 ? "day in a row" : "days in a row"),
-        stat("Sessions", data.sessions_total || 0, "speaking practices"),
-        stat("Words due", data.vocab_due || 0, "to review"))];
+      const trend = Array.isArray(data.trend) ? data.trend : [];
+      const hero = el("div", { class: "ui-card ui-card--elevated eng-streak" },
+        el("div", { class: "eng-flame" + (streak ? " is-lit" : ""), "aria-hidden": "true" }, icon("flame", 34)),
+        el("div", { class: "eng-streak-text" },
+          el("div", { class: "eng-bignum" }, el("strong", { class: "ui-num" }, String(streak))),
+          el("span", { class: "eng-streak-label" }, streak === 1 ? "day streak" : "day streak"),
+          el("span", { class: "muted eng-small" }, streak ? "Keep it going: practise today." : "Practise today to start a streak.")),
+        el("div", { class: "eng-streak-stats" },
+          el("div", {}, el("strong", { class: "ui-num" }, String(data.sessions_total || 0)), el("span", {}, "sessions")),
+          el("button", { class: "eng-due-link", type: "button", onclick: () => select("vocab") },
+            el("strong", { class: "ui-num" }, String(data.vocab_due || 0)), el("span", {}, "words due"))));
+      const out = [hero, weekBars(trend)];
 
       const last = data.last_session;
       if (!last) {
-        out.push(el("div", { class: "card eng-empty" },
-          el("strong", {}, "No speaking sessions yet"),
-          el("p", { class: "muted" }, "Record your first practice and your trends will show up here."),
-          el("button", { class: "btn primary", type: "button", onclick: () => select("speak", { focus: false }) }, "Go to Speak")));
+        out.push(el("div", { class: "ui-card" }, ui.emptyState({ icon: "mic", title: "No speaking sessions yet",
+          body: "Record your first practice and your trends will show up here.", action: { label: "Go to Speak", icon: "mic", variant: "primary", onClick: () => select("speak") } })));
+        out.push(badges(data, trend));
         body.replaceChildren(...out);
         return;
       }
       const sc = scenarios.find((s) => s.id === last.scenario);
       const scores = last.scores || {};
-      out.push(el("div", { class: "card" },
-        el("h3", {}, "Last session"),
+      out.push(el("div", { class: "ui-card eng-block" },
+        el("div", { class: "eng-block-head" }, ui.tile("clock", "info", "sm"), el("h3", {}, "Last session")),
         el("p", { class: "muted eng-small" }, [shortDate(last.date), sc ? sc.title : last.scenario ? last.scenario : "Free talk"].filter(Boolean).join(" - ")),
         last.summary ? el("p", {}, String(last.summary)) : null,
-        el("div", { class: "eng-meters" },
-          meter("Fluency", scores.fluency), meter("Grammar", scores.grammar),
-          meter("Vocabulary", scores.vocabulary), meter("Overall", scores.overall)),
+        el("div", { class: "eng-subscores eng-subscores--4" },
+          scoreRing("Overall", scores.overall, { size: 56, stroke: 6 }), scoreRing("Fluency", scores.fluency, { size: 56, stroke: 6 }),
+          scoreRing("Grammar", scores.grammar, { size: 56, stroke: 6 }), scoreRing("Vocab", scores.vocabulary, { size: 56, stroke: 6 })),
         el("p", { class: "muted eng-small" }, `${last.wpm ?? "-"} words per minute, ${last.fillers_per_100 ?? "-"} fillers per 100 words.`)));
 
-      const trend = Array.isArray(data.trend) ? data.trend : [];
-      out.push(el("h3", { class: "eng-section-title" }, "Trends"));
+      // trend: one chart, switchable
       if (!trend.length) {
-        out.push(emptyBox("No trend yet", "Do a speaking session to see how you are improving."));
+        out.push(emptyBox("No trend yet", "Do a speaking session to see how you are improving.", "trend"));
       } else {
         const dates = trend.map((t) => t.date);
         const num = (v) => (v == null || Number.isNaN(Number(v)) ? NaN : Number(v));
@@ -1181,19 +1433,34 @@ export function init(container, ctx) {
         const overall = trend.map((t) => num(t.overall));
         const maxWpm = niceMax(Math.max(...wpm.filter(Number.isFinite), 120), 40);
         const maxFill = niceMax(Math.max(...fill.filter(Number.isFinite), 5), 5);
-        const mid = (m) => [0, m / 2, m];
-        if (trend.length < 2) out.push(el("p", { class: "muted eng-small" }, "One session so far. Do another to see a line."));
-        out.push(
-          lineChart({ title: "Pace", caption: "words per minute (about 110 to 160 is comfortable)", unit: "words/min", values: wpm, dates, max: maxWpm, ticks: mid(maxWpm), format: (v) => String(Math.round(v)), tone: "pace" }),
-          lineChart({ title: "Filler words", caption: "per 100 words (lower is better)", unit: "fillers per 100 words", values: fill, dates, max: maxFill, ticks: mid(maxFill), format: (v, axis) => (axis ? String(Math.round(v * 10) / 10) : String(Math.round(v * 10) / 10)), tone: "fillers" }),
-          lineChart({ title: "Overall score", caption: "out of 10 (higher is better)", unit: "score out of 10", values: overall, dates, max: 10, ticks: [0, 5, 10], format: (v) => String(Math.round(v * 10) / 10), tone: "score" }));
-        out.push(el("details", { class: "card eng-table" },
-          el("summary", {}, "Show the numbers"),
-          el("div", { class: "eng-table-wrap" }, el("table", {},
-            el("thead", {}, el("tr", {}, ["Date", "Words/min", "Fillers/100", "Overall"].map((h) => el("th", { scope: "col" }, h)))),
-            el("tbody", {}, trend.map((t) => el("tr", {},
-              el("td", {}, shortDate(t.date)), el("td", {}, t.wpm ?? "-"), el("td", {}, t.fillers_per_100 ?? "-"), el("td", {}, t.overall ?? "-"))))))));
+        const r1 = (v) => String(Math.round(v * 10) / 10);
+        const metrics = {
+          pace: { title: "Pace", caption: "Words per minute. About 110 to 160 is comfortable.", unit: "words/min", values: wpm, max: maxWpm, ticks: [0, maxWpm / 2, maxWpm], format: (v) => String(Math.round(v)), tone: "pace" },
+          fillers: { title: "Filler words", caption: "Per 100 words. Lower is better.", unit: "fillers per 100 words", values: fill, max: maxFill, ticks: [0, maxFill / 2, maxFill], format: r1, tone: "fillers" },
+          score: { title: "Overall score", caption: "Out of 10. Higher is better.", unit: "score out of 10", values: overall, max: 10, ticks: [0, 5, 10], format: r1, tone: "score" },
+        };
+        const chartBox = el("div", { class: "eng-chart-box" });
+        const caption = el("p", { class: "muted eng-small" });
+        const draw = (key) => {
+          const m = metrics[key];
+          caption.textContent = m.caption;
+          chartBox.replaceChildren(lineChart({ ...m, dates }));
+        };
+        const seg = ui.segmented({ options: [{ value: "pace", label: "Pace" }, { value: "fillers", label: "Fillers" }, { value: "score", label: "Score" }],
+          value: "pace", block: true, label: "Trend to show", onChange: draw });
+        draw("pace");
+        out.push(el("div", { class: "ui-card eng-block" },
+          el("div", { class: "eng-block-head" }, ui.tile("trend", "good", "sm"), el("h3", {}, "Trends")),
+          seg, caption, chartBox,
+          trend.length < 2 ? el("p", { class: "muted eng-small" }, "One session so far. Do another to see a line.") : null,
+          el("details", { class: "eng-table" },
+            el("summary", {}, "Show the numbers"),
+            el("div", { class: "eng-table-wrap" }, el("table", {},
+              el("thead", {}, el("tr", {}, ["Date", "Words/min", "Fillers/100", "Overall"].map((h) => el("th", { scope: "col" }, h)))),
+              el("tbody", {}, trend.map((t) => el("tr", {},
+                el("td", {}, shortDate(t.date)), el("td", {}, t.wpm ?? "-"), el("td", {}, t.fillers_per_100 ?? "-"), el("td", {}, t.overall ?? "-")))))))));
       }
+      out.push(badges(data, trend));
       body.replaceChildren(...out);
     }
 
@@ -1215,7 +1482,6 @@ export function init(container, ctx) {
     root.append(panes[s.id]);
   }
 
-  let visible = false;
   const savedSection = store.get("hub.english.section", "speak");
   current = null;
   const first = SECTIONS.some((s) => s.id === savedSection) ? savedSection : "speak";
@@ -1230,11 +1496,9 @@ export function init(container, ctx) {
 
   return {
     show() {
-      visible = true;
       parts[current]?.enter?.();
     },
     hide() {
-      visible = false;
       for (const r of recorders) r.cancel();
     },
     openSection(name) {

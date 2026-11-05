@@ -1,31 +1,16 @@
-// Notes tab: record or type a note, browse, search and edit notes.
+// Notes: record or type notes, browse by day and #tag, search, read and edit.
+// Voice -> POST /api/notes/voice, typed -> POST /api/notes, tags and titles are added later by the local model.
+// Sections: openSection("new") opens the typed-note sheet, openSection("voice") starts recording; openItem(id) opens a note.
 import { api, renderMarkdown, el } from "./api.js";
+import * as ui from "./ui.js";
 
 const MAX_RECORD_SECONDS = 600;
 const POLL_MS = 3000;
 const POLL_WINDOW_MS = 45000;
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function icon(path) {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  const p = document.createElementNS(SVG_NS, "path");
-  p.setAttribute("d", path);
-  svg.append(p);
-  return svg;
-}
-const MIC_PATH = "M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z";
-const STOP_PATH = "M7 7h10v10H7z";
-const BACK_PATH = "M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z";
 
 function pad(n) { return String(n).padStart(2, "0"); }
 function clock(seconds) { return `${Math.floor(seconds / 60)}:${pad(seconds % 60)}`; }
-
-function parseDate(text) {
-  const d = new Date(text);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+function parseDate(text) { const d = new Date(text); return Number.isNaN(d.getTime()) ? null : d; }
 function dayKey(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
 function dayLabel(d) {
   if (!d) return "Undated";
@@ -38,14 +23,11 @@ function dayLabel(d) {
   return d.toLocaleDateString("en-GB", opts).replace(",", "");
 }
 function timeLabel(d) { return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ""; }
-function fullDate(d) {
-  return d ? `${dayLabel(d)}, ${timeLabel(d)}` : "";
-}
+function fullDate(d) { return d ? `${dayLabel(d)}, ${timeLabel(d)}` : ""; }
 
 function pickMimeType() {
   if (typeof MediaRecorder === "undefined") return "";
-  const wanted = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
-  for (const type of wanted) {
+  for (const type of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]) {
     try { if (MediaRecorder.isTypeSupported(type)) return type; } catch (_) { /* ignore */ }
   }
   return "";
@@ -57,116 +39,98 @@ function extensionFor(type) {
 }
 
 export function init(container, ctx) {
-  // ---------- state ----------
+  if (!document.querySelector('link[data-css="notes"]')) {
+    document.head.append(el("link", { rel: "stylesheet", href: "/css/notes.css", "data-css": "notes" }));
+  }
   const state = {
     notes: [], tags: [], tag: "", q: "", loaded: false, error: "",
-    pollUntil: 0, pollTimer: null, signature: "",
-    visible: false, loadSeq: 0,
+    pollUntil: 0, pollTimer: null, signature: "", visible: false, loadSeq: 0,
   };
-  const rec = {
-    phase: "idle", // idle | recording | uploading
-    recorder: null, stream: null, chunks: [], started: 0, tick: null, limit: null, cancelled: false,
-    clearResult: null,
-  };
-  let detail = null; // { id, el }
+  const rec = { phase: "idle", recorder: null, stream: null, chunks: [], started: 0, tick: null, limit: null, cancelled: false };
+  let detail = null;
 
   // ---------- skeleton ----------
-  const listPane = el("div", { class: "notes-list-pane" });
-  const detailPane = el("div", { class: "notes-detail-pane", hidden: true });
+  const listPane = el("div", { class: "nt-pane nt-list-pane" });
+  const detailPane = el("div", { class: "nt-pane nt-detail-pane", hidden: true });
   container.replaceChildren(listPane, detailPane);
 
-  // capture card
-  const micButton = el("button", { class: "notes-mic", type: "button", "aria-label": "Start recording a voice note" });
-  const micIcon = icon(MIC_PATH);
-  micButton.append(el("span", { class: "notes-ring", "aria-hidden": "true" }), micIcon);
-  const timerText = el("div", { class: "notes-timer", "aria-hidden": "true" }, "0:00");
-  const statusText = el("p", { class: "notes-status", role: "status", "aria-live": "polite" }, "Tap the mic and say what's on your mind.");
-  const cancelButton = el("button", { class: "btn", type: "button", hidden: true }, "Cancel");
-  const voiceNote = el("p", { class: "notes-voice-note error", hidden: true });
-  const resultBox = el("div", { class: "notes-result", hidden: true, "aria-live": "polite" });
-  const typed = el("textarea", { id: "notes-typed", rows: "3", placeholder: "Type a note", "aria-label": "Type a note", enterkeyhint: "enter" });
-  const saveButton = el("button", { class: "btn primary", type: "button" }, "Save");
-  const captureCard = el("section", { class: "card notes-capture", "aria-label": "Capture a note" },
-    el("div", { class: "notes-mic-wrap" }, micButton, timerText, statusText, cancelButton),
-    voiceNote, resultBox,
-    el("div", { class: "notes-type" }, typed, el("div", { class: "row notes-type-actions" }, saveButton)));
-
-  // search + tags
   const searchInput = el("input", { type: "search", placeholder: "Search notes", "aria-label": "Search notes", enterkeyhint: "search", autocomplete: "off" });
-  const tagBar = el("div", { class: "notes-tags", role: "group", "aria-label": "Filter by tag", hidden: true });
-  const listBox = el("div", { class: "notes-list", "aria-live": "off" });
+  const newBtn = ui.button({ variant: "tonal", iconOnly: true, icon: "note-plus", label: "New typed note", onClick: () => openTyped() });
+  const searchBar = el("div", { class: "nt-searchbar" },
+    el("div", { class: "ui-input-wrap nt-search" }, ui.icon("search", { class: "nt-search__icon" }), searchInput), newBtn);
+  const tagBar = el("div", { class: "nt-tags ui-hscroll", role: "group", "aria-label": "Filter by tag", hidden: true });
+  const recBanner = el("div", { class: "nt-recbar", hidden: true, role: "status", "aria-live": "polite" });
+  const voiceNote = el("div", { class: "nt-voice-note", hidden: true });
+  const resultBox = el("div", { class: "nt-result ui-card ui-card--flat", hidden: true, "aria-live": "polite" });
+  const listBox = el("div", { class: "nt-list" });
 
-  listPane.append(captureCard,
-    el("div", { class: "notes-search" }, searchInput),
-    tagBar, listBox);
+  // record FAB: lives in a zero-height sticky dock so it stays on screen while the view scrolls
+  const fabTimer = el("span", { class: "nt-fab__time ui-num" }, "0:00");
+  const fabIcon = el("span", { class: "nt-fab__icon" }, ui.icon("mic"));
+  const fab = el("button", { class: "ui-fab nt-fab", type: "button", "aria-label": "Record a voice note" },
+    el("span", { class: "nt-fab__ring", "aria-hidden": "true" }), fabIcon, fabTimer);
+  const dock = el("div", { class: "nt-dock" }, fab);
+
+  listPane.append(searchBar, tagBar, recBanner, voiceNote, resultBox, listBox, dock);
 
   // ---------- list rendering ----------
-  function sourceBadge(source) {
-    const label = source === "voice" ? "voice" : source === "text" ? "text" : source || "text";
-    return el("span", { class: `notes-badge notes-badge-${label.replace(/[^a-z]/g, "")}` }, label);
-  }
-
   function renderTags() {
     tagBar.replaceChildren();
-    const active = state.tag;
     const tags = state.tags.slice();
-    if (active && !tags.some((t) => t.tag === active)) tags.unshift({ tag: active, count: 0 });
+    if (state.tag && !tags.some((t) => t.tag === state.tag)) tags.unshift({ tag: state.tag, count: 0 });
     tagBar.hidden = tags.length === 0;
     for (const t of tags) {
-      const chip = el("button", {
-        class: "chip", type: "button", "aria-pressed": String(t.tag === active),
-        onclick: () => {
-          state.tag = state.tag === t.tag ? "" : t.tag;
-          renderTags();
-          refresh({ showLoading: false });
-        },
-      }, `${t.tag} `, el("span", { class: "notes-count" }, String(t.count)));
-      tagBar.append(chip);
+      tagBar.append(el("button", {
+        class: "ui-chip", type: "button", "aria-pressed": String(t.tag === state.tag),
+        onclick: () => { state.tag = state.tag === t.tag ? "" : t.tag; renderTags(); refresh(); },
+      }, `#${t.tag}`, el("span", { class: "nt-count ui-num" }, String(t.count))));
     }
   }
 
   function noteRow(note) {
     const d = parseDate(note.created);
-    const meta = el("div", { class: "notes-row-meta" },
-      sourceBadge(note.source),
-      el("span", { class: "muted" }, timeLabel(d)),
-      note.tagged === false ? el("span", { class: "notes-pending muted" }, "tagging...") : null,
-      ...(note.tags || []).map((t) => el("span", { class: "notes-tag" }, t)));
-    return el("button", {
-      class: "notes-row", type: "button", onclick: () => openDetail(note),
-    }, el("span", { class: "notes-row-title" }, note.title || "Untitled note"), meta,
-    note.preview ? el("span", { class: "notes-preview muted" }, note.preview) : null);
+    const voice = note.source === "voice";
+    const tagsLine = (note.tags || []).slice(0, 3).map((t) => el("span", { class: "nt-tag" }, `#${t}`));
+    const sub = el("span", { class: "nt-row__meta" },
+      el("span", { class: "nt-time ui-num" }, timeLabel(d)),
+      note.tagged === false ? el("span", { class: "nt-pending" }, ui.icon("sparkles"), "tagging") : null,
+      ...tagsLine);
+    return el("button", { class: "ui-row ui-row--interactive nt-row", type: "button", onclick: () => openDetail(note) },
+      ui.tile(voice ? "mic" : "note", voice ? "pink" : "orange"),
+      el("span", { class: "ui-row__body" },
+        el("span", { class: "ui-row__title" }, note.title || "Untitled note"),
+        note.preview ? el("span", { class: "ui-row__sub nt-preview" }, note.preview) : null,
+        sub),
+      el("span", { class: "ui-row__chev" }, ui.icon("chevron-right")));
   }
 
   function renderList() {
     listBox.replaceChildren();
-    if (!state.loaded && !state.error) {
-      listBox.append(el("p", { class: "muted notes-state" }, "Loading notes..."));
-      return;
-    }
+    if (!state.loaded && !state.error) { listBox.append(ui.skeleton("list", 5)); return; }
     if (state.error) {
-      listBox.append(el("div", { class: "notes-state" },
-        el("p", { class: "error", role: "alert" }, state.error),
-        el("button", { class: "btn", type: "button", onclick: () => refresh({ showLoading: true }) }, "Retry")));
+      listBox.append(ui.notice(state.error, { tone: "bad" }),
+        ui.button({ label: "Try again", icon: "refresh", variant: "tonal", onClick: () => refresh({ showLoading: true }) }));
       return;
     }
     if (!state.notes.length) {
       const filtering = state.q || state.tag;
-      listBox.append(el("p", { class: "muted notes-state" },
-        filtering ? "No notes match that." : "No notes yet. Tap the mic and say what's on your mind."));
+      listBox.append(ui.emptyState(filtering
+        ? { icon: "search", title: "Nothing matches", body: "Try another word or clear the tag filter.", compact: true }
+        : { icon: "note", title: "No notes yet", body: "Tap the mic and say what's on your mind, or type a note.",
+          action: { label: "Type a note", icon: "note-plus", onClick: () => openTyped() } }));
       return;
     }
     let lastKey = null;
-    let group = null;
+    let list = null;
     for (const note of state.notes) {
       const d = parseDate(note.created);
       const key = d ? dayKey(d) : "none";
       if (key !== lastKey) {
         lastKey = key;
-        group = el("div", { class: "notes-group" }, el("h2", { class: "notes-day" }, dayLabel(d)));
-        listBox.append(group);
+        list = el("div", { class: "ui-list ui-list--inset ui-list--icons nt-group" });
+        listBox.append(el("h2", { class: "nt-day ui-caps" }, dayLabel(d)), list);
       }
-      group.append(noteRow(note));
+      list.append(noteRow(note));
     }
   }
 
@@ -194,125 +158,102 @@ export function init(container, ctx) {
       }
       schedulePoll();
     } catch (error) {
-      if (seq !== state.loadSeq) return;
-      if (silent) return; // background refresh: try again next tick
+      if (seq !== state.loadSeq || silent) return;
       state.error = error.message;
       state.loaded = true;
       renderList();
-      if (state.notes.length) ctx.toast(error.message);
+      if (state.notes.length) ctx.toast(error.message, { kind: "bad" });
     }
   }
-
-  function anyPending() { return state.notes.some((n) => n.tagged === false); }
-
+  const anyPending = () => state.notes.some((n) => n.tagged === false);
   function schedulePoll() {
     clearTimeout(state.pollTimer);
     state.pollTimer = null;
-    if (!state.visible || detail) return;
-    if (Date.now() > state.pollUntil) return;
-    if (!anyPending()) return;
+    if (!state.visible || detail || Date.now() > state.pollUntil || !anyPending()) return;
     state.pollTimer = setTimeout(() => refresh({ silent: true }), POLL_MS);
   }
-
-  function startPolling() {
-    state.pollUntil = Date.now() + POLL_WINDOW_MS;
-    schedulePoll();
-  }
+  function startPolling() { state.pollUntil = Date.now() + POLL_WINDOW_MS; schedulePoll(); }
 
   // ---------- search ----------
   let searchTimer = null;
-  searchInput.addEventListener("input", () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      state.q = searchInput.value.trim();
-      refresh({ showLoading: false });
-    }, 300);
-  });
-  searchInput.addEventListener("search", () => {
-    clearTimeout(searchTimer);
-    state.q = searchInput.value.trim();
-    refresh({ showLoading: false });
-  });
+  const runSearch = () => { state.q = searchInput.value.trim(); refresh(); };
+  searchInput.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 300); });
+  searchInput.addEventListener("search", () => { clearTimeout(searchTimer); runSearch(); });
 
   // ---------- typed note ----------
-  let saving = false;
-  saveButton.addEventListener("click", async () => {
-    const text = typed.value.trim();
-    if (!text) { ctx.toast("Type something first."); typed.focus(); return; }
-    if (saving) return;
-    saving = true;
-    saveButton.disabled = true;
-    saveButton.textContent = "Saving...";
-    try {
-      await api("/api/notes", { method: "POST", json: { text, source: "text" } });
-      typed.value = "";
-      showResult({ saved: "Note saved." });
-      await refresh();
-      startPolling();
-    } catch (error) {
-      ctx.toast(error.message);
-    } finally {
-      saving = false;
-      saveButton.disabled = false;
-      saveButton.textContent = "Save";
-    }
-  });
+  function openTyped() {
+    const area = el("textarea", { class: "nt-typed", rows: "7", placeholder: "What's on your mind?", "aria-label": "Note text", enterkeyhint: "enter" });
+    const s = ui.sheet({
+      title: "New note", content: [area, el("p", { class: "ui-hint nt-hint" }, "A title and #tags are added for you in a few seconds.")],
+      actions: [{
+        label: "Save note", variant: "primary", icon: "check",
+        async onClick() {
+          const text = area.value.trim();
+          if (!text) { ctx.toast("Type something first.", { kind: "warn" }); area.focus(); return false; }
+          try {
+            await api("/api/notes", { method: "POST", json: { text, source: "text" } });
+          } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
+          ui.haptic("success");
+          ctx.toast("Note saved", { kind: "good" });
+          await refresh();
+          startPolling();
+          return true;
+        },
+      }],
+    });
+    return s;
+  }
 
   // ---------- voice ----------
   const voiceProblem = (() => {
-    if (!ctx.secure) {
-      return "The microphone only works on the secure (HTTPS) address, the Tailscale one. Open the hub from that address to talk. You can still type notes below.";
-    }
+    if (!ctx.secure) return "The microphone only works on the secure (HTTPS) address, the Tailscale one. Open the hub from that address to talk. You can still type notes.";
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") {
-      return "This browser can't record audio here, so voice notes are off. You can still type notes below.";
+      return "This browser can't record audio here, so voice notes are off. You can still type notes.";
     }
     return "";
   })();
 
+  const recLabel = el("span", { class: "nt-recbar__label" }, "Recording");
+  const recTime = el("span", { class: "nt-recbar__time ui-num" }, "0:00");
+  const recCancel = ui.button({ label: "Cancel", variant: "ghost", size: "sm", onClick: () => finishRecording(true) });
+  recBanner.append(el("span", { class: "ui-dot ui-dot--bad ui-dot--live" }), recLabel, recTime, recCancel);
+
   function setPhase(phase) {
     rec.phase = phase;
-    captureCard.dataset.phase = phase;
     const recording = phase === "recording";
-    micButton.classList.toggle("recording", recording);
-    micButton.disabled = phase === "uploading" || !!voiceProblem;
-    micButton.setAttribute("aria-label", recording ? "Stop recording and save the note" : "Start recording a voice note");
-    micIcon.firstChild.setAttribute("d", recording ? STOP_PATH : MIC_PATH);
-    cancelButton.hidden = !recording;
-    timerText.classList.toggle("on", recording);
-    if (phase === "idle") {
-      timerText.textContent = "0:00";
-      statusText.textContent = "Tap the mic and say what's on your mind.";
-    } else if (recording) {
-      statusText.textContent = "Recording. Tap again to stop.";
-    } else {
-      statusText.textContent = "Writing it down...";
-    }
+    fab.classList.toggle("is-recording", recording);
+    fab.classList.toggle("is-uploading", phase === "uploading");
+    fab.disabled = phase === "uploading";
+    fab.setAttribute("aria-label", recording ? "Stop recording and save the note" : "Record a voice note");
+    fabIcon.replaceChildren(ui.icon(recording ? "stop" : "mic"));
+    recBanner.hidden = !(recording || phase === "uploading");
+    recLabel.textContent = recording ? "Recording" : "Writing it down";
+    recTime.hidden = !recording;
+    recCancel.hidden = !recording;
+    if (phase === "idle") { fabTimer.textContent = "0:00"; recTime.textContent = "0:00"; }
   }
-
   function showVoiceProblem(message) {
-    voiceNote.textContent = message;
+    voiceNote.replaceChildren();
     voiceNote.hidden = !message;
+    if (message) voiceNote.append(ui.notice(message, { tone: "warn", icon: "mic-off" }));
   }
-
   let resultTimer = null;
-  function showResult({ transcript, title, saved }) {
+  function showResult({ transcript, title }) {
     clearTimeout(resultTimer);
-    resultBox.replaceChildren();
-    if (transcript) resultBox.append(el("p", { class: "notes-result-line" }, el("strong", {}, "Heard: "), transcript));
-    if (title) resultBox.append(el("p", { class: "notes-result-line" }, el("strong", {}, "Saved: "), title));
-    if (saved) resultBox.append(el("p", { class: "notes-result-line" }, saved));
+    resultBox.replaceChildren(
+      el("div", { class: "nt-result__head" }, ui.icon("check-circle"), el("strong", {}, title ? `Saved: ${title}` : "Saved")),
+      transcript ? el("p", { class: "nt-result__text" }, transcript) : null);
     resultBox.hidden = false;
     resultTimer = setTimeout(() => { resultBox.hidden = true; }, 9000);
   }
-
   function releaseStream() {
     if (rec.stream) rec.stream.getTracks().forEach((t) => t.stop());
     rec.stream = null;
   }
-
   function updateTimer() {
-    const seconds = Math.floor((Date.now() - rec.started) / 1000);
-    timerText.textContent = clock(seconds);
+    const text = clock(Math.floor((Date.now() - rec.started) / 1000));
+    fabTimer.textContent = text;
+    recTime.textContent = text;
   }
 
   async function startRecording() {
@@ -324,7 +265,7 @@ export function init(container, ctx) {
     } catch (error) {
       const name = error && error.name;
       if (name === "NotAllowedError" || name === "SecurityError" || name === "NotSupportedError") {
-        showVoiceProblem("Microphone permission was blocked. Tap the lock icon in the address bar, allow Microphone for this site, then try again. You can still type notes below.");
+        showVoiceProblem("Microphone permission was blocked. Tap the lock icon in the address bar, allow Microphone for this site, then try again. You can still type notes.");
       } else if (name === "NotFoundError" || name === "OverconstrainedError") {
         showVoiceProblem("No microphone was found on this device.");
       } else if (name === "NotReadableError") {
@@ -343,45 +284,36 @@ export function init(container, ctx) {
       showVoiceProblem(`This browser can't record audio: ${error.message}`);
       return;
     }
-    rec.stream = stream;
-    rec.recorder = recorder;
-    rec.chunks = [];
-    rec.cancelled = false;
+    rec.stream = stream; rec.recorder = recorder; rec.chunks = []; rec.cancelled = false;
     recorder.addEventListener("dataavailable", (event) => { if (event.data && event.data.size) rec.chunks.push(event.data); });
     recorder.addEventListener("error", () => { showVoiceProblem("Recording stopped unexpectedly."); finishRecording(true); });
     recorder.addEventListener("stop", onRecorderStop);
     recorder.start(1000);
     rec.started = Date.now();
     setPhase("recording");
+    ui.haptic("medium");
     updateTimer();
     clearInterval(rec.tick);
     rec.tick = setInterval(updateTimer, 500);
     clearTimeout(rec.limit);
-    rec.limit = setTimeout(() => {
-      ctx.toast("Reached the 10 minute limit, saving your note.");
-      finishRecording(false);
-    }, MAX_RECORD_SECONDS * 1000);
+    rec.limit = setTimeout(() => { ctx.toast("Reached the 10 minute limit, saving your note.", { kind: "warn" }); finishRecording(false); }, MAX_RECORD_SECONDS * 1000);
   }
 
   function finishRecording(cancel) {
-    clearInterval(rec.tick);
-    clearTimeout(rec.limit);
+    clearInterval(rec.tick); clearTimeout(rec.limit);
     rec.tick = null; rec.limit = null;
     rec.cancelled = cancel;
     const recorder = rec.recorder;
     if (recorder && recorder.state !== "inactive") {
       try { recorder.stop(); } catch (_) { onRecorderStop(); }
-    } else {
-      onRecorderStop();
-    }
+    } else onRecorderStop();
   }
 
   async function onRecorderStop() {
     const recorder = rec.recorder;
     rec.recorder = null;
     releaseStream();
-    clearInterval(rec.tick);
-    clearTimeout(rec.limit);
+    clearInterval(rec.tick); clearTimeout(rec.limit);
     if (rec.cancelled || !recorder) { setPhase("idle"); return; }
     const type = recorder.mimeType || pickMimeType() || "audio/webm";
     const blob = new Blob(rec.chunks, { type });
@@ -396,6 +328,7 @@ export function init(container, ctx) {
     form.append("file", blob, `note.${extensionFor(type)}`);
     try {
       const data = await api("/api/notes/voice", { method: "POST", form });
+      ui.haptic("success");
       showResult({ transcript: data.transcript, title: data.note && data.note.title });
       setPhase("idle");
       await refresh();
@@ -403,29 +336,21 @@ export function init(container, ctx) {
     } catch (error) {
       setPhase("idle");
       showVoiceProblem(error.message);
-      ctx.toast(error.message);
+      ctx.toast(error.message, { kind: "bad" });
     }
   }
 
-  micButton.addEventListener("click", () => {
+  fab.addEventListener("click", () => {
     if (rec.phase === "idle") startRecording();
     else if (rec.phase === "recording") finishRecording(false);
   });
-  cancelButton.addEventListener("click", () => finishRecording(true));
-
-  if (voiceProblem) {
-    setPhase("idle");
-    showVoiceProblem(voiceProblem);
-    statusText.textContent = "Voice notes are unavailable here.";
-  }
+  if (voiceProblem) showVoiceProblem(voiceProblem);
 
   // ---------- detail ----------
   function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
-    }
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
     return new Promise((resolve, reject) => {
-      const area = el("textarea", { class: "notes-offscreen", "aria-hidden": "true", tabindex: "-1" });
+      const area = el("textarea", { class: "nt-offscreen", "aria-hidden": "true", tabindex: "-1" });
       area.value = text;
       container.append(area);
       area.select();
@@ -442,43 +367,40 @@ export function init(container, ctx) {
     detailPane.hidden = true;
     detailPane.replaceChildren();
     listPane.hidden = false;
-    if (!fromPop && history.state && history.state.notesDetail) {
-      try { history.back(); } catch (_) { /* ignore */ }
-    }
+    if (!fromPop && history.state && history.state.notesDetail) { try { history.back(); } catch (_) { /* ignore */ } }
     if (refreshList) refresh({ silent: true });
   }
 
   function openDetail(summary) {
-    const titleInput = el("input", { id: "notes-title", type: "text", value: summary.title || "", autocomplete: "off", maxlength: "200" });
-    const tagsInput = el("input", { id: "notes-tags", type: "text", value: (summary.tags || []).join(", "), autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "idea, work, shopping" });
-    const body = el("div", { class: "markdown notes-body" }, el("p", { class: "muted" }, "Loading..."));
-    const errorLine = el("p", { class: "error", role: "alert", hidden: true });
+    const myId = summary.id;
+    const titleInput = el("input", { id: "nt-title", class: "nt-title-input", type: "text", value: summary.title || "", autocomplete: "off", maxlength: "200", placeholder: "Title", "aria-label": "Title" });
+    const tagsInput = el("input", { id: "nt-tags", type: "text", value: (summary.tags || []).join(", "), autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "idea, work, shopping" });
+    const body = el("div", { class: "markdown nt-body" }, ui.skeleton("lines", 4));
     const d = parseDate(summary.created);
-    const metaLine = el("p", { class: "muted notes-detail-meta" }, `${fullDate(d)} `, sourceBadge(summary.source));
-    const saveBtn = el("button", { class: "btn primary", type: "button", disabled: true }, "Save");
-    const copyBtn = el("button", { class: "btn", type: "button", disabled: true }, "Copy text");
+    const voice = summary.source === "voice";
+    const saveBtn = ui.button({ label: "Save", icon: "check", variant: "primary", disabled: true });
+    const copyBtn = ui.button({ label: "Copy text", icon: "copy", variant: "tonal", disabled: true });
     let bodyText = "";
 
-    const back = el("button", { class: "btn notes-back", type: "button", "aria-label": "Back to notes", onclick: () => closeDetail() },
-      icon(BACK_PATH), "Back");
+    const metaLine = el("div", { class: "nt-meta" }, ui.tile(voice ? "mic" : "note", voice ? "pink" : "orange", "sm"),
+      el("span", {}, fullDate(d)), ui.badge(summary.source || "text", voice ? "accent" : undefined));
+    const back = ui.button({ label: "Notes", icon: "chevron-left", variant: "ghost", size: "sm", onClick: () => closeDetail() });
 
     detailPane.replaceChildren(
-      el("div", { class: "row notes-detail-bar" }, back),
-      el("div", { class: "card notes-detail" },
-        metaLine,
-        el("label", { for: "notes-title" }, "Title"), titleInput,
-        el("label", { for: "notes-tags" }, "Tags (separate with commas)"), tagsInput,
-        summary.tagged === false ? el("p", { class: "muted notes-pending-hint" }, "The laptop is still adding a title and tags. If you edit them yourself, yours stay.") : null,
-        body, errorLine,
-        el("div", { class: "row wrap notes-detail-actions" }, saveBtn, copyBtn)));
+      el("div", { class: "nt-detail-bar" }, back),
+      el("article", { class: "ui-card nt-card" },
+        metaLine, titleInput,
+        summary.tagged === false ? ui.notice("The laptop is still adding a title and tags. If you edit them yourself, yours stay.", { tone: "warn", icon: "sparkles" }) : null,
+        body,
+        el("div", { class: "ui-field nt-tagfield" }, el("label", { class: "ui-label", for: "nt-tags" }, "Tags, separated by commas"), tagsInput)),
+      el("div", { class: "nt-actions" }, saveBtn, copyBtn));
     listPane.hidden = true;
     detailPane.hidden = false;
     container.scrollTop = 0;
-    detail = { id: summary.id };
-    try { history.pushState({ notesDetail: summary.id }, ""); } catch (_) { /* ignore */ }
+    detail = { id: myId };
+    try { history.pushState({ notesDetail: myId }, ""); } catch (_) { /* ignore */ }
     clearTimeout(state.pollTimer);
 
-    const myId = summary.id;
     api(`/api/notes/${encodeURIComponent(myId)}`).then((note) => {
       if (!detail || detail.id !== myId) return;
       bodyText = note.body || "";
@@ -489,56 +411,52 @@ export function init(container, ctx) {
       copyBtn.disabled = false;
     }).catch((error) => {
       if (!detail || detail.id !== myId) return;
-      body.replaceChildren(el("p", { class: "error" }, error.message),
-        el("button", { class: "btn", type: "button", onclick: () => { closeDetail({ refreshList: false }); openDetail(summary); } }, "Retry"));
-      ctx.toast(error.message);
+      body.replaceChildren(ui.notice(error.message, { tone: "bad" }),
+        ui.button({ label: "Try again", icon: "refresh", variant: "tonal", onClick: () => { closeDetail({ refreshList: false }); openDetail(summary); } }));
     });
 
     copyBtn.addEventListener("click", async () => {
-      try { await copyText(bodyText); ctx.toast("Copied."); } catch (error) { ctx.toast(error.message); }
+      try { await copyText(bodyText); ctx.toast("Copied", { kind: "good" }); } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
     });
     saveBtn.addEventListener("click", async () => {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Saving...";
-      errorLine.hidden = true;
       try {
-        await api(`/api/notes/${encodeURIComponent(myId)}`, {
-          method: "PATCH", json: { title: titleInput.value, tags: tagsInput.value },
-        });
-        ctx.toast("Saved.");
+        await ui.busy(saveBtn, api(`/api/notes/${encodeURIComponent(myId)}`, { method: "PATCH", json: { title: titleInput.value, tags: tagsInput.value } }));
+        ui.haptic("success");
+        ctx.toast("Saved", { kind: "good" });
         closeDetail();
-      } catch (error) {
-        errorLine.textContent = error.message;
-        errorLine.hidden = false;
-        ctx.toast(error.message);
-        saveBtn.disabled = false;
-        saveBtn.textContent = "Save";
-      }
+      } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
     });
   }
 
   window.addEventListener("popstate", () => { if (detail) closeDetail({ fromPop: true }); });
 
   // ---------- lifecycle ----------
+  setPhase("idle");
   renderList();
   return {
     show() {
       state.visible = true;
-      if (rec.phase === "recording") {
-        updateTimer();
-        clearInterval(rec.tick);
-        rec.tick = setInterval(updateTimer, 500);
-      }
+      if (rec.phase === "recording") { updateTimer(); clearInterval(rec.tick); rec.tick = setInterval(updateTimer, 500); }
       refresh({ showLoading: !state.loaded });
       startPolling();
     },
     hide() {
       state.visible = false;
-      clearTimeout(state.pollTimer);
-      state.pollTimer = null;
+      clearTimeout(state.pollTimer); state.pollTimer = null;
       clearTimeout(searchTimer);
-      clearInterval(rec.tick); // the recording itself keeps going; the 10 minute limit still applies
-      rec.tick = null;
+      clearInterval(rec.tick); rec.tick = null; // the recording keeps going; the 10 minute limit still applies
+    },
+    refresh() { return refresh({ showLoading: false }); },
+    openSection(name) {
+      if (detail) closeDetail({ refreshList: false });
+      if (name === "new") openTyped();
+      else if (name === "voice" && rec.phase === "idle") startRecording();
+    },
+    openItem(id) {
+      if (id == null || detail?.id === id) return;
+      if (detail) closeDetail({ refreshList: false });
+      const known = state.notes.find((n) => n.id === id);
+      openDetail(known || { id, title: "", tags: [], source: "text" });
     },
   };
 }

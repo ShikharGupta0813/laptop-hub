@@ -1,0 +1,72 @@
+/* Habits. Scoped under #view-habits; the add/edit sheet lives in <body> (.hb-sheet). */
+#view-habits .hb { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-3); align-content: start; min-width: 0; }
+#view-habits .hb > * { min-width: 0; }
+#view-habits [hidden] { display: none; }
+#view-habits .hb-head { margin-top: var(--sp-3); margin-bottom: 0; }
+
+/* summary */
+#view-habits .hb-sum { display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-5); }
+#view-habits .hb-sum .ui-ring__track { stroke: rgb(255 255 255 / .22); }
+#view-habits .hb-sum .ui-ring__value { stroke: #fff; }
+#view-habits .hb-sum__stats { flex: 1; min-width: 0; display: grid; gap: var(--sp-2); }
+#view-habits .hb-stat { display: grid; grid-template-columns: 32px auto 1fr; align-items: center; gap: var(--sp-2); }
+#view-habits .hb-stat .ui-tile { background: rgb(255 255 255 / .16); color: #fff; }
+#view-habits .hb-stat__v { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+#view-habits .hb-stat__l { font-size: var(--fs-xs); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* today cards */
+#view-habits .hb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+#view-habits .hb-card {
+  position: relative; display: grid; justify-items: center; gap: var(--sp-2); padding: var(--sp-5) var(--sp-3) var(--sp-4); cursor: pointer; text-align: center;
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-base), background var(--dur-base);
+}
+#view-habits .hb-card:active { transform: scale(.97); }
+#view-habits .hb-card.is-busy { opacity: .7; pointer-events: none; }
+#view-habits .hb-card.is-done { border-color: color-mix(in oklab, var(--c-good), transparent 55%); background: color-mix(in oklab, var(--c-good) 7%, var(--c-surface-1)); }
+#view-habits .hb-more { position: absolute; top: 2px; right: 2px; }
+#view-habits .hb-ring { --_tone: var(--c-accent); }
+#view-habits .hb-ring .ui-ring__big { font-size: 30px; line-height: 1; }
+#view-habits .hb-ring .ui-ring__track { stroke: color-mix(in oklab, var(--_tone) 18%, transparent); }
+#view-habits .hb-card__name { font-weight: var(--fw-semibold); font-size: var(--fs-md); line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#view-habits .hb-card__sub { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; font-size: var(--fs-xs); color: var(--c-text-2); }
+#view-habits .hb-flame { display: inline-flex; align-items: center; gap: 2px; }
+#view-habits .hb-flame .ui-icon { width: 15px; height: 15px; color: var(--c-text-3); }
+#view-habits .hb-flame.is-lit .ui-icon { color: var(--c-orange, var(--c-warn)); }
+#view-habits .hb-flame.is-lit b { color: var(--c-text); }
+#view-habits .hb-card__tick {
+  position: absolute; top: 10px; left: 10px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--c-good); color: var(--c-accent-ink); animation: ui-pop var(--dur-base) var(--ease-spring) both;
+}
+#view-habits .hb-card__tick .ui-icon { width: 14px; height: 14px; }
+
+/* heatmap cards */
+#view-habits .hb-heatcard { display: grid; gap: var(--sp-3); padding: var(--sp-4); }
+#view-habits .hb-heatcard__head { display: flex; align-items: center; gap: var(--sp-3); margin: -4px -6px 0 0; }
+#view-habits .hb-heatcard__icon { width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; font-size: 22px; background: color-mix(in oklab, var(--_tone) 16%, transparent); flex: none; }
+#view-habits .hb-heatcard__name { flex: 1; min-width: 0; display: grid; }
+#view-habits .hb-heatcard__name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-habits .hb-heatcard__name span { font-size: var(--fs-xs); color: var(--c-text-2); }
+#view-habits .hb-heat { display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 3px; }
+#view-habits .hb-cell { aspect-ratio: 1; border-radius: 4px; background: var(--c-surface-3); display: block; }
+#view-habits .hb-cell.is-on { background: var(--_tone); }
+#view-habits .hb-cell.is-pad { background: none; }
+#view-habits .hb-cell.is-today { outline: 2px solid var(--c-text-2); outline-offset: 1px; }
+#view-habits .hb-heatcard__stats { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-xs); color: var(--c-text-2); }
+#view-habits .hb-heatcard__stats span { display: inline-flex; align-items: center; gap: 4px; }
+#view-habits .hb-heatcard__stats .ui-icon { width: 14px; height: 14px; }
+#view-habits .hb-heatcard__stats b { color: var(--c-text); }
+
+/* editor */
+.hb-sheet .hb-form { gap: var(--sp-4); }
+.hb-sheet .hb-field { display: grid; gap: 6px; }
+.hb-sheet .hb-icon-row { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; }
+.hb-sheet .hb-emoji-in { width: 64px; flex: none; text-align: center; font-size: 24px; padding: 0; }
+.hb-sheet .hb-emojis { gap: 4px; flex: 1; min-width: 0; }
+.hb-sheet .hb-emoji { width: 44px; height: 44px; border-radius: var(--r-md); border: 1px solid transparent; background: var(--c-surface-2); font-size: 22px; cursor: pointer; }
+.hb-sheet .hb-emoji[aria-pressed="true"] { border-color: var(--c-accent); background: var(--c-accent-soft); }
+.hb-sheet .hb-swatches { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.hb-sheet .hb-swatch { width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer; background: var(--_tone); color: var(--c-accent-ink); display: grid; place-items: center; }
+.hb-sheet .hb-swatch .ui-icon { opacity: 0; transform: scale(.5); transition: opacity var(--dur-fast), transform var(--dur-fast) var(--ease-spring); }
+.hb-sheet .hb-swatch[aria-checked="true"] { box-shadow: 0 0 0 3px var(--c-surface-1), 0 0 0 5px var(--_tone); }
+.hb-sheet .hb-swatch[aria-checked="true"] .ui-icon { opacity: 1; transform: none; }
+.hb-sheet .hb-archive { padding-left: 0; padding-right: 0; }

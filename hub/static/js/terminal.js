@@ -1,6 +1,7 @@
 // Terminal tab: a real shell on the laptop, drawn with xterm.js (loaded as globals by index.html).
 // The session lives as long as the page: hide() keeps the socket and the terminal alive.
 import { el } from "./api.js";
+import { icon, segmented, resolvedTheme } from "./ui.js";
 
 const FONT_MIN = 10;
 const FONT_MAX = 22;
@@ -30,13 +31,13 @@ const ANSI_LIGHT = {
 };
 
 function buildTheme() {
-  const light = window.matchMedia("(prefers-color-scheme: light)").matches;
-  const accent = cssVar("--accent") || "#4fb3ff";
+  const light = resolvedTheme() === "daylight";
+  const accent = cssVar("--c-accent") || cssVar("--accent") || "#4fb3ff";
   return {
-    background: cssVar("--bg") || "#0f1217",
-    foreground: cssVar("--text") || "#e8edf4",
+    background: cssVar("--c-bg") || cssVar("--bg") || "#0f1217",
+    foreground: cssVar("--c-text") || cssVar("--text") || "#e8edf4",
     cursor: accent,
-    cursorAccent: cssVar("--bg") || "#0f1217",
+    cursorAccent: cssVar("--c-bg") || cssVar("--bg") || "#0f1217",
     selectionBackground: light ? "rgba(11,107,203,.28)" : "rgba(79,179,255,.35)",
     ...(light ? ANSI_LIGHT : ANSI_DARK),
   };
@@ -79,15 +80,16 @@ export function init(container, ctx) {
 
   // ---------- DOM ----------
   const select = el("select", { class: "term-shell", "aria-label": "Shell" });
-  const sessionBtn = el("button", { type: "button", class: "btn term-session" }, "New session");
-  const fontDown = el("button", { type: "button", class: "btn term-font-btn", "aria-label": "Smaller text" }, "A−");
-  const fontUp = el("button", { type: "button", class: "btn term-font-btn", "aria-label": "Larger text" }, "A+");
+  const shellSlot = el("div", { class: "term-shell-slot" }, select);
+  const sessionBtn = el("button", { type: "button", class: "ui-btn ui-btn--tonal ui-btn--sm term-session" }, "New session");
+  const fontDown = el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--icon term-font-btn", "aria-label": "Smaller text" }, "A−");
+  const fontUp = el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--icon term-font-btn", "aria-label": "Larger text" }, "A+");
   const fontLabel = el("span", { class: "term-font-size", "aria-hidden": "true" }, String(fontSize));
   const toolbar = el("div", { class: "term-toolbar" },
-    select, sessionBtn,
+    shellSlot, sessionBtn,
     el("div", { class: "term-font", role: "group", "aria-label": "Text size" }, fontDown, fontLabel, fontUp));
 
-  const dot = el("span", { class: "term-dot", "aria-hidden": "true" });
+  const dot = el("span", { class: "term-dot ui-dot", "aria-hidden": "true" });
   const statusText = el("span", { class: "term-status-text" }, "Disconnected");
   const statusDetail = el("span", { class: "term-status-detail muted" });
   const statusLine = el("div", { class: "term-status", role: "status", "aria-live": "polite" }, dot, statusText, " ", statusDetail);
@@ -100,8 +102,8 @@ export function init(container, ctx) {
     class: "term-paste-box", rows: "3", "aria-label": "Text to paste into the terminal",
     placeholder: "Long-press here and choose Paste", autocapitalize: "off", autocomplete: "off", spellcheck: "false",
   });
-  const pasteSend = el("button", { type: "button", class: "btn primary" }, "Send");
-  const pasteCancel = el("button", { type: "button", class: "btn" }, "Cancel");
+  const pasteSend = el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--sm" }, "Send");
+  const pasteCancel = el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm" }, "Cancel");
   const pastePanel = el("div", { class: "term-paste", hidden: true },
     el("p", { class: "muted term-paste-note" }, "This browser would not let the page read the clipboard. Paste here instead."),
     pasteBox, el("div", { class: "row" }, pasteSend, pasteCancel));
@@ -379,7 +381,7 @@ export function init(container, ctx) {
   }
 
   function makeKey(label, aria, onPress, opts = {}) {
-    const attrs = { type: "button", class: "term-key" + (opts.cls ? " " + opts.cls : ""), "aria-label": aria };
+    const attrs = { type: "button", class: "ui-btn ui-btn--secondary term-key" + (opts.cls ? " " + opts.cls : ""), "aria-label": aria };
     if (opts.toggle) attrs["aria-pressed"] = "false";
     const b = el("button", attrs, label);
     let armed = null;
@@ -428,8 +430,8 @@ export function init(container, ctx) {
       keybar.append(makeKey(ch, `Type ${{ "|": "pipe", "~": "tilde", "/": "slash", "-": "dash", "_": "underscore", "\\": "backslash" }[ch]}`,
         () => sendInput(ch), { cls: "sym" }));
     }
-    add("paste", makeKey("Paste", "Paste from clipboard", doPaste, { cls: "wide", noFocus: true }));
-    add("copy", makeKey("Copy", "Copy selection", doCopy, { cls: "wide" }));
+    add("paste", makeKey(el("span", { class: "term-key-ico" }, icon("clipboard", 18), "Paste"), "Paste from clipboard", doPaste, { cls: "wide", noFocus: true }));
+    add("copy", makeKey(el("span", { class: "term-key-ico" }, icon("copy", 18), "Copy"), "Copy selection", doCopy, { cls: "wide" }));
   }
   buildKeys();
 
@@ -535,6 +537,21 @@ export function init(container, ctx) {
   }
 
   // ---------- shells ----------
+  // Up to three shells show as a segmented control; the (hidden) select stays the single source of truth.
+  let shellSeg = null;
+  function buildShellSeg() {
+    shellSeg?.remove();
+    shellSeg = null;
+    shellSlot.classList.toggle("has-seg", false);
+    if (shells.length < 2 || shells.length > 3) return;
+    shellSeg = segmented({ label: "Shell", value: select.value,
+      options: shells.map((name) => ({ value: name, label: name })),
+      onChange: (value) => { select.value = value; select.dispatchEvent(new Event("change")); } });
+    shellSeg.classList.add("term-seg");
+    shellSlot.append(shellSeg);
+    shellSlot.classList.add("has-seg");
+  }
+
   async function loadShells() {
     try {
       const status = await ctx.api("/api/status");
@@ -552,6 +569,7 @@ export function init(container, ctx) {
       const saved = store.get("hub.term.shell");
       select.value = saved && shells.includes(saved) ? saved : shells[0];
     }
+    buildShellSeg();
   }
 
   // ---------- terminal creation ----------
@@ -580,9 +598,9 @@ export function init(container, ctx) {
     }
     term.onData((data) => sendInput(data));
     host.addEventListener("click", () => term.focus());
-    window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => {
-      term.options.theme = buildTheme();
-    });
+    const retheme = () => { term.options.theme = buildTheme(); };
+    window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", retheme);
+    window.addEventListener("hub:theme", () => setTimeout(retheme, 30));
     return true;
   }
 

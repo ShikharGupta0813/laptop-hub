@@ -39,6 +39,18 @@ const KIND = {
   inbox: { label: "Inbox", icon: "inbox", tone: "info" },
   routine: { label: "Routines", icon: "zap", tone: "violet" },
   journal_entry: { label: "Journal", icon: "book", tone: "orange" },
+  alert: { label: "Alerts", icon: "eye", tone: "bad" },
+  alerts: { label: "Alerts", icon: "eye", tone: "bad" },
+  reminders: { label: "Reminders", icon: "alarm", tone: "warn" },
+  journals: { label: "Journal", icon: "book", tone: "orange" },
+  bookmarks: { label: "Bookmarks", icon: "bookmark", tone: "info" },
+  expenses: { label: "Expenses", icon: "chart", tone: "teal" },
+  snippets: { label: "Snippets", icon: "code", tone: "gray" },
+  automations: { label: "Automations", icon: "zap", tone: "warn" },
+  emails: { label: "Email", icon: "mail", tone: "info" },
+  files: { label: "Files", icon: "file", tone: "gray" },
+  kb_chunk: { label: "Knowledge", icon: "book-open", tone: "violet" },
+  habit: { label: "Habits", icon: "flame", tone: "good" },
 };
 const kindInfo = (k) => KIND[k] || { label: k ? k[0].toUpperCase() + k.slice(1) : "Other", icon: "circle", tone: "gray" };
 

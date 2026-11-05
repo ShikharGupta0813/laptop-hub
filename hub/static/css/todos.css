@@ -1,0 +1,93 @@
+/* To-do. Every rule is scoped under #view-todos (sheets live in <body>, so they use .td-sheet). */
+#view-todos .td { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-3); align-content: start; min-width: 0; }
+#view-todos .td > * { min-width: 0; }
+#view-todos [hidden] { display: none; }
+
+/* quick add */
+#view-todos .td-quick {
+  position: relative; display: flex; align-items: center; gap: var(--sp-2); min-height: 56px; padding: 6px 6px 6px var(--sp-4);
+  background: var(--c-surface-1); border: 1px solid var(--c-line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow-1);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+#view-todos .td-quick:focus-within { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
+#view-todos .td-quick__plus { width: 20px; height: 20px; color: var(--c-text-3); flex: none; }
+#view-todos .td-quick__input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; padding: 0; min-height: 44px; font-size: var(--fs-base); }
+#view-todos .td-quick__input:focus { outline: none; box-shadow: none; }
+#view-todos .td-echo {
+  display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-lg);
+  background: var(--c-good-soft); animation: ui-rise var(--dur-base) var(--ease-out) both;
+}
+#view-todos .td-echo > .ui-icon { color: var(--c-good); flex: none; margin-top: 1px; }
+#view-todos .td-echo__body { display: grid; gap: 4px; min-width: 0; }
+#view-todos .td-echo__title { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+#view-todos .td-echo__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--c-text-2); }
+
+/* chips */
+#view-todos .td-chips { gap: 6px; padding: 2px 0 4px; }
+#view-todos .td-chip__n { font-size: var(--fs-xs); font-weight: var(--fw-bold); min-width: 18px; text-align: center; padding: 1px 6px; border-radius: var(--r-full); background: var(--c-surface-3); color: var(--c-text-2); }
+#view-todos .td-chip[aria-pressed="true"] .td-chip__n { background: var(--c-accent); color: var(--c-accent-ink); }
+#view-todos .td-chip--bad .td-chip__n { background: var(--c-bad); color: var(--c-accent-ink); }
+#view-todos .td-chip--bad .ui-icon:first-child { color: var(--c-bad); }
+#view-todos .td-chip--add { border-style: dashed; color: var(--c-text-2); background: none; }
+#view-todos .td-chips__sep { width: 1px; height: 20px; background: var(--c-line-strong); align-self: center; margin: 0 4px; }
+#view-todos .td-listhead { display: flex; align-items: center; gap: var(--sp-1); }
+#view-todos .td-listhead__title { flex: 1; margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); overflow: hidden; text-overflow: ellipsis; }
+
+/* rows */
+#view-todos .td-body { display: grid; gap: var(--sp-2); }
+#view-todos .td-sec { margin: var(--sp-3) 0 0 var(--sp-2); font-size: var(--fs-xs); }
+#view-todos .td-list { --_indent: 60px; }
+#view-todos .td-row { align-items: flex-start; padding: 6px var(--sp-4) 6px 6px; min-height: 60px; }
+#view-todos .td-row .ui-row__body { padding-top: 8px; padding-bottom: 6px; gap: 5px; }
+#view-todos .td-title { font-size: var(--fs-md); font-weight: var(--fw-medium); overflow-wrap: anywhere; line-height: 1.3; }
+#view-todos .td-row.is-done .td-title { color: var(--c-text-3); text-decoration: line-through; }
+#view-todos .td-row.is-done { opacity: .75; }
+#view-todos .td-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-xs); color: var(--c-text-2); }
+#view-todos .td-meta:empty { display: none; }
+#view-todos .td-tag, .td-sheet .td-tag { color: var(--c-accent-text); font-weight: var(--fw-medium); }
+#view-todos .td-rep, #view-todos .td-subs, #view-todos .td-pri { display: inline-flex; align-items: center; gap: 3px; }
+#view-todos .td-meta .ui-icon { width: 13px; height: 13px; }
+#view-todos .td-pri--bad { color: var(--c-bad); }
+#view-todos .td-pri--warn { color: var(--c-warn); }
+#view-todos .td-pri--info { color: var(--c-info); }
+#view-todos .td-subs .ui-bar { width: 36px; height: 4px; }
+#view-todos .td-listname { margin-left: auto; color: var(--c-text-3); }
+
+/* round check (44px target, 24px circle) */
+#view-todos .td-check, .td-sheet .td-check {
+  --_c: var(--c-line-strong);
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; position: relative;
+}
+#view-todos .td-check::before, .td-sheet .td-check::before {
+  content: ""; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--_c); background: transparent;
+  transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-spring);
+}
+#view-todos .td-check--p1, .td-sheet .td-check--p1 { --_c: var(--c-info); }
+#view-todos .td-check--p2 { --_c: var(--c-warn); }
+#view-todos .td-check--p3 { --_c: var(--c-bad); }
+#view-todos .td-check .ui-icon, .td-sheet .td-check .ui-icon { position: absolute; width: 15px; height: 15px; color: var(--c-accent-ink); opacity: 0; transform: scale(.4); transition: opacity var(--dur-fast), transform var(--dur-fast) var(--ease-spring); }
+#view-todos .td-check:active::before, .td-sheet .td-check:active::before { transform: scale(.88); }
+#view-todos .td-check.is-done::before, .td-sheet .td-check.is-done::before { background: var(--c-good); border-color: var(--c-good); }
+#view-todos .td-check.is-done .ui-icon, .td-sheet .td-check.is-done .ui-icon { opacity: 1; transform: none; }
+.td-sheet .td-check--sm { width: 40px; height: 40px; }
+
+/* detail sheet */
+.td-sheet .td-form { gap: var(--sp-4); }
+.td-sheet .td-d-title { font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.td-sheet .td-due-row, .td-sheet .td-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.td-sheet .td-due-row + .ui-btn { justify-self: start; margin-top: 2px; }
+.td-sheet .ui-field { display: grid; gap: 6px; }
+.td-sheet .td-stepsbox { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); background: var(--c-surface-1); border: 1px solid var(--c-line); border-radius: var(--r-lg); }
+html[data-theme="daylight"] .td-sheet .td-stepsbox { background: var(--c-surface-2); }
+.td-sheet .td-steps__bar { display: flex; align-items: center; gap: var(--sp-3); }
+.td-sheet .td-steps__bar .ui-bar { flex: 1; }
+.td-sheet .td-steps__n { font-size: var(--fs-xs); color: var(--c-text-2); }
+.td-sheet .td-step { display: flex; align-items: center; gap: var(--sp-1); min-height: 44px; }
+.td-sheet .td-step__text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.td-sheet .td-step.is-done .td-step__text { text-decoration: line-through; color: var(--c-text-3); }
+.td-sheet .td-stepadd input { width: 100%; }
+.td-sheet .td-ai { display: grid; gap: var(--sp-2); margin-top: var(--sp-1); }
+.td-sheet .td-proposal { display: grid; gap: 2px; padding: var(--sp-3); border-radius: var(--r-md); background: var(--c-accent-soft); animation: ui-rise var(--dur-base) var(--ease-out) both; }
+.td-sheet .td-proposal__t { display: flex; align-items: center; gap: 6px; color: var(--c-accent-text); margin: 0 0 4px; }
+.td-sheet .td-proposal__t .ui-icon { width: 14px; height: 14px; }
+.td-sheet .td-proposal__act { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: 4px; }

@@ -1,43 +1,8 @@
-// Talk tab: chat with the assistant that can act on the laptop, by typing or by voice.
+// Talk tab: chat with the assistant that can act on the laptop, by typing, dictating or in hands-free voice mode.
 // Everything the model, the tools or files produce is put on screen with textContent or
 // through renderMarkdown (sanitised). innerHTML is never fed raw text.
 import { sse, renderMarkdown, el, ApiError } from "./api.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-const ICONS = {
-  send: "M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z",
-  stop: "M7 7h10v10H7z",
-  mic: "M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8",
-  edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
-  sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
-  speaker: "M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14",
-  terminal: "M4 17l6-6-6-6M12 19h8",
-  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
-  folder: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
-  wrench: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z",
-  check: "M20 6 9 17l-5-5",
-  x: "M18 6 6 18M6 6l12 12",
-  chevron: "M6 9l6 6 6-6",
-  down: "M12 5v14M19 12l-7 7-7-7",
-  alert: "M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
-};
-
-function icon(name, filled = false) {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-  svg.setAttribute("class", "as-ico");
-  svg.setAttribute("fill", filled ? "currentColor" : "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  const path = document.createElementNS(SVG_NS, "path");
-  path.setAttribute("d", ICONS[name] || ICONS.wrench);
-  svg.append(path);
-  return svg;
-}
+import * as ui from "./ui.js";
 
 const SUGGESTIONS = [
   "What's using my disk space?",
@@ -47,6 +12,15 @@ const SUGGESTIONS = [
 ];
 const MAX_RECORDING_MS = 120000;
 const OUTPUT_LIMIT = 20000;
+
+function loadCss() {
+  if (document.querySelector('link[data-css="assistant"]')) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "/css/assistant.css";
+  link.dataset.css = "assistant";
+  document.head.append(link);
+}
 
 // ---- small storage helpers (storage can throw in private windows) ----
 const store = {
@@ -100,7 +74,7 @@ function toolIcon(name) {
   if (n.includes("dir") || n.includes("list") || n.includes("folder")) return "folder";
   if (n.includes("write") || n.includes("note") || n.includes("save") || n.includes("edit")) return "edit";
   if (n.includes("file") || n.includes("read") || n.includes("search")) return "file";
-  return "wrench";
+  return "zap";
 }
 
 // What exactly will run, as label/text pairs for the approval card.
@@ -129,7 +103,14 @@ function approvalParts(input) {
   return parts;
 }
 
+
+const STATE_BADGE = {
+  running: ["Running", "accent"], approval: ["Needs OK", "warn"], ok: ["Done", "good"],
+  failed: ["Failed", "bad"], denied: ["Declined", "warn"],
+};
+
 export function init(container, ctx) {
+  loadCss();
   let sessionId = store.get("sessionStorage", "hub.assistant.session", "") || newSessionId();
   store.set("sessionStorage", "hub.assistant.session", sessionId);
 
@@ -146,134 +127,110 @@ export function init(container, ctx) {
   let turn = null;
   let stick = true;
   let visible = false;
+  let voice = null; // the open voice-mode controller, if any
 
-  // ---------------------------------------------------------------- header
-  const providerButtons = {};
-  const providerGroup = el("div", { class: "as-seg", role: "radiogroup", "aria-label": "Which assistant answers" },
-    ...[["claude", "Claude"], ["local", "Local"]].map(([id, label]) => {
-      const b = el("button", { type: "button", role: "radio", "data-provider": id, onclick: () => setProvider(id) }, label);
-      providerButtons[id] = b;
-      return b;
-    }));
+  // ---------------------------------------------------------------- toolbar (no header chrome: the top bar is the header)
+  const providerSeg = ui.segmented({
+    options: [{ value: "claude", label: "Claude" }, { value: "local", label: "Local" }],
+    value: prefs.provider, label: "Which assistant answers", onChange: (v) => setProvider(v),
+  });
+  const optionsButton = ui.button({
+    variant: "ghost", iconOnly: true, icon: "sliders", "aria-label": "Assistant options", "aria-expanded": "false",
+    "aria-controls": "as-options", onClick: () => toggleOptions(),
+  });
+  const newChatButton = ui.button({
+    variant: "ghost", iconOnly: true, icon: "edit", "aria-label": "New chat", "data-tip": "New chat", onClick: () => newChat(),
+  });
 
-  const optionsButton = el("button", {
-    type: "button", class: "as-iconbtn", "aria-label": "Assistant options", "aria-expanded": "false",
-    "aria-controls": "as-options", onclick: () => toggleOptions(),
-  }, icon("sliders"));
-  const newChatButton = el("button", {
-    type: "button", class: "as-iconbtn", "aria-label": "New chat", title: "New chat", onclick: () => newChat(),
-  }, icon("edit"));
-
-  function makeSwitch(label, hint, onclick) {
-    const sw = el("button", { type: "button", role: "switch", "aria-checked": "false", class: "as-switch", onclick },
-      el("span", { class: "as-switch-text" }, el("span", { class: "as-switch-label" }, label),
-        hint ? el("span", { class: "as-switch-hint" }, hint) : null),
-      el("span", { class: "as-switch-track", "aria-hidden": "true" }, el("span", { class: "as-switch-knob" })));
-    return sw;
+  const autoApproveSwitch = ui.switchControl({
+    checked: prefs.autoApprove, label: "Run commands without asking", onChange: (on) => onAutoApproveToggle(on),
+  });
+  const speakSwitch = ui.switchControl({
+    checked: prefs.speak, label: "Read answers aloud", onChange: (on) => {
+      prefs.speak = on;
+      store.set("localStorage", "hub.assistant.speak", on ? "1" : "0");
+      if (!on) stopSpeech();
+    },
+  });
+  const autoSendSwitch = ui.switchControl({
+    checked: prefs.autoSend, label: "Send automatically after I speak", onChange: (on) => {
+      prefs.autoSend = on;
+      store.set("localStorage", "hub.assistant.autosend", on ? "1" : "0");
+    },
+  });
+  function optionRow(title, sub, sw) {
+    return el("label", { class: "ui-row as-opt" },
+      el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, title), sub ? el("span", { class: "ui-row__sub" }, sub) : null), sw);
   }
-  const autoApproveSwitch = makeSwitch("Run commands without asking", "Off by default", () => onAutoApproveTap());
-  const speakSwitch = makeSwitch("Read answers aloud", null, () => {
-    prefs.speak = !prefs.speak;
-    store.set("localStorage", "hub.assistant.speak", prefs.speak ? "1" : "0");
-    if (!prefs.speak) stopSpeech();
-    syncControls();
-  });
-  const autoSendSwitch = makeSwitch("Send automatically after I speak", null, () => {
-    prefs.autoSend = !prefs.autoSend;
-    store.set("localStorage", "hub.assistant.autosend", prefs.autoSend ? "1" : "0");
-    syncControls();
-  });
-  const optionsPanel = el("div", { class: "as-options", id: "as-options", hidden: true },
-    autoApproveSwitch, speakSwitch, autoSendSwitch);
+  const optionsPanel = el("div", { class: "as-options ui-card ui-card--flat ui-card--pad-0", id: "as-options", hidden: true },
+    el("div", { class: "ui-list" },
+      optionRow("Run commands without asking", "Off by default. Asks every time.", autoApproveSwitch),
+      optionRow("Read answers aloud", null, speakSwitch),
+      optionRow("Send automatically after I speak", "For the mic button", autoSendSwitch)));
 
-  const header = el("div", { class: "as-head" },
-    el("div", { class: "as-head-row" }, providerGroup, el("span", { class: "grow" }), optionsButton, newChatButton),
-    optionsPanel);
+  const toolbar = el("div", { class: "as-bar" }, providerSeg, el("span", { class: "grow" }), optionsButton, newChatButton);
 
   const autoBanner = el("div", { class: "as-autobanner", hidden: true, role: "status" },
-    icon("alert"),
+    ui.icon("alert"),
     el("span", { class: "grow" }, "Commands run without asking, and files can change."),
-    el("button", { type: "button", class: "as-linkbtn", onclick: () => setAutoApprove(false) }, "Turn off"));
+    ui.button({ variant: "ghost", size: "sm", label: "Turn off", onClick: () => setAutoApprove(false) }));
 
   // ---------------------------------------------------------------- list
   const list = el("div", {
     class: "as-list", role: "log", "aria-live": "polite", "aria-relevant": "additions text",
     "aria-label": "Conversation", tabindex: "0",
   });
-  const empty = el("div", { class: "as-empty" },
-    el("div", { class: "as-empty-icon" }, icon("mic")),
+  const empty = el("div", { class: "as-empty ui-enter" },
+    el("div", { class: "as-empty-orb", "aria-hidden": "true" }, ui.icon("sparkles")),
     el("h2", {}, "What can I do for you?"),
-    el("p", { class: "muted" }, "Ask by voice or by typing. I can look around your laptop, run commands (I will ask first) and take notes."),
+    el("p", { class: "muted" }, "Type, dictate, or start a hands-free conversation. I can look around your laptop, run commands (I always ask first) and take notes."),
     el("div", { class: "as-suggest" },
-      ...SUGGESTIONS.map((s) => el("button", {
-        type: "button", class: "as-suggest-btn",
-        onclick: () => { input.value = s; resizeInput(); syncSend(); input.focus(); },
-      }, s))));
-  const jump = el("button", {
-    type: "button", class: "as-jump", hidden: true, onclick: () => scrollToBottom(true),
-  }, icon("down"), "Jump to latest");
+      ...SUGGESTIONS.map((s) => el("button", { type: "button", class: "ui-chip as-suggest-chip", onclick: () => send(s) }, s))),
+    ui.button({ variant: "tonal", icon: "waveform", label: "Start voice mode", onClick: () => openVoice() }));
+  const jump = ui.button({
+    variant: "secondary", size: "sm", iconOnly: true, icon: "arrow-down", class: "as-jump", hidden: true,
+    "aria-label": "Scroll to latest", onClick: () => scrollToBottom(true),
+  });
   const listWrap = el("div", { class: "as-listwrap" }, list, jump);
 
   // ---------------------------------------------------------------- composer
   const notice = el("div", { class: "as-notice", hidden: true, role: "status" });
   const recBar = el("div", { class: "as-recbar", hidden: true, role: "status" });
   const input = el("textarea", {
-    class: "as-input", rows: "1", placeholder: "Ask or tell me something…", "aria-label": "Message",
+    class: "as-input", rows: "1", placeholder: "Message your laptop…", "aria-label": "Message",
     enterkeyhint: "enter", autocomplete: "off",
   });
-  const micButton = el("button", {
-    type: "button", class: "as-roundbtn as-mic", "aria-label": "Record a voice message", onclick: () => onMicTap(),
-  }, icon("mic"));
-  const sendButton = el("button", {
-    type: "button", class: "as-roundbtn as-send", "aria-label": "Send message", onclick: () => send(input.value),
-  }, icon("send"));
-  const stopButton = el("button", {
-    type: "button", class: "as-roundbtn as-stop", "aria-label": "Stop the assistant", hidden: true, onclick: () => stop(),
-  }, icon("stop", true));
-  const composer = el("div", { class: "as-composer" },
-    notice, recBar, el("div", { class: "as-composer-row" }, micButton, input, sendButton, stopButton));
-
-  // ---------------------------------------------------------------- confirm panel
-  const confirmTitle = el("h2", { id: "as-confirm-title" }, "Run commands without asking?");
-  const keepButton = el("button", { type: "button", class: "btn", onclick: () => closeConfirm() }, "Keep asking me");
-  const allowButton = el("button", {
-    type: "button", class: "btn danger", onclick: () => { closeConfirm(); setAutoApprove(true); },
-  }, "Yes, run without asking");
-  const confirmPanel = el("div", { class: "as-confirm", hidden: true },
-    el("div", {
-      class: "as-confirm-card", role: "dialog", "aria-modal": "true", "aria-labelledby": "as-confirm-title",
-    },
-      confirmTitle,
-      el("p", {}, "The assistant will then run commands and change files on your laptop without waiting for your tap."),
-      el("p", { class: "muted" }, "It stays on until you turn it off, or until you restart the app. Only do this when you trust what you are asking for."),
-      el("div", { class: "as-confirm-actions" }, keepButton, allowButton)));
-  confirmPanel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeConfirm();
-    if (event.key === "Tab") {
-      const items = [keepButton, allowButton];
-      const i = items.indexOf(document.activeElement);
-      if (event.shiftKey && i <= 0) { event.preventDefault(); allowButton.focus(); }
-      else if (!event.shiftKey && i === items.length - 1) { event.preventDefault(); keepButton.focus(); }
-    }
+  const micButton = ui.button({
+    variant: "ghost", iconOnly: true, icon: "mic", class: "as-mic", "aria-label": "Dictate a message", onClick: () => onMicTap(),
   });
+  const sendButton = ui.button({
+    variant: "primary", iconOnly: true, icon: "arrow-up", class: "as-send", "aria-label": "Send message", onClick: () => send(input.value),
+  });
+  const voiceButton = ui.button({
+    variant: "tonal", iconOnly: true, icon: "waveform", class: "as-voice", "aria-label": "Start hands-free voice mode", onClick: () => openVoice(),
+  });
+  const stopButton = ui.button({
+    variant: "danger", iconOnly: true, icon: "stop", class: "as-stop", "aria-label": "Stop the assistant", hidden: true, onClick: () => stop(),
+  });
+  const pill = el("div", { class: "as-pill" }, micButton, input, voiceButton, sendButton, stopButton);
+  const composer = el("div", { class: "as-composer" }, notice, recBar, pill);
 
-  const root = el("div", { class: "as-root" }, header, autoBanner, listWrap, composer, confirmPanel);
+  const root = el("div", { class: "as-root" }, toolbar, optionsPanel, autoBanner, listWrap, composer);
   container.replaceChildren(root);
   list.append(empty);
 
   // ---------------------------------------------------------------- prefs / controls
   function syncControls() {
-    for (const [id, b] of Object.entries(providerButtons)) b.setAttribute("aria-checked", String(prefs.provider === id));
-    autoApproveSwitch.setAttribute("aria-checked", String(prefs.autoApprove));
-    speakSwitch.setAttribute("aria-checked", String(prefs.speak));
-    autoSendSwitch.setAttribute("aria-checked", String(prefs.autoSend));
+    providerSeg.value = prefs.provider;
+    autoApproveSwitch.input.checked = prefs.autoApprove;
+    speakSwitch.input.checked = prefs.speak;
+    autoSendSwitch.input.checked = prefs.autoSend;
     autoBanner.hidden = !prefs.autoApprove;
   }
 
   function setProvider(id) {
     prefs.provider = id;
     store.set("localStorage", "hub.assistant.provider", id);
-    syncControls();
   }
 
   function toggleOptions(force) {
@@ -288,17 +245,15 @@ export function init(container, ctx) {
     syncControls();
   }
 
-  function onAutoApproveTap() {
-    if (prefs.autoApprove) { setAutoApprove(false); return; }
-    openConfirm();
-  }
-  function openConfirm() {
-    confirmPanel.hidden = false;
-    keepButton.focus();
-  }
-  function closeConfirm() {
-    confirmPanel.hidden = true;
-    autoApproveSwitch.focus();
+  async function onAutoApproveToggle(on) {
+    if (!on) { setAutoApprove(false); return; }
+    syncControls(); // stays off until the owner confirms
+    const yes = await ui.confirm({
+      title: "Run commands without asking?",
+      message: "The assistant will run commands and change files on your laptop without waiting for your tap. It stays on until you turn it off, or until you restart the app. Only do this when you trust what you are asking for.",
+      confirmLabel: "Yes, run without asking", cancelLabel: "Keep asking me", danger: true,
+    });
+    setAutoApprove(!!yes);
   }
 
   function stopSpeech() {
@@ -345,8 +300,13 @@ export function init(container, ctx) {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 144) + "px";
   }
+  // Right-hand slot of the pill: stop while working, send when there is text, otherwise the voice-mode button.
   function syncSend() {
-    sendButton.disabled = streaming || micState !== "idle" || !input.value.trim();
+    const has = !!input.value.trim();
+    sendButton.disabled = streaming || micState !== "idle" || !has;
+    sendButton.hidden = streaming || !has;
+    voiceButton.hidden = streaming || has;
+    stopButton.hidden = !streaming;
   }
   input.addEventListener("input", () => { resizeInput(); syncSend(); });
   input.addEventListener("keydown", (event) => {
@@ -355,8 +315,6 @@ export function init(container, ctx) {
 
   function setBusy(busy) {
     streaming = busy;
-    sendButton.hidden = busy;
-    stopButton.hidden = !busy;
     micButton.disabled = busy || micState === "transcribing";
     root.classList.toggle("is-busy", busy);
     list.setAttribute("aria-busy", String(busy));
@@ -376,28 +334,49 @@ export function init(container, ctx) {
     return node;
   }
 
+  async function copyText(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+      ui.toast("Copied", { kind: "good" });
+    } catch (_) {
+      // Plain-http pages have no clipboard API: fall back to a temporary selection.
+      try {
+        const ta = el("textarea", { class: "as-copybuf", "aria-hidden": "true" });
+        ta.value = text;
+        document.body.append(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        ui.toast(ok ? "Copied" : "Could not copy", { kind: ok ? "good" : "bad" });
+      } catch (_2) { ui.toast("Could not copy", { kind: "bad" }); }
+    }
+    if (btn) btn.blur();
+  }
+
   function addUser(text) {
     return append(el("div", { class: "as-msg as-user" }, el("div", { class: "as-bubble" }, text)));
   }
 
   function addError(message) {
     return append(el("div", { class: "as-msg as-errmsg", role: "alert" },
-      el("div", { class: "as-bubble" }, icon("alert"), el("span", {}, message))));
+      el("div", { class: "as-bubble" }, ui.icon("alert-circle"), el("span", {}, message))));
   }
 
   function addNote(message) {
-    return append(el("div", { class: "as-note muted" }, message));
+    return append(el("div", { class: "as-note" }, message));
   }
 
   function makeBubble() {
     const node = el("div", { class: "as-bubble markdown", "aria-busy": "true" });
-    append(el("div", { class: "as-msg as-assistant" }, node));
-    return { node, raw: "", timer: null, last: 0 };
+    const wrap = el("div", { class: "as-msg as-assistant" }, node);
+    append(wrap);
+    return { node, wrap, raw: "", timer: null, last: 0 };
   }
 
   function flushBubble(b) {
     if (b.timer) { clearTimeout(b.timer); b.timer = null; }
     b.last = performance.now();
+    b.dirty = false;
     b.node.innerHTML = renderMarkdown(b.raw); // sanitised by DOMPurify inside renderMarkdown
     for (const a of b.node.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
     scrollToBottom();
@@ -408,27 +387,31 @@ export function init(container, ctx) {
   }
   function closeBubble(t) {
     if (!t.bubble) return;
-    if (t.bubble.timer || t.bubble.dirty) flushBubble(t.bubble);
-    t.bubble.node.removeAttribute("aria-busy");
+    const b = t.bubble;
+    if (b.timer || b.dirty) flushBubble(b);
+    b.node.removeAttribute("aria-busy");
+    const copy = ui.button({
+      variant: "ghost", size: "sm", iconOnly: true, icon: "copy", class: "as-copy", "aria-label": "Copy message",
+      onClick: () => copyText(b.raw, copy),
+    });
+    b.wrap.append(copy);
     t.bubble = null;
   }
 
   // ---------------------------------------------------------------- tool cards
   function makeCard(t, id, name, input) {
-    const stateText = el("span", { class: "as-tool-statetext" }, "Running");
-    const stateBox = el("span", { class: "as-tool-state" }, el("span", { class: "as-spinner", "aria-hidden": "true" }), stateText);
-    const chevron = icon("chevron");
-    chevron.classList.add("as-chevron");
+    const badge = el("span", { class: "as-tool-badge" });
+    const chevron = ui.icon("chevron-down", { class: "as-chevron" });
     const detail = el("div", { class: "as-tool-detail", hidden: true });
     const head = el("button", { type: "button", class: "as-tool-head", "aria-expanded": "false" },
-      el("span", { class: "as-tool-icon" }, icon(toolIcon(name))),
+      ui.tile(toolIcon(name), "gray", "sm"),
       el("span", { class: "as-tool-main" },
         el("span", { class: "as-tool-name" }, name || "tool"),
         el("span", { class: "as-tool-sum" }, summarise(input))),
-      stateBox, chevron);
+      badge, chevron);
     const approvalBox = el("div", { class: "as-approval", hidden: true });
-    const node = el("div", { class: "as-tool", "data-state": "running" }, head, approvalBox, detail);
-    const card = { id, name, input, node, head, stateBox, stateText, approvalBox, detail, outputPre: null, answering: false, done: false };
+    const node = el("div", { class: "as-tool ui-card ui-card--flat ui-card--pad-0", "data-state": "running" }, head, approvalBox, detail);
+    const card = { id, name, input, node, head, badge, approvalBox, detail, outputPre: null, answering: false, done: false };
     head.addEventListener("click", () => {
       const open = detail.hidden;
       detail.hidden = !open;
@@ -436,6 +419,7 @@ export function init(container, ctx) {
       if (open) scrollToBottom();
     });
     fillDetail(card);
+    setCardState(card, "running", "Running");
     append(el("div", { class: "as-msg as-toolrow" }, node));
     t.cards.set(id, card);
     return card;
@@ -451,13 +435,10 @@ export function init(container, ctx) {
 
   function setCardState(card, state, label) {
     card.node.dataset.state = state;
-    const box = card.stateBox;
-    box.replaceChildren();
-    if (state === "running" || state === "approval") box.append(el("span", { class: "as-spinner", "aria-hidden": "true" }));
-    else if (state === "ok") box.append(icon("check"));
-    else box.append(icon(state === "denied" ? "x" : "alert"));
-    card.stateText = el("span", { class: "as-tool-statetext" }, label);
-    box.append(card.stateText);
+    const [defText, tone] = STATE_BADGE[state] || STATE_BADGE.running;
+    const b = ui.badge(label || defText, tone);
+    if (state === "running") b.prepend(el("span", { class: "as-spinner", "aria-hidden": "true" }));
+    card.badge.replaceChildren(b);
   }
 
   function getCard(t, ev) {
@@ -469,24 +450,26 @@ export function init(container, ctx) {
     box.hidden = false;
     setCardState(card, "approval", "Needs OK");
     const what = card.name === "run_command" ? "run this command on your laptop" : `use “${card.name}”`;
-    const approve = el("button", { type: "button", class: "btn as-approve", onclick: () => answer(t, card, true) }, "Approve");
-    const deny = el("button", { type: "button", class: "btn as-deny", onclick: () => answer(t, card, false) }, "Deny");
+    const approve = ui.button({ variant: "danger", icon: "check", label: "Approve and run", class: "as-approve", onClick: () => answer(t, card, true) });
+    const deny = ui.button({ variant: "secondary", icon: "x", label: "Deny", class: "as-deny", onClick: () => answer(t, card, false) });
     const status = el("div", { class: "as-approval-status", role: "status" },
       el("span", { class: "as-spinner", "aria-hidden": "true" }), "Waiting for your OK");
     box.replaceChildren(
-      el("div", { class: "as-approval-title" }, icon("alert"), `The assistant wants to ${what}`),
+      el("div", { class: "as-approval-title" }, ui.icon("shield"), `The assistant wants to ${what}`),
       ...approvalParts(card.input).flatMap((p) => [
         el("div", { class: "as-label" }, p.label),
         el("pre", { class: "as-pre as-code" }, p.text),
       ]),
       status,
-      el("div", { class: "as-approval-actions" }, approve, deny));
+      el("div", { class: "as-approval-actions" }, deny, approve));
     box.setAttribute("role", "group");
     box.setAttribute("aria-label", "Approval needed");
     card.ui = { approve, deny, status };
+    card.respond = (ok) => answer(t, card, ok);
     t.pending = card;
     scrollToBottom(true);
-    if (!visible) ctx.toast("The assistant is waiting for your OK on the Talk tab.", 6000);
+    if (t.voice) t.voice.onApproval?.(card);
+    else if (!visible) ctx.toast("The assistant is waiting for your OK on the Talk tab.", { kind: "warn" });
   }
 
   function resolveApprovalUi(card, text) {
@@ -495,6 +478,7 @@ export function init(container, ctx) {
     card.ui.deny.disabled = true;
     card.ui.status.replaceChildren(text);
     card.node.classList.add("answered");
+    if (turn && turn.voice && card.approvalShown) { card.approvalShown = false; turn.voice.onApprovalDone?.(card); }
   }
 
   async function postApprove(sid, callId, approve) {
@@ -511,16 +495,19 @@ export function init(container, ctx) {
       await postApprove(t.sid, card.id, approve);
       if (t.pending === card) t.pending = null;
       if (!card.done) resolveApprovalUi(card, approve ? "You approved this. Running…" : "You declined this.");
+      t.voice?.onApprovalDone?.(card);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         if (t.pending === card) t.pending = null;
         resolveApprovalUi(card, "This request is no longer waiting for an answer (it may have timed out).");
+        t.voice?.onApprovalDone?.(card);
       } else {
         card.answering = false;
         card.ui.approve.disabled = false;
         card.ui.deny.disabled = false;
         card.ui.status.replaceChildren(el("span", { class: "as-inline-err", role: "alert" },
           `Your answer did not reach the laptop: ${error.message} Tap Approve or Deny to try again.`));
+        t.voice?.onApprovalError?.(card, error);
       }
     }
   }
@@ -563,7 +550,9 @@ export function init(container, ctx) {
       }
       case "approval_needed": {
         closeBubble(t);
-        showApproval(t, getCard(t, ev));
+        const card = getCard(t, ev);
+        card.approvalShown = true;
+        showApproval(t, card);
         break;
       }
       case "tool_result": {
@@ -578,8 +567,8 @@ export function init(container, ctx) {
         const label = ev.name || ev.path;
         append(el("div", { class: "as-msg as-fileref" },
           el("button", {
-            type: "button", class: "as-filechip", onclick: () => ctx.openFile(ev.root, ev.path),
-          }, icon("file"), el("span", { class: "as-filechip-text" }, `Open ${label}`))));
+            type: "button", class: "ui-chip as-filechip", onclick: () => { voice?.close(); ctx.openFile(ev.root, ev.path); },
+          }, ui.icon("file"), el("span", { class: "as-filechip-text" }, `Open ${label}`))));
         break;
       }
       case "error": {
@@ -594,21 +583,23 @@ export function init(container, ctx) {
       default:
         break;
     }
+    if (t.voice) t.voice.onEvent?.(ev, t);
   }
 
-  async function send(raw) {
+  // `vh` (optional) are the hooks voice mode passes in: {onEvent, onApproval, onApprovalDone, onApprovalError}.
+  // Resolves with {text, stopped, hadError} once the turn is over.
+  async function send(raw, vh = null) {
     const text = (raw || "").trim();
-    if (!text || streaming) return;
+    if (!text || streaming) return null;
     if (micState === "recording") cancelRecording();
     showNotice("");
     stopSpeech();
     const userNode = addUser(text);
-    input.value = "";
-    resizeInput();
+    if (!vh) { input.value = ""; resizeInput(); }
     scrollToBottom(true);
 
     const t = {
-      sid: sessionId, bubble: null, bubbles: [], cards: new Map(), pending: null, typing: null,
+      sid: sessionId, bubble: null, bubbles: [], cards: new Map(), pending: null, typing: null, voice: vh,
       gotEvent: false, gotDone: false, stopped: false, hadError: false,
     };
     turn = t;
@@ -626,21 +617,25 @@ export function init(container, ctx) {
       }
       if (!t.gotDone && !t.stopped && !signal.aborted) {
         if (t.typing) { t.typing.remove(); t.typing = null; }
+        t.hadError = true;
         addError("The connection to your laptop ended before the assistant finished. The answer above may be incomplete.");
       }
     } catch (error) {
       if (t.typing) { t.typing.remove(); t.typing = null; }
+      t.hadError = true;
       if (!signal.aborted) {
         if (error instanceof ApiError) {
-          if (!t.gotEvent) { userNode.remove(); input.value = text; resizeInput(); }
+          if (!t.gotEvent) { userNode.remove(); if (!vh) { input.value = text; resizeInput(); } }
           addError(error.message);
         } else {
           addError("The connection to your laptop dropped while the assistant was answering. The answer above may be incomplete. Check that the laptop is awake, then try again.");
         }
+        t.errorMessage = error.message;
       }
     } finally {
       finishTurn(t);
     }
+    return { text: t.bubbles.map((b) => b.raw).join("\n\n").trim(), stopped: t.stopped, hadError: t.hadError, error: t.errorMessage };
   }
 
   function finishTurn(t) {
@@ -658,7 +653,7 @@ export function init(container, ctx) {
       turn = null;
       controller = null;
       setBusy(false);
-      if (prefs.speak && spoken && !t.stopped && !t.hadError) ctx.speak(spoken);
+      if (!t.voice && prefs.speak && spoken && !t.stopped && !t.hadError) ctx.speak(spoken);
     }
   }
 
@@ -699,11 +694,36 @@ export function init(container, ctx) {
     try {
       await ctx.api("/api/assistant/reset", { method: "POST", json: { session_id: old } });
     } catch (error) {
-      ctx.toast(`Started a new chat, but the laptop could not forget the old one: ${error.message}`, 6000);
+      ctx.toast(`Started a new chat, but the laptop could not forget the old one: ${error.message}`, { kind: "warn" });
     }
   }
 
-  // ---------------------------------------------------------------- voice
+  // ---------------------------------------------------------------- hands-free voice mode (js/voicemode.js)
+  let voiceLoading = false;
+  async function openVoice() {
+    if (voice || voiceLoading) return;
+    voiceLoading = true;
+    try {
+      if (micState === "recording") cancelRecording(true);
+      const mod = await import("./voicemode.js");
+      voice = mod.openVoiceMode({
+        ctx, ui,
+        provider: () => prefs.provider,
+        isBusy: () => streaming,
+        ask: (text, hooks) => send(text, hooks),
+        stopTurn: () => stop(),
+        newChat: () => newChat(),
+        approvalParts,
+        onClose: () => { voice = null; },
+      });
+    } catch (error) {
+      ctx.toast(`Voice mode could not start: ${error.message}`, { kind: "bad" });
+    } finally {
+      voiceLoading = false;
+    }
+  }
+
+  // ---------------------------------------------------------------- dictation (mic button)
   let micState = "idle"; // idle | recording | transcribing
   let recorder = null;
   let stream = null;
@@ -716,8 +736,8 @@ export function init(container, ctx) {
     micState = state;
     const rec = state === "recording";
     micButton.classList.toggle("is-recording", rec);
-    micButton.replaceChildren(icon(rec ? "stop" : "mic", rec));
-    micButton.setAttribute("aria-label", rec ? "Stop recording" : "Record a voice message");
+    micButton.replaceChildren(ui.icon(rec ? "stop" : "mic"));
+    micButton.setAttribute("aria-label", rec ? "Stop recording" : "Dictate a message");
     micButton.disabled = state === "transcribing" || streaming;
     recBar.hidden = state === "idle";
     syncSend();
@@ -787,7 +807,7 @@ export function init(container, ctx) {
       recBar.replaceChildren(
         el("span", { class: "as-recdot", "aria-hidden": "true" }),
         el("span", { class: "grow" }, `Recording ${clockTime(performance.now() - recStart)} of 2:00. Tap the mic to stop.`),
-        el("button", { type: "button", class: "as-linkbtn", onclick: () => cancelRecording() }, "Cancel"));
+        ui.button({ variant: "ghost", size: "sm", label: "Cancel", onClick: () => cancelRecording() }));
     } else if (micState === "transcribing") {
       recBar.replaceChildren(el("span", { class: "as-spinner", "aria-hidden": "true" }), el("span", { class: "grow" }, "Turning your voice into text…"));
     }
@@ -853,8 +873,7 @@ export function init(container, ctx) {
   // ---------------------------------------------------------------- start
   syncControls();
   syncSend();
-  const micIssue = micProblem();
-  if (micIssue) micButton.classList.add("is-unavailable");
+  if (micProblem()) micButton.classList.add("is-unavailable");
 
   return {
     show() {
@@ -864,10 +883,14 @@ export function init(container, ctx) {
     },
     hide() {
       visible = false;
+      if (voice) voice.close();
       if (micState === "recording") {
         cancelRecording(true);
         ctx.toast("Recording cancelled because you left the Talk tab.");
       }
+    },
+    openSection(name) {
+      if (name === "voice") openVoice();
     },
   };
 }
