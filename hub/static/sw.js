@@ -1,19 +1,23 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v5-design-2026.11";
+const VERSION = "v6-screens-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
-  "/", "/index.html", "/style.css", "/manifest.webmanifest",
-  "/css/design.css", "/css/shell.css", "/css/home.css",
-  "/css/work.css", "/css/learn.css", "/css/english.css", "/css/apps.css", "/css/assistant.css",
-  "/css/files.css", "/css/notes.css", "/css/terminal.css", "/css/hub.css",
-  "/js/boot.js", "/js/main.js", "/js/api.js", "/js/ui.js", "/js/icons.js", "/js/home.js", "/js/omnibox.js",
-  "/js/assistant.js", "/js/files.js", "/js/notes.js", "/js/terminal.js", "/js/hub.js", "/js/work.js",
-  "/js/learn.js", "/js/studychat.js", "/js/quiz.js", "/js/sourcepicker.js", "/js/english.js", "/js/apps.js",
-  "/js/laptop.js", "/js/jarvis.js",
-  "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js", "/vendor/xterm.css", "/vendor/addon-fit.js",
-  "/vendor/fonts/inter-var-latin.woff2",
-  "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",
+  "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
+  "/css/automations.css", "/css/bookmarks.css", "/css/cards.css", "/css/design.css", "/css/english.css",
+  "/css/expenses.css", "/css/fileops.css", "/css/files.css", "/css/focus.css", "/css/habits.css", "/css/home.css",
+  "/css/hub.css", "/css/inbox.css", "/css/journal.css", "/css/kb.css", "/css/learn.css", "/css/notes.css",
+  "/css/notifications.css", "/css/reminders.css", "/css/screen.css", "/css/settings.css", "/css/shell.css",
+  "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css",
+  "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js", "/js/bookmarks.js", "/js/boot.js",
+  "/js/cards.js", "/js/english.js", "/js/expenses.js", "/js/fileeditor.js", "/js/files.js", "/js/focus.js",
+  "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js", "/js/jarvis.js", "/js/journal.js",
+  "/js/kb.js", "/js/laptop.js", "/js/learn.js", "/js/main.js", "/js/notes.js", "/js/notifications.js",
+  "/js/omnibox.js", "/js/quiz.js", "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js",
+  "/js/studychat.js", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js", "/js/voicemode.js",
+  "/js/watch.js", "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js",
+  "/vendor/xterm.css", "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg",
+  "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

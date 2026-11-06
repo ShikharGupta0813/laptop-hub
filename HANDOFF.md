@@ -7,7 +7,7 @@ Use the new repo from now on.)
 Read this first when starting a new chat. It says what the project is, what is finished, what is
 still to do, how it was built, and the exact words to paste to continue.
 
-_Last updated: 2026-11-04. **Checkpoint mid-way through round 2**: all round-2 backends, the new design system and shell are done; the phone SCREENS for the new features are NOT built yet (see section 4a)._
+_Last updated: 2026-11-04. round 2 complete: backends, design system, shell and all phone screens built and tested against fake data; see 4a for what is unverified._
 
 ## 1. What this is
 
@@ -120,22 +120,24 @@ Home dashboard (`js/home.js`), global search overlay (`js/omnibox.js`).
 
 ## 4. Still to do (in this order)
 
-### 4a. NEXT: build the phone screens for round 2 (the backends exist, the screens do not)
+### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
 
-Registered in `VIEWS` (main.js) but the module file does not exist yet, so each opens a friendly "not installed" page:
-`notifications`, `settings`, `reminders`, `inbox`, `screen`, `focus`, `automations`, `kb`, `todos`, `habits`, `journal`,
-`expenses` (**including the "Needs a category" list for captured UPI payments**), `bookmarks`, `tools`, `cards`, `watch`.
-Also restyle the old screens to the new design (checklist in `docs/DESIGN.md`): Talk (+ hands-free voice mode), Work, Learn,
-English, Notes, Files (+ write UI, editor with etag conflict handling), Apps directory (add entries for every new feature),
-Terminal, Laptop, Jarvis. Each screen: `js/<id>.js` + `css/<id>.css` (new CSS is linked by the screen's own `init`), use only
-tokens and `ctx.ui`, implement `openSection`/`openItem`, test with Playwright at 390x844 against `python -m hub.devserver`.
-Suggested split (worked well before): one Sonnet agent per group above, each owning only its files; ask each to read the
-matching `docs/api/<module>.md`. Nine such agents were launched and stopped before writing any file, so nothing is half-done.
-After the screens: update `js/apps.js` directory, `sw.js` SHELL list + VERSION, README, docs/API.md index of `docs/api/*`,
-run a second security review (Opus) over all round-2 modules, rebuild the APK, then do the real-laptop run (item 1 below).
-Known small items from agent reports: `/api/home` suggestions are rule-based; `inbox` real IMAP path only tested against a
-scripted fake; `screen` real capture/input libs untested; expense parser has no relative-month phrases; `hub.json` locked keys
-(token, scripts, apps, shells, jarvis_dir, allowed hosts) are intentionally not editable from the phone.
+Done: Talk (+ hands-free voice mode), Work, Inbox, Reminders, Learn, Flashcards + roadmaps, Ask my files, English, Notes, To-do,
+Habits, Journal, Focus, Files manager + editor, Settings, Notifications, Watch, Spending (incl. the "Needs a category" UPI list),
+Remote screen, Automations, Apps directory (67 entries), Tools, Read-later, Terminal/Laptop/Jarvis restyle. `sw.js` caches every
+screen (VERSION v6-screens-2026.11). Per-screen screenshots were reviewed by the building agents; none of it has run on a phone.
+
+Known unverified bits (from the agents' reports): Focus timer reaching zero and break countdown; delete confirms for habits,
+journal, reminders, flashcards, bookmarks; Tools/Read-later actions beyond rendering; opening a citation from Ask my files; TSV
+import/export and roadmap generation; Inbox "not configured" state and older-mail paging; Remote screen touch gestures, MJPEG
+stream and real vision; real Android plugin calls from Settings > Phone capture; Terminal typing; English with real mic/Claude;
+spoken "stop"/"cancel" in voice mode; on-screen-keyboard layout. Tools: switching sections via the URL hash alone does not open
+that section.
+
+NEXT: (1) second security review (Opus) over all round-2 modules and screens; (2) update README (feature list, new setup steps:
+`pip install -r requirements-screen.txt` optional, `ollama pull nomic-embed-text`, ntfy topic) and index `docs/api/*` in
+`docs/API.md`; (3) rebuild the APK in GitHub Actions (first real compile of the Android capture code; fix any Java errors);
+(4) real-laptop run (item 1 below); (5) real-phone checks of the unverified list above.
 
 ### 4b. Older items
 

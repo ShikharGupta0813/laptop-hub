@@ -748,7 +748,7 @@ class DemoTest(WorkCase):
         meetings = client.get("/api/work/calendar").json()["meetings"]
         self.assertEqual(len(meetings), 4)
         self.assertEqual([m["platform"] for m in meetings].count("zoom"), 1)
-        self.assertTrue(all(dt.datetime.fromisoformat(m["start"]).date() == dt.date.today() for m in meetings))
+        self.assertTrue(all(dt.datetime.fromisoformat(m["start"]).date() == TODAY for m in meetings))
         self.assertEqual(len(client.get("/api/work/email/contacts").json()["contacts"]), 3)
         self.assertEqual(len(client.get("/api/work/chat/spaces").json()["spaces"]), 2)
 
