@@ -151,6 +151,8 @@ export function init(container, ctx) {
   const askBtn = ui.button({ label: "Ask", icon: "send", variant: "primary", onClick: () => ask() });
   const stopBtn = ui.button({ label: "Stop", icon: "stop", variant: "danger-soft", hidden: true, onClick: () => askController?.abort() });
   const askOut = el("div", { class: "kb-answer-host ui-stack" });
+  const askEmpty = ui.emptyState({ icon: "sparkles", compact: true, title: "Ask in your own words",
+    body: "The answer comes only from your files, with numbered sources you can open." });
 
   const cite = (n, src) => {
     const b = el("button", { type: "button", class: "kb-cite", "aria-label": `Source ${n}: ${src ? baseName(src.rel) : ""}`, onclick: () => src && openHit(src.root, src.rel) }, String(n));
@@ -181,7 +183,7 @@ export function init(container, ctx) {
     if (emptyIndex()) { ctx.toast("Nothing is indexed yet. Tap Re-scan first.", { kind: "warn" }); return; }
     askController = new AbortController();
     const signal = askController.signal;
-    askBtn.hidden = true; stopBtn.hidden = false;
+    askBtn.hidden = true; stopBtn.hidden = false; askEmpty.hidden = true;
     const answerBody = el("div", { class: "kb-answer markdown", "aria-live": "polite" }, el("span", { class: "sc-dots", role: "status", "aria-label": "Searching your files" }, el("i"), el("i"), el("i")));
     const sourcesHost = el("div", { class: "kb-sources ui-stack" });
     askOut.replaceChildren(el("div", { class: "kb-q" }, ui.icon("sparkles"), el("span", {}, question)),
@@ -237,9 +239,8 @@ export function init(container, ctx) {
       if (!searchInput.value.trim()) paintSearchIdle();
     } else {
       body.replaceChildren(el("section", { class: "ui-card kb-askcard ui-stack" }, askInput, el("div", { class: "kb-askrow" }, providerHost, el("div", { class: "kb-askbtns" }, stopBtn, askBtn))),
-        askOut.childNodes.length ? askOut : ui.emptyState({ icon: "sparkles", compact: true, title: "Ask in your own words",
-          body: "The answer comes only from your files, with numbered sources you can open." }));
-      if (askOut.childNodes.length) body.append();
+        askOut, askEmpty));
+      askEmpty.hidden = askOut.childNodes.length > 0;
     }
   }
 

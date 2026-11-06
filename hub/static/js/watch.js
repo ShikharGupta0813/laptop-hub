@@ -237,7 +237,7 @@ export function init(container, ctx) {
         const rb = build();
         const r = await api("/api/watch/rules/test", { method: "POST", json: { rule: rb, sample: { from: t.from, subject: t.subject, text: t.text, ...(t.space ? { space: t.space } : {}), source: f.source === "any" ? "mail" : f.source } } });
         verdict.replaceChildren(ui.notice(r.would_match ? ["This would alert you.", ...(r.reasons || [])].join(" ") : `This would not alert you.${r.ai_urgent ? " The AI may still flag it if it looks urgent." : ""}`, { tone: r.would_match ? "good" : null, icon: r.would_match ? "check-circle" : "info" }),
-          r.note ? el("p", { class: "ui-hint" }, r.note) : null);
+          ...(r.note ? [el("p", { class: "ui-hint" }, r.note)] : []));
       } catch (error) { verdict.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
     }));
     const tester = el("details", { class: "ui-card wt-test" }, el("summary", {}, ui.icon("wand"), "Test this rule"),
