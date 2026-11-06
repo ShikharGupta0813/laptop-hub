@@ -59,3 +59,4 @@
 
 /* Descriptions are sentences, so let them wrap instead of truncating (the audit log keeps its clamp). */
 .st-sheet .ui-row__sub:not(.ui-clamp-2), #view-settings .ui-row__sub { white-space: normal; }
+.st-sheet .ui-row__sub.ui-clamp-2 { white-space: normal; overflow-wrap: anywhere; }

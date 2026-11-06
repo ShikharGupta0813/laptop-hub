@@ -616,7 +616,7 @@ export function init(container, ctx) {
     }
     updateChrome();
     if (!selecting) return;
-    selCount.textContent = `${selected.size} selected`;
+    selCount.replaceChildren(el("span", { class: "fl-selnum ui-num" }, String(selected.size)), el("span", { class: "sr-only" }, " selected"));
     const any = selected.size > 0;
     const w = writable(root);
     selBtns.replaceChildren(

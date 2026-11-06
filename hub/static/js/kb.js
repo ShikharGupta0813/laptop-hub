@@ -239,7 +239,7 @@ export function init(container, ctx) {
       if (!searchInput.value.trim()) paintSearchIdle();
     } else {
       body.replaceChildren(el("section", { class: "ui-card kb-askcard ui-stack" }, askInput, el("div", { class: "kb-askrow" }, providerHost, el("div", { class: "kb-askbtns" }, stopBtn, askBtn))),
-        askOut, askEmpty));
+        askOut, askEmpty);
       askEmpty.hidden = askOut.childNodes.length > 0;
     }
   }

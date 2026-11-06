@@ -701,7 +701,7 @@ export function init(container, ctx) {
       promptBody.replaceChildren(ui.skeleton("lines", 2));
       try {
         const data = await ui.busy(promptBtn, api("/api/english/practice-prompt", {
-          method: "POST", json: { scenario: picker.value, provider } }));
+          method: "POST", json: { scenario: picker.value || (picker.list[0] && picker.list[0].id) || "", provider } }));
         promptText = String(data.prompt || "");
         promptBody.replaceChildren(
           el("p", { class: "eng-prompt-text" }, promptText),
