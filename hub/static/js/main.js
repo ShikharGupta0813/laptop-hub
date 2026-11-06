@@ -237,7 +237,8 @@ window.addEventListener("popstate", (event) => {
 });
 
 function parseHash() {
-  const [view, ...rest] = (location.hash || "").replace(/^#\/?/, "").split("/");
+  const path = (location.hash || "").replace(/^#\/?/, "").split("?")[0];   // a ?query (e.g. ?url=) is for the screen
+  const [view, ...rest] = path.split("/");
   return { view: view || null, section: rest.join("/") || undefined };
 }
 
