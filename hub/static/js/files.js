@@ -463,7 +463,7 @@ export function init(container, ctx) {
     updateChrome();
     updateTools();
     if (searchResults) return;
-    if (!silent || !entries) listBox.replaceChildren(loadingBox());
+    if (!silent || !entries) { if (!silent) { entries = null; updateTools(); } listBox.replaceChildren(loadingBox()); }
     const scrollKeep = silent ? browser.scrollTop : 0;
     try {
       const query = new URLSearchParams({ root, path });
@@ -476,8 +476,10 @@ export function init(container, ctx) {
       if (mine !== listToken || error.name === "AbortError") return;
       if (silent && entries) { ctx.toast(error.message); return; } // keep what we already show
       entries = null;
+      updateTools();
       const top = path ? ui.button({ label: "Go to top folder", variant: "secondary", size: "sm", onClick: () => goTo("") }) : null;
-      listBox.replaceChildren(errorBox(error.message, () => loadList(), top));
+      const message = !path && /not a folder/i.test(error.message) ? `The "${root}" folder doesn't exist on the laptop yet. Create it there, then retry.` : error.message;
+      listBox.replaceChildren(errorBox(message, () => loadList(), top));
     }
   }
 

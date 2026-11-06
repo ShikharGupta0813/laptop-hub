@@ -85,7 +85,7 @@ export function init(container, ctx) {
         el("span", { class: "ib-line" },
           el("span", { class: "ib-from" }, name),
           fromSearch ? null : el("span", { class: "ib-time" }, ui.relTime(m.date))),
-        el("span", { class: "ib-subject" }, m.subject || "(no subject)", m.has_attachments ? ui.icon("link", { class: "ib-clip" }) : null),
+        el("span", { class: "ib-subject" }, el("span", { class: "ib-subj-text" }, m.subject || "(no subject)"), m.has_attachments ? ui.icon("link", { class: "ib-clip" }) : null),
         el("span", { class: "ib-snippet" }, m.snippet || "")));
     return node;
   }

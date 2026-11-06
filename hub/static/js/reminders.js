@@ -48,7 +48,7 @@ export function init(container, ctx) {
   let visible = false;
 
   // ---- quick add ------------------------------------------------------------------------------
-  const input = el("input", { type: "text", class: "rm-input", placeholder: "Try: call mom tomorrow at 9am", maxlength: "300",
+  const input = el("input", { type: "text", class: "rm-input", placeholder: "Call mom tomorrow 9am", maxlength: "300",
     "aria-label": "New reminder or timer", enterkeyhint: "done", autocomplete: "off", autocapitalize: "sentences" });
   const addBtn = ui.button({ label: "Add", icon: "plus", variant: "primary", onClick: save, disabled: true });
   const echo = el("div", { class: "rm-echo", "aria-live": "polite" });

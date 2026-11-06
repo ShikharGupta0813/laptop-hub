@@ -156,7 +156,7 @@ export function init(container, ctx) {
       ...state.tasks.map((t) => el("option", { value: t.id }, t.title)));
     task.value = state.taskId;
     task.addEventListener("change", () => { state.taskId = task.value; const t = state.tasks.find((x) => x.id === task.value); if (t && !label.value) { label.value = t.title; state.label = t.title; } });
-    const brk = el("select", { "aria-label": "Break length" }, ...[0, 5, 10, 15].map((m) => el("option", { value: String(m) }, m ? `Break ${m}m` : "No break")));
+    const brk = el("select", { "aria-label": "Break length" }, ...[0, 5, 10, 15].map((m) => el("option", { value: String(m) }, m ? `${m}m break` : "No break")));
     brk.value = String(state.breakMin);
     brk.addEventListener("change", () => { state.breakMin = Number(brk.value); });
     const start = ui.button({ label: "Start focus", icon: "play", variant: "primary", size: "lg", block: true, onClick: async () => {
