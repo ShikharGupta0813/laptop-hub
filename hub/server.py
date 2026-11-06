@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -106,6 +107,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
     store = NoteStore(config.notes_dir)
     limiter = auth.LoginLimiter()
+    config_lock = threading.Lock()   # logout-all's read-change-write of hub.json
     pool = ThreadPoolExecutor(max_workers=16, thread_name_prefix="hub-term")
     audit_file = audit_path or Path.home() / ".laptop-hub" / "audit.log"
 
@@ -193,8 +195,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                    *(urlparse(o).netloc for o in config.allowed_origins)}
         return netloc in allowed
 
+    def session_ok(value: str | None) -> bool:
+        return auth.session_valid(config.session_secret, value, deps.clock(), config.session_generation)
+
     def need_auth(request: Request) -> None:
-        if not auth.session_valid(config.session_secret, request.cookies.get(auth.COOKIE), deps.clock()):
+        if not session_ok(request.cookies.get(auth.COOKIE)):
             raise HTTPException(401, "Log in first.")
 
     def client_id(request: Request) -> str:
@@ -208,7 +213,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @app.get("/api/session")
     def session(request: Request):
-        ok = auth.session_valid(config.session_secret, request.cookies.get(auth.COOKIE), deps.clock())
+        ok = session_ok(request.cookies.get(auth.COOKIE))
         return {"authenticated": ok, "version": VERSION}
 
     @app.post("/api/login")
@@ -227,7 +232,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         audit("login", client=who)
         secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
         response = JSONResponse({"ok": True})
-        response.set_cookie(auth.COOKIE, auth.make_session(config.session_secret, deps.clock()),
+        response.set_cookie(auth.COOKIE, auth.make_session(config.session_secret, deps.clock(), config.session_generation),
                             max_age=auth.SESSION_SECONDS, httponly=True, samesite="strict",
                             secure=secure, path="/")
         return response
@@ -239,6 +244,35 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         return response
 
     api = APIRouter(prefix="/api", dependencies=[Depends(need_auth)])
+
+    @api.post("/logout-all")
+    def logout_all():
+        """Log out every phone and browser: the session generation in hub.json goes up by one, so every cookie
+        signed before stops working (this one too). Saved to hub.json when the server knows where it is."""
+        persisted = False
+        with config_lock:
+            new_generation = int(config.session_generation or 0) + 1
+            if config_path is not None:
+                from . import config as cfg
+                try:
+                    disk = cfg.load(Path(config_path))
+                    disk.session_generation = max(new_generation, int(disk.session_generation or 0) + 1)
+                    cfg.save(disk, Path(config_path))
+                    new_generation = disk.session_generation
+                    persisted = True
+                except (cfg.ConfigError, OSError):
+                    persisted = False
+            config.session_generation = new_generation
+            if not persisted:
+                # Not saved: also change the secret in memory, so old cookies stay dead until a restart
+                # (after a restart the saved secret is back; `python -m hub token` rotates it for good).
+                import secrets as _secrets
+                config.session_secret = _secrets.token_bytes(32)
+        audit("logout_all", generation=new_generation, persisted=persisted)
+        response = JSONResponse({"ok": True, "persisted": persisted,
+                                 "message": "Every phone and browser is logged out. Log in again with your token."})
+        response.delete_cookie(auth.COOKIE, path="/")
+        return response
 
     def fail(exc: Exception):
         status = getattr(exc, "status", 500)
@@ -515,7 +549,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @app.websocket("/ws/term")
     async def terminal_socket(ws: WebSocket):
-        if not auth.session_valid(config.session_secret, ws.cookies.get(auth.COOKIE), deps.clock()):
+        if not session_ok(ws.cookies.get(auth.COOKIE)):
             return await refuse(ws, 4401)
         if not origin_ok(ws.headers) or not host_ok(ws.headers):
             return await refuse(ws, 4403)

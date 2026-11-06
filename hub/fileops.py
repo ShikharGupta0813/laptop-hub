@@ -212,7 +212,10 @@ def make_router(ctx: Ctx) -> APIRouter:
     def protected() -> list[Path]:
         """The hub's own data, audit log and config: never changed or copied out through this module."""
         found = []
-        for p in (ctx.config.data_path(), ctx.audit_path, hubconfig.default_path()):
+        # ctx.config_path is the hub.json the server really loaded (it can differ from the default path when
+        # `--config` is used); ~/.laptop-hub is the hub's own folder, as for the assistant.
+        for p in (ctx.config.data_path(), ctx.audit_path, hubconfig.default_path(),
+                  getattr(ctx, "config_path", None), Path.home() / ".laptop-hub"):
             if p:
                 try:
                     found.append(Path(p).resolve())
@@ -421,6 +424,7 @@ def make_router(ctx: Ctx) -> APIRouter:
                 if not os.path.lexists(source):
                     raise HTTPException(404, "That file or folder is no longer there.")
                 dest = source.parent / body.new_name
+                deny_protected(dest)
                 if os.path.lexists(dest):
                     raise HTTPException(409, "Something with that name is already there.")
                 os.rename(source, dest)

@@ -573,6 +573,10 @@ class KB:
             text = read_text(path)
             if not text.strip():
                 note = "no text"
+            elif self._holds_hub_secret(text):
+                # a copy of hub.json under another name: its token hash and session secret must never reach
+                # the index, search results or a model
+                note = "skipped (holds the hub's own secrets)"
             else:
                 chunks = chunk_text(text, markdown=path.suffix.lower() in (".md", ".docx"))
         except Exception as exc:    # damaged PDF, binary file, bad zip: skip it, remember not to retry
@@ -593,6 +597,13 @@ class KB:
                                   (".pdf", ".docx") else None, c["text"])).lastrowid
                 db.execute("INSERT INTO chunks_fts(rowid, text, heading, rel) VALUES(?,?,?,?)",
                            (cid, c["text"], c["heading"], rel))
+
+    def _holds_hub_secret(self, text: str) -> bool:
+        secret = getattr(self.config, "session_secret", b"") or b""
+        markers = [m for m in (getattr(self.config, "token_hash", ""),
+                               secret.hex() if isinstance(secret, bytes) else str(secret)) if m]
+        low = text.lower()
+        return any(m.lower() in low for m in markers)
 
     def _drop_chunks(self, db, file_id: int) -> None:
         db.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id=?)", (file_id,))

@@ -50,6 +50,8 @@ class Config:
     ntfy_topic: str = ""                    # a long random topic name you subscribe to in the ntfy app
     # Apps the phone may launch on the laptop: {"Chrome": {"target": "chrome.exe", "args": []}}
     apps: dict[str, dict] = field(default_factory=dict)
+    # Mixed into every session cookie's signature; POST /api/logout-all raises it to log every phone out.
+    session_generation: int = 0
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -98,6 +100,7 @@ def save(config: Config, path: Path) -> None:
         "scripts": config.scripts, "apps": config.apps, "embed_model": config.embed_model,
         "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,
         "ntfy_server": config.ntfy_server, "ntfy_topic": config.ntfy_topic,
+        "session_generation": int(config.session_generation or 0),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -116,6 +119,7 @@ def load(path: Path) -> Config:
         data["session_secret"] = bytes.fromhex(data["session_secret"])
         known = Config.__dataclass_fields__
         config = Config(**{k: v for k, v in data.items() if k in known})
+        config.session_generation = int(config.session_generation or 0)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise ConfigError(f"{path} is damaged ({exc}). Run `python -m hub init --force`.") from None
     if config.host not in ("127.0.0.1", "localhost", "::1"):

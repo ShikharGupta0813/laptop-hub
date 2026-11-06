@@ -27,16 +27,22 @@ def _sign(secret: bytes, payload: str) -> str:
     return hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def make_session(secret: bytes, now: float | None = None) -> str:
+def _payload(expires: str, generation: int) -> str:
+    """What is signed. The session generation (hub.json `session_generation`) is mixed in, so raising it
+    (POST /api/logout-all) makes every cookie signed before invalid. Generation 0 keeps the old format."""
+    return expires if not generation else f"{expires}|g{int(generation)}"
+
+
+def make_session(secret: bytes, now: float | None = None, generation: int = 0) -> str:
     expires = str(int((now if now is not None else time.time()) + SESSION_SECONDS))
-    return f"{expires}.{_sign(secret, expires)}"
+    return f"{expires}.{_sign(secret, _payload(expires, generation))}"
 
 
-def session_valid(secret: bytes, value: str | None, now: float | None = None) -> bool:
+def session_valid(secret: bytes, value: str | None, now: float | None = None, generation: int = 0) -> bool:
     if not value or "." not in value:
         return False
     expires, _, signature = value.partition(".")
-    if not hmac.compare_digest(_sign(secret, expires), signature):
+    if not hmac.compare_digest(_sign(secret, _payload(expires, generation)), signature):
         return False
     try:
         return int(expires) > (now if now is not None else time.time())

@@ -40,7 +40,7 @@ MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "w
 ALLOWED_KEYS = (*MODEL_KEYS, "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
-               "shells", "jarvis_dir")
+               "shells", "jarvis_dir", "session_generation")
 SECRET_KEYS = ("ntfy_topic",)   # changes are audited without the value (the topic works like a password)
 
 MODEL_NAME = re.compile(r"\A[A-Za-z0-9._:/-]{1,80}\Z")

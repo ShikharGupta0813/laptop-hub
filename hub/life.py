@@ -1321,7 +1321,7 @@ def _category(value: str) -> str:
 def make_router(ctx, *, fetcher=None, now=None, utc_now=None) -> APIRouter:
     """`fetcher(url) -> study.Fetched`, `now() -> datetime` (local) and `utc_now()` can be replaced in tests."""
     async def default_fetch(url: str):
-        return await study.safe_fetch(url)
+        return await study.safe_fetch(url, transport=study.pinned_transport())   # no DNS rebinding
 
     fetch = fetcher or default_fetch
     clock = now or datetime.now

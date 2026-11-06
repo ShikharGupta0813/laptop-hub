@@ -102,7 +102,7 @@ class InProcessClient:
         import httpx
         from . import auth
         try:
-            cookie = f"{auth.COOKIE}={auth.make_session(self._config.session_secret)}"
+            cookie = f"{auth.COOKIE}={auth.make_session(self._config.session_secret, generation=getattr(self._config, 'session_generation', 0))}"
             response = await self._http().request(method, path, params=params, json=body, headers={"Cookie": cookie})
         except httpx.HTTPError as exc:
             return False, f"The hub could not be reached from inside ({exc})."

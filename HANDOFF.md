@@ -134,7 +134,7 @@ stream and real vision; real Android plugin calls from Settings > Phone capture;
 spoken "stop"/"cancel" in voice mode; on-screen-keyboard layout. Tools: switching sections via the URL hash alone does not open
 that section.
 
-NEXT: (1) second security review (Opus) over all round-2 modules and screens; (2) update README (feature list, new setup steps:
+DONE since: second security review (8 findings fixed, tests in tests/test_security_round2.py; `POST /api/logout-all` revokes all sessions) and README/SETUP-WINDOWS.md/API index. Review leftovers: backups include notify_settings.json (ntfy topic); unbounded page memory for a logged-in phone; concurrent logout-all + settings saves could lose a write. (Old list:) (2) update README (feature list, new setup steps:
 `pip install -r requirements-screen.txt` optional, `ollama pull nomic-embed-text`, ntfy topic) and index `docs/api/*` in
 `docs/API.md`; (3) rebuild the APK in GitHub Actions (first real compile of the Android capture code; fix any Java errors);
 (4) real-laptop run (item 1 below); (5) real-phone checks of the unverified list above.

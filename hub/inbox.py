@@ -121,13 +121,16 @@ def decode_header_value(value: Any, limit: int = 300) -> str:
 
 
 _ADDR_FALLBACK = re.compile(r"[\w.+%-]+@[\w-]+(?:\.[\w-]+)+")
+MAX_ADDRESS_HEADER = 2000
 
 
 def parse_address(value: Any) -> tuple[str, str]:
     """(display name, address) from a From/Reply-To header. Either may be empty."""
     if value is None:
         return "", ""
-    raw = _unescape_surrogates(str(value))
+    # A From header is never legitimately this long; the fallback search is quadratic on long runs of word
+    # characters, so a mail with a huge crafted From header could stall the inbox and the mail monitor.
+    raw = _unescape_surrogates(str(value))[:MAX_ADDRESS_HEADER]
     try:
         name, addr = email.utils.parseaddr(raw)
     except Exception:  # noqa: BLE001

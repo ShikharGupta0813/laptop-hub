@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union
 from urllib.parse import urljoin, urlsplit
 
+import httpcore
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -379,6 +380,8 @@ async def check_url(url: str, resolver=system_resolver) -> None:
     moment later. Closing that fully means connecting to the checked IP directly, which breaks
     TLS certificate checks for https. The hub is for one owner who pastes their own links,
     so this is a documented residual risk, not a hole for strangers.
+    `pinned_transport()` below closes it for Bookmarks and Cards: the connection itself re-checks
+    the addresses and dials the checked IP (SNI and the certificate still use the host name).
     """
     try:
         parts = urlsplit(url.strip())
@@ -402,6 +405,59 @@ async def check_url(url: str, resolver=system_resolver) -> None:
         if blocked_address(ip):
             raise SourceError(400, "That address is private or local to a network, so the hub "
                                    "won't fetch it. Only public web pages can be read.")
+
+
+class PinnedBackend(httpcore.AsyncNetworkBackend):
+    """Closes the DNS-rebinding gap of `study.check_url`: the name is resolved here, at connect time, every
+    address is checked, and the socket is opened to that checked address (TLS still verifies the host name,
+    because httpcore takes SNI and the certificate name from the URL, not from the address dialled)."""
+
+    def __init__(self, resolver=None, inner=None):
+        self._resolver = resolver or system_resolver
+        self._inner = inner or httpcore.AnyIOBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        try:
+            addresses = [str(ipaddress.ip_address(str(host).strip("[]").split("%")[0]))]
+        except ValueError:
+            addresses = await self._resolver(host, port)
+        if not addresses:
+            raise SourceError(502, "Couldn't find that website. Check the address.")
+        for address in addresses:
+            try:
+                bad = blocked_address(ipaddress.ip_address(address))
+            except ValueError:
+                bad = True
+            if bad:
+                raise SourceError(400, "That address is private or local to a network, so the hub "
+                                             "won't fetch it. Only public web pages can be read.")
+        last: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._inner.connect_tcp(address, port, timeout=timeout, local_address=local_address,
+                                                      socket_options=socket_options)
+            except httpcore.ConnectError as exc:
+                last = exc
+        raise last or httpcore.ConnectError("no address")
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("Unix sockets are never used for web pages.")
+
+    async def sleep(self, seconds):
+        await self._inner.sleep(seconds)
+
+
+def pinned_transport(resolver=None, inner=None):
+    """An httpx transport that only ever connects to vetted public addresses (no proxy from the environment)."""
+    transport = httpx.AsyncHTTPTransport(trust_env=False)
+    transport._pool = httpcore.AsyncConnectionPool(ssl_context=transport._pool._ssl_context, max_connections=10,
+                                                   network_backend=PinnedBackend(resolver, inner))
+    return transport
+
+
+async def pinned_fetch(url: str) -> Fetched:
+    """`safe_fetch` with the connection pinned to the addresses that passed the check."""
+    return await safe_fetch(url, transport=pinned_transport())
 
 
 ALLOWED_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/pdf"}

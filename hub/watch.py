@@ -129,7 +129,9 @@ def plain(value: Any, limit: int) -> str:
     """tidy() and also no markup, no links: for text that came out of a model reading untrusted mail."""
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         return ""
-    text = _TAGS.sub(" ", str(value))
+    # Cut first: the link pattern is quadratic on long runs like "a.a.a.", and a model that read a hostile
+    # mail can be steered into a very long "reason".
+    text = _TAGS.sub(" ", str(value)[:max(limit, 0) * 4 + 200])
     text = _URL.sub(" ", text)
     text = _MARKUP_CHARS.sub(" ", text)
     return tidy(text, limit)
@@ -973,9 +975,13 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
             raise HTTPException(413, "That message is too large.")
-        raw = await request.body()
-        if len(raw) > MAX_BODY_BYTES:
-            raise HTTPException(413, "That message is too large.")
+        # Read in pieces and stop at the cap: a chunked body has no Content-Length to check up front.
+        buf = bytearray()
+        async for piece in request.stream():
+            buf += piece
+            if len(buf) > MAX_BODY_BYTES:
+                raise HTTPException(413, "That message is too large.")
+        raw = bytes(buf)
         try:
             body = json.loads(raw.decode("utf-8")) if raw else None
         except (ValueError, UnicodeDecodeError):

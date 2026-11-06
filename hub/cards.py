@@ -769,7 +769,7 @@ async def start(ctx: Ctx):
 
 def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]] = None) -> APIRouter:
     """`fetcher(url) -> study.Fetched` and `now() -> datetime` (naive, local time) can be replaced in tests."""
-    fetch = fetcher or study.safe_fetch
+    fetch = fetcher or study.pinned_fetch     # connects only to the address that passed the SSRF check
     clock = now or datetime.now
     router = APIRouter(prefix="/api/cards", dependencies=[Depends(ctx.need_auth)])
     cache = study.SourceCache()

@@ -59,6 +59,8 @@ def _clean_link(link: Any) -> str | None:
     link = str(link).strip()
     if link.lower().startswith(("http://", "https://")):
         return link[:500] if " " not in link and not CONTROL_RE.search(link) else None
+    if link.startswith(("//", "/\\", "\\")):   # protocol-relative: another site, not a view
+        return None
     return link if ":" not in link and LINK_RE.match(link) else None
 
 
