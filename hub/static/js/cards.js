@@ -149,7 +149,7 @@ export function init(container, ctx) {
         bar.style.setProperty("--h", String(f.due / max));
         return el("div", { class: `cd-barcol${i === 0 ? " is-today" : ""}` },
           el("span", { class: "cd-barval ui-num" }, f.due ? String(f.due) : ""), el("div", { class: "cd-bartrack" }, bar),
-          el("span", { class: "cd-barday" }, i === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "narrow" })));
+          el("span", { class: "cd-barday" }, i === 0 ? "Now" : day.toLocaleDateString(undefined, { weekday: "narrow" })));
       }));
     const forecast = el("section", { class: "ui-card ui-stack" }, el("div", { class: "ui-card__head" }, el("h3", { class: "ui-card__title" }, "Next 14 days"),
       el("span", { class: "ui-card__sub" }, "Reviews due")), bars);

@@ -186,3 +186,7 @@
 #view-learn .qz-miss-body { padding: 0 var(--sp-4) var(--sp-4); display: grid; gap: var(--sp-1); }
 #view-learn .qz-miss-body p { margin: 0; overflow-wrap: anywhere; }
 #view-learn .qz-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+
+/* five sections on a phone: size columns to their labels */
+#view-learn .ln-seg { grid-auto-flow: column; grid-auto-columns: 1fr; }
+#view-learn .ln-seg button { padding-inline: var(--sp-2); font-size: var(--fs-sm); white-space: nowrap; }

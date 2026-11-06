@@ -12,8 +12,8 @@ import * as english from "./english.js";
 const SECTIONS = [
   { id: "chat", label: "Chat", mod: studychat },
   { id: "quiz", label: "Quiz", mod: quiz },
-  { id: "cards", label: "Cards", mod: cards },
-  { id: "kb", label: "Ask", mod: kb },
+  { id: "cards", label: "Flashcards", mod: cards },
+  { id: "kb", label: "Ask files", mod: kb },
   { id: "english", label: "English", mod: english },
 ];
 const ALIASES = { files: "kb", ask: "kb", flashcards: "cards", roadmaps: "cards" };

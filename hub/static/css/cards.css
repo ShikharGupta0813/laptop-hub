@@ -38,7 +38,7 @@
 .cd-stat .ui-tile { grid-row: 1 / 3; }
 .cd-stat-num { font-size: var(--fs-lg); font-weight: var(--fw-bold); line-height: 1.1; }
 .cd-stat-label { font-size: var(--fs-2xs); color: var(--c-text-2); line-height: 1.2; }
-.cd-forecast { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; align-items: end; height: 132px; }
+.cd-forecast { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; align-items: end; height: 132px; }
 .cd-barcol { display: grid; grid-template-rows: 16px 1fr auto; justify-items: center; gap: 2px; min-width: 0; height: 100%; }
 .cd-barval { font-size: var(--fs-2xs); color: var(--c-text-2); }
 .cd-bartrack { width: 100%; height: 100%; display: flex; align-items: flex-end; }
