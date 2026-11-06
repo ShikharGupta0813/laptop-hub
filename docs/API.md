@@ -1,5 +1,28 @@
 # Laptop Hub API
 
+## Index of the per-module docs
+
+The sections below are the original core routes. Each newer module has its own file in `docs/api/`:
+
+- [automations.md](api/automations.md): routines (chained steps, manual or scheduled, dangerous steps gated)
+- [capture-android.md](api/capture-android.md): the Android `HubCapture` plugin (payment and Gmail/Chat notification capture)
+- [cards.md](api/cards.md): flashcards with spaced repetition, decks, AI roadmaps
+- [fileops.md](api/fileops.md): write side of Files (writable roots, trash, upload, zip)
+- [inbox.md](api/inbox.md): read-only Gmail, summaries, reply drafts, daily briefing
+- [kb.md](api/kb.md): Ask my files (keyword and embedding search with citations)
+- [life-capture.md](api/life-capture.md): automatic UPI spend capture and pending payments
+- [life.md](api/life.md): bookmarks, snippets, expenses, countdowns, calculators
+- [notify.md](api/notify.md): notification center, live stream, optional ntfy push
+- [productivity.md](api/productivity.md): to-dos, focus timer, habits, journal
+- [reminders.md](api/reminders.md): reminders, alarms and timers
+- [screen.md](api/screen.md): remote screen view and opt-in control
+- [search.md](api/search.md): global search (`/api/search`) and the Home dashboard data
+- [settings.md](api/settings.md): settings, models, diagnostics, audit viewer, backups
+- [watch.md](api/watch.md): urgent-mail and Google Chat alerts
+
+**Search note:** `GET /api/search?q=` (no `root`) is global search across the whole hub, see `api/search.md`.
+With `root=` it is the older file-name search described under Files below (same response as documented there).
+
 All routes are on the hub's own origin. Everything except `/api/session`, `/api/login`
 and the static app needs the `hub_session` cookie (HttpOnly, set by login). A request
 without it gets `401 {"detail": "..."}`. Errors are `{"detail": "message"}` with a plain
@@ -19,7 +42,7 @@ sentence the UI can show as is.
 - `GET /api/roots` → `[{name}]`
 - `GET /api/files?root=&path=` → `{root, path, entries:[{name,is_dir,size,modified}]}` (folders first)
 - `GET /api/file?root=&path=[&download=1]` → the file. Images and PDFs inline; text as `text/plain`; binary as a download.
-- `GET /api/search?root=&q=[&path=]` → `{results:[{name,path,is_dir}]}` (by file name)
+- `GET /api/search?root=&q=[&path=]` → `{results:[{name,path,is_dir}]}` (by file name). This is the legacy form: it applies only when `root` is given. Without `root`, `/api/search` is the global search (see `api/search.md`).
 - `POST /api/upload` multipart `file` → `{saved_as, size}` (goes to the inbox folder)
 - `path` is relative to the root, always with `/`. `403` if it escapes the root.
 

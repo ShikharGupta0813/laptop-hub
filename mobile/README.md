@@ -97,6 +97,16 @@ Developers: the JS calls are documented in `docs/api/capture-android.md`. The fi
 `android/app/src/main/java/dev/shikhar/laptophub/capture/CaptureFilter.java`, and `node scripts/test-capture-filter.js`
 checks them against sample notifications and confirms the Java and JS copies match.
 
+## Notification-capture plugin: quick facts
+
+The app includes a native plugin called **HubCapture** (`android/app/src/main/java/dev/shikhar/laptophub/capture/`).
+
+- **What it forwards, and only to your own hub:** (1) payment-app notifications that look like money you spent, and optional bank SMS, to `/api/expenses/capture`; (2) only if you switch watching on in the hub, Gmail and Google Chat message notifications to `/api/watch/ingest`. Notifications from every other app are never read.
+- **Permissions:** `INTERNET`, `RECORD_AUDIO` (microphone), `RECEIVE_SMS` (optional, receive-only, off until you grant it) and the **Notification access** special permission (`BIND_NOTIFICATION_LISTENER_SERVICE`), which you switch on yourself.
+- **How to grant:** Settings, Notifications, Device and app notifications, switch **Laptop Hub** on (or use the hub's Settings > Phone capture button, which opens that screen). On Android 13+ first do Settings, Apps, Laptop Hub, three-dot menu, **Allow restricted settings**. Then press **Test** in the hub: a fake "Paid Rs 1" item should appear in Spending.
+- **Control from the page:** `HubCapture.status / openListenerSettings / requestSms / setEnabled / setWatch / flush / test`, documented in `docs/api/capture-android.md`.
+- **Not tested:** this Java code had not been compiled when this was written (the first cloud build that includes it is the first real compile) and has never run on a real phone.
+
 ## Watching Gmail and Google Chat (optional)
 
 The same Notification access can also pass **Gmail** and **Google Chat** message notifications to your hub, so it can
