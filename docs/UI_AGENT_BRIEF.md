@@ -20,3 +20,8 @@ Rules
   yourself and iterate until polished. Check there are no console errors or CSP violations. Kill your devserver at the end.
   Save screenshots under /tmp/claude-0/shots/<your-area>/.
 - Do not git commit. Final report under 200 words: files, what works, what is unverified.
+
+## If you are CONTINUING an interrupted run
+The files named in your task may already exist (written by an agent that was stopped mid-way). Do not start over: read what is there,
+list what the task asks for that is missing or broken, finish it, then verify in the browser as above (exercise every state and
+action, not just the first screen). Keep what already works. Report what you added and what you verified.
