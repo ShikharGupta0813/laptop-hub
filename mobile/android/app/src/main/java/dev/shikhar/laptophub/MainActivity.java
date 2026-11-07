@@ -13,4 +13,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(HubCapturePlugin.class);
         super.onCreate(savedInstanceState);
     }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        // Downloads and new-window handling for the hub origin (see HubWeb.java).
+        HubWeb.install(this, getBridge());
+    }
 }

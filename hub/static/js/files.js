@@ -172,11 +172,26 @@ async function fetchText(url, signal) {
   return { text };
 }
 
+// The installed Android app (Capacitor / WebView) cannot open new tabs; it handles downloads natively.
+function inApp() {
+  try {
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+  } catch (_) { /* ignore */ }
+  return /;\s*wv\)|\bwv\b/.test(navigator.userAgent || "");
+}
+
 function triggerDownload(url, name) {
   const a = el("a", { href: url, download: name || "", hidden: true });
   document.body.append(a);
   a.click();
   setTimeout(() => a.remove(), 1000);
+  ui.toast("Downloading\u2026");
+}
+
+// Open a file outside the reader: a new tab in a browser, a download (which Android then opens) in the app.
+function openExternally(root, path) {
+  if (inApp()) { triggerDownload(fileUrl(root, path, true), baseName(path)); return; }
+  window.open(fileUrl(root, path), "_blank", "noopener");
 }
 
 function postJson(path, json) {
@@ -1316,7 +1331,8 @@ export function init(container, ctx) {
       } else if (kind === "image") {
         showImage();
       } else if (kind === "pdf") {
-        showCard("PDF files open in your browser's viewer.");
+        if (inApp()) await showPdfText(mine);
+        else showCard("PDF files open in your browser's viewer.");
       } else {
         const result = await fetchText(fileUrl(r, p), docAbort.signal);
         if (mine !== docToken) return;
@@ -1356,10 +1372,16 @@ export function init(container, ctx) {
   }
 
   function actionButtons() {
-    const url = fileUrl(doc.root, doc.path);
+    const { root: r, path: p } = doc;
+    const dl = el("button", { type: "button", class: "ui-btn ui-btn--secondary" }, ui.icon("download"), "Download");
+    dl.addEventListener("click", () => triggerDownload(fileUrl(r, p, true), baseName(p)));
+    if (inApp()) {
+      const open = el("button", { type: "button", class: "ui-btn ui-btn--primary" }, ui.icon("external"), "Open with\u2026");
+      open.addEventListener("click", () => openExternally(r, p));
+      return el("div", { class: "fl-cardbtns" }, open, dl);
+    }
     return el("div", { class: "fl-cardbtns" },
-      el("a", { class: "ui-btn ui-btn--primary", href: url, target: "_blank", rel: "noopener noreferrer" }, ui.icon("external"), "Open"),
-      el("a", { class: "ui-btn ui-btn--secondary", href: fileUrl(doc.root, doc.path, true), download: baseName(doc.path) }, ui.icon("download"), "Download"));
+      el("a", { class: "ui-btn ui-btn--primary", href: fileUrl(r, p), target: "_blank", rel: "noopener noreferrer" }, ui.icon("external"), "Open"), dl);
   }
 
   function showCard(message) {
@@ -1368,6 +1390,27 @@ export function init(container, ctx) {
       el("p", { class: "fl-cardname" }, baseName(doc.path)),
       el("p", { class: "fl-cardmsg" }, message),
       actionButtons()));
+  }
+
+  // In the app a PDF cannot open in a tab: show its extracted text (from the Ask-my-files index) plus Download / Open with.
+  async function showPdfText(mine) {
+    showCard("Reading the text of this PDF\u2026");
+    const card = docEl.querySelector(".fl-card");
+    const msg = card.querySelector(".fl-cardmsg");
+    let chunks = null;
+    try {
+      const data = await api(`/api/kb/file-context?${new URLSearchParams({ path: `${doc.root}:${doc.path}` })}`);
+      chunks = data.chunks;
+    } catch (error) {
+      if (mine !== docToken) return;
+      msg.textContent = "No text preview available. Use Download, then Android opens the PDF.";
+      return;
+    }
+    if (mine !== docToken) return;
+    const text = (chunks || []).map((c) => (c.heading ? c.heading + "\n" : "") + c.text).join("\n\n").trim();
+    if (!text) { msg.textContent = "This PDF has no readable text. Use Download to open it in another app."; return; }
+    msg.textContent = "Text preview (download to see the PDF with its layout and images).";
+    card.after(el("pre", { class: "fl-pdftext" }, text));
   }
 
   function showImage() {
@@ -1493,7 +1536,7 @@ export function init(container, ctx) {
     const w = writable(r);
     menuSheet("File", [
       w && isEditable(doc.path) ? { icon: "edit", title: "Edit", onClick: () => editFile(r, doc.path) } : null,
-      { icon: "external", tone: "info", title: "Open in browser", onClick: () => window.open(fileUrl(r, doc.path), "_blank", "noopener") },
+      { icon: "external", tone: "info", title: "Open in browser", onClick: () => openExternally(r, doc.path) },
       { icon: "download", tone: "good", title: "Download", onClick: () => triggerDownload(fileUrl(r, doc.path, true), item.name) },
       w ? { icon: "pen", tone: "info", title: "Rename", onClick: () => renameItem(r, item, (newPath) => openReader(r, newPath, { reset: true })) } : null,
       writableRoots().length ? { icon: "copy", tone: "info", title: "Copy to...", onClick: () => copyItems([item]) } : null,

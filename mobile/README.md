@@ -118,6 +118,17 @@ repeats within 2 minutes are sent once, and Slack, WhatsApp and every other app 
 the same Notification access steps as above. Developers: see `docs/api/capture-android.md` and
 `node scripts/test-watch-filter.js`.
 
+## Opening and downloading files
+
+The app handles files natively (`android/.../HubWeb.java`). The page must **navigate** (not use fetch) to:
+
+`/api/file?root=<root>&path=<path>&download=1` (e.g. `location.href = url`, or an `<a href>` / `window.open` with that URL)
+
+- Same-origin URLs are downloaded with Android DownloadManager to the public Downloads folder, using the session cookie and `X-Hub: 1`. A "Downloading name..." toast shows and Android's completed notification opens the file when tapped. No storage permission is needed (API 29+).
+- Opening a PDF inline (the same URL without `download=1`) only works in desktop browsers; in the app, always use `download=1`.
+- `target=_blank` / `window.open` to the hub origin loads in the app (or downloads if `download=1`); other http(s), mailto: and tel: links open in the system browser; other schemes are refused. Foreign origins never load inside the app.
+- Not compiled here (no Android SDK); the GitHub Actions build is the first compile.
+
 ## Changing the hub address later
 
 Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address is built into the app.
