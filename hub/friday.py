@@ -814,7 +814,7 @@ class Engine:
         nonce = secrets.token_hex(8)
         user = f"===== BEGIN FRIDAY DATA {nonce} =====\n{data}\n===== END FRIDAY DATA {nonce} ====="
         try:
-            model = self.ctx.model_for("claude" if choice == "claude" else "local")
+            model = self.ctx.model_for(choice if choice in PROVIDERS else "local")
             reply = await asyncio.wait_for(model.complete(system, user), timeout=90)
         except Exception as exc:  # noqa: BLE001  any model trouble falls back to the template
             log.info("friday model failed: %s", type(exc).__name__)
@@ -1301,8 +1301,8 @@ def validate_settings(raw: Any, base: dict, config) -> dict:
                 raise Bad(f"{key.replace('_', ' ').capitalize()} must be true or false.")
             out[key] = raw[key]
     if "brief_model" in raw:
-        if raw["brief_model"] not in ("local", "claude"):
-            raise Bad("The model must be local or claude.")
+        if raw["brief_model"] not in PROVIDERS:
+            raise Bad("The model must be local, claude, claude-login or gemini.")
         out["brief_model"] = raw["brief_model"]
     for key in ("work_start", "work_end"):
         if key in raw:
@@ -1354,8 +1354,8 @@ def engine_for(ctx: Ctx, **kwargs) -> Engine:
 def _model_param(value: Any) -> str | None:
     if value in (None, ""):
         return None
-    if value not in ("local", "claude"):
-        raise HTTPException(400, "The model must be local or claude.")
+    if value not in PROVIDERS:
+        raise HTTPException(400, "The model must be local, claude, claude-login or gemini.")
     return value
 
 

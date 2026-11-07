@@ -40,7 +40,7 @@ log = logging.getLogger("hub.watch")
 
 SOURCES = ("mail", "chat", "any")
 LEVELS = ("info", "warn", "error")
-MODELS = ("local", "claude")
+from .llm import PROVIDERS as MODELS
 BUILTIN_ID = "urgent-mail"
 RULE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,40}$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")

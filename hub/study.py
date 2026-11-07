@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 from . import files
 from .common import JsonFile, ask_json, http_from
-from .llm import LLMError, ThinkFilter
+from .llm import LLMError, ThinkFilter, ProviderName
 from .notes import NoteError
 
 # ---- limits ----------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ DEV_FAKES = {
 
 # ---- request bodies --------------------------------------------------------------------------
 
-Provider = Literal["local", "claude"]
+Provider = ProviderName
 
 
 class SourceBody(BaseModel):

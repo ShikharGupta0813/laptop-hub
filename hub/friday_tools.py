@@ -59,10 +59,10 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         return ExtraTool({"name": name, "description": description, "input_schema": _schema(props, required)},
                          run, needs_approval, preview)
 
-    model_prop = {"model": {"type": "string", "enum": ["local", "claude"]}}
+    model_prop = {"model": {"type": "string", "enum": list(PROVIDERS)}}
 
     async def friday_brief(a):
-        params = {"model": a["model"]} if a.get("model") in ("local", "claude") else None
+        params = {"model": a["model"]} if a.get("model") in PROVIDERS else None
         ok, d = await hub.call("GET", "/api/friday/brief", params=params)
         if not ok:
             return False, d
@@ -72,7 +72,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
 
     async def friday_plan(a):
         body: dict = {}
-        if a.get("model") in ("local", "claude"):
+        if a.get("model") in PROVIDERS:
             body["model"] = a["model"]
         if isinstance(a.get("focus_hours"), (int, float)) and not isinstance(a.get("focus_hours"), bool):
             body["focus_hours"] = max(0, min(12, a["focus_hours"]))

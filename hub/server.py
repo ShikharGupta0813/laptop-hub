@@ -34,7 +34,9 @@ from . import llm as llm_mod
 from .assistant import AssistantService
 from .common import Ctx
 from .config import Config
-from .llm import ClaudeClient, LLMError, OllamaClient, build_prompt, label_note
+from . import providers as providers_mod
+from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
+                  label_note)
 from .notes import NoteError, NoteStore, clean_spoken
 from .speech import SpeechError, Transcriber
 from .terminal import TerminalError, open_terminal
@@ -54,6 +56,8 @@ class Deps:
     """Everything that talks to the outside world, so tests can swap it."""
     llm: Any = None
     claude: Any = None
+    claude_login: Any = None
+    gemini: Any = None
     transcriber: Any = None
     label: Callable | None = None
     terminal: Callable = open_terminal
@@ -86,7 +90,7 @@ class NotePatch(BaseModel):
 class AssistantBody(BaseModel):
     session_id: str
     text: str
-    provider: str = "claude"
+    provider: str = "auto"
     auto_approve: bool = False
 
 
@@ -105,6 +109,9 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     deps = deps or Deps()
     llm = deps.llm or OllamaClient(config.ollama_host, config.chat_model)
     claude = deps.claude or ClaudeClient(config.claude_model)
+    claude_login = deps.claude_login or ClaudeCliClient(config.claude_cli_model or "sonnet",
+                                                        path=config.claude_cli_path)
+    gemini = deps.gemini or GeminiClient(config.gemini_model)
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
     store = NoteStore(config.notes_dir)
     limiter = auth.LoginLimiter()
@@ -307,7 +314,6 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             "hostname": socket.gethostname(), "platform": platform.platform(),
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "shells": list(config.shell_table()), "scripts": len(config.scripts),
-            "claude_ready": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "chat_model": config.chat_model,
         }
         info.update(await asyncio.to_thread(machine_numbers))
@@ -315,6 +321,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             info["ollama"] = {"up": True, "models": await llm.models()}
         except LLMError:
             info["ollama"] = {"up": False, "models": []}
+        avail = await asyncio.to_thread(providers_mod.availability, config, info["ollama"]["up"])
+        info["providers"] = avail
+        info["default_provider"] = await asyncio.to_thread(providers_mod.resolve_default, config)
+        # "ready" for the assistant: any cloud AI (API key, Claude login or Gemini) can answer
+        info["claude_ready"] = any(avail[k]["ready"] for k in ("claude", "claude_login", "gemini"))
         try:
             import faster_whisper  # noqa: F401
             info["voice_ready"] = True
@@ -395,7 +406,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             system, user = build_prompt(body.mode, body.text, body.question)
         except LLMError as exc:
             raise HTTPException(400, str(exc))
-        model = claude if body.provider == "claude" else llm
+        model = model_for(body.provider)
 
         async def pieces():
             async for text in model.stream(system, user):
@@ -497,12 +508,13 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @api.post("/assistant/message")
     async def assistant_message(body: AssistantBody):
-        audit("assistant_message", session=body.session_id, provider=body.provider,
+        provider = providers_mod.resolve(config, body.provider)
+        audit("assistant_message", session=body.session_id, provider=provider,
               auto_approve=body.auto_approve, chars=len(body.text))
 
         async def events():
             try:
-                async for event in assistant.run(body.session_id, body.text, body.provider,
+                async for event in assistant.run(body.session_id, body.text, provider,
                                                  body.auto_approve):
                     yield f"data: {json.dumps(event)}\n\n"
             except Exception as exc:  # the stream must always end cleanly for the phone
@@ -528,7 +540,17 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     # Feature modules (work, study, english). Each exposes make_router(ctx); one that isn't
     # written yet is skipped, but a real error inside a module is never hidden.
     def model_for(provider: str):
-        return claude if provider == "claude" else llm
+        choice = providers_mod.resolve(config, provider)
+        if choice == "claude":
+            return claude
+        if choice == "claude-login":
+            return claude_login
+        if choice == "gemini":
+            return gemini
+        return llm
+
+    if hasattr(assistant, "model_for"):
+        assistant.model_for = model_for
 
     ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
               need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file,

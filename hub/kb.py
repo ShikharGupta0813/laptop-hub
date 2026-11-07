@@ -39,7 +39,7 @@ from pydantic import BaseModel
 
 from . import files as hubfiles
 from .common import Ctx, http_from
-from .llm import LLMError
+from .llm import LLMError, ProviderName
 
 try:  # numpy only makes the vector scan faster; nothing needs it
     import numpy as np
@@ -780,7 +780,7 @@ def build_prompt(question: str, hits: list[dict]) -> tuple[str, str]:
 
 class AskBody(BaseModel):
     question: str
-    model: Literal["local", "claude"] = "local"
+    model: ProviderName = "local"
     limit: int = 6
 
 

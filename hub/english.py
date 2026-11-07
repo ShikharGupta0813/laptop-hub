@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .common import Ctx, JsonFile, ask_json, http_from
-from .llm import LLMError
+from .llm import LLMError, ProviderName
 from .speech import SpeechError
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -40,7 +40,7 @@ NEW_WORDS_PER_DAY = 5
 DUE_LIMIT = 30
 NO_WORDS = "I couldn't hear any words. Try again a little closer to the microphone."
 
-Provider = Literal["local", "claude"]
+Provider = ProviderName
 
 
 def today() -> date:
@@ -584,8 +584,8 @@ def make_router(ctx: Ctx) -> APIRouter:
     @router.post("/speak")
     async def speak(file: UploadFile = File(...), scenario: str = Form(""), prompt: str = Form(""),
                     provider: str = Form("local")):
-        if provider not in ("local", "claude"):
-            raise HTTPException(422, "provider must be 'local' or 'claude'.")
+        if provider not in PROVIDERS:
+            raise HTTPException(422, "provider must be one of: " + ", ".join(PROVIDERS) + ".")
         scenario = scenario.strip()
         scenario_info = scenario_or_422(scenario) if scenario else None
         prompt = prompt.strip()[:500]

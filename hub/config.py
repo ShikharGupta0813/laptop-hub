@@ -37,6 +37,11 @@ class Config:
     claude_model: str = "claude-opus-5-5"
     # The assistant does many small tool calls, so it uses the faster, cheaper Sonnet.
     assistant_model: str = "claude-sonnet-5-5"
+    # "auto" picks claude (API key) > claude-login (the `claude` program) > gemini (key) > local.
+    default_provider: str = "auto"
+    claude_cli_model: str = "sonnet"       # model alias for "Claude (my login)"
+    claude_cli_path: str = ""              # only if `claude` is not on PATH
+    gemini_model: str = "gemini-2.5-flash"
     allowed_origins: list[str] = field(default_factory=list)
     # Host names the hub answers to besides localhost and *.ts.net (blocks DNS-rebinding pages)
     allowed_hosts: list[str] = field(default_factory=list)
@@ -97,6 +102,8 @@ def save(config: Config, path: Path) -> None:
         "host": config.host, "port": config.port, "ollama_host": config.ollama_host,
         "chat_model": config.chat_model, "whisper_model": config.whisper_model,
         "claude_model": config.claude_model, "assistant_model": config.assistant_model,
+        "default_provider": config.default_provider, "claude_cli_model": config.claude_cli_model,
+        "claude_cli_path": config.claude_cli_path, "gemini_model": config.gemini_model,
         "allowed_origins": config.allowed_origins, "allowed_hosts": config.allowed_hosts, "shells": config.shells,
         "scripts": config.scripts, "apps": config.apps, "embed_model": config.embed_model,
         "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,

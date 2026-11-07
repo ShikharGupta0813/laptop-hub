@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field, StrictBool
 
 from . import study
 from .common import Ctx, JsonFile, ask_json, http_from
-from .llm import LLMError, ThinkFilter
+from .llm import LLMError, ThinkFilter, ProviderName
 from .notes import NoteError
 
 # ---- limits and scheduler constants ---------------------------------------------------------
@@ -75,7 +75,7 @@ LAPSE_FACTOR = 0.5
 DEFAULT_NEW_PER_DAY = 10
 DEFAULT_COLOR = "#6366f1"
 
-Provider = Literal["local", "claude"]
+Provider = ProviderName
 
 # ---- prompts ---------------------------------------------------------------------------------
 

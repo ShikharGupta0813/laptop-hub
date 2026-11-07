@@ -37,7 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from .common import Ctx, InProcessClient, ask_json, http_from
-from .llm import LLMError
+from .llm import LLMError, ProviderName
 from .work.jarvis_bridge import Bridge
 
 GMAIL_HOST = "imap.gmail.com"
@@ -847,11 +847,11 @@ def email_block(msg: ParsedMessage, nonce: str, limit: int = PROMPT_BODY_CHARS) 
 # ---- request bodies -----------------------------------------------------------------------------
 
 class ModelBody(BaseModel):
-    model: Literal["local", "claude"] = "local"
+    model: ProviderName = "local"
 
 
 class DraftBody(BaseModel):
-    model: Literal["local", "claude"] = "local"
+    model: ProviderName = "local"
     tone: Literal["professional", "friendly", "formal", "brief"] = "professional"
     instruction: str = Field(default="", max_length=1000)
 
@@ -1015,7 +1015,7 @@ def make_router(ctx: Ctx, *, mailbox: MailBox | None = None, bridge: Bridge | No
     # -- digest
 
     @router.get("/digest")
-    async def digest(model: Literal["local", "claude"] = "local"):
+    async def digest(model: ProviderName = "local"):
         box, _ = await get_box()
         raws = await run(box, "list", DEFAULT_FOLDER, MailQuery(unread=True), DIGEST_COUNT, LIST_PREVIEW_BYTES)
         mails = await parse_all(raws)
@@ -1181,7 +1181,7 @@ def make_router(ctx: Ctx, *, mailbox: MailBox | None = None, bridge: Bridge | No
         return "\n".join(lines)
 
     @router.get("/briefing")
-    async def briefing(model: Literal["local", "claude"] = "local"):
+    async def briefing(model: ProviderName = "local"):
         day = today()
         keys = ("calendar", "tasks", "mail", "reminders")
         results = await asyncio.gather(guard(part_calendar(day)), guard(part_tasks(day)), guard(part_mail()),

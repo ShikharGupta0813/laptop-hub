@@ -44,7 +44,7 @@ MAX_RESULTS = 500
 MAX_SUBTASKS = 30
 AI_SUBTASKS = 8
 REPEATS = ("none", "daily", "weekly", "monthly")
-MODELS = ("local", "claude")
+from .llm import PROVIDERS as MODELS
 
 
 # ---- the clock: the single place tests inject a fake -----------------------------------------
@@ -254,7 +254,7 @@ def clean_tags(value: Any) -> list[str]:
 
 def clean_model(value: Any) -> str:
     if value not in MODELS:
-        raise bad('The model must be "local" or "claude".')
+        raise bad('The model must be "local", "claude", "claude-login" or "gemini".')
     return value
 
 

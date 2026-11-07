@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..common import Ctx, ask_json, http_from
-from ..llm import LLMError
+from ..llm import LLMError, ProviderName
 from . import demo as demo_data
 from .asana import NOT_SET_UP, AsanaClient, AsanaError, check_gid, find_token
 from .jarvis_bridge import Bridge
@@ -49,7 +49,7 @@ class CommentBody(BaseModel):
 
 class AiDraftBody(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
-    provider: Literal["local", "claude"] = "local"
+    provider: ProviderName = "local"
 
 
 class DraftBody(BaseModel):

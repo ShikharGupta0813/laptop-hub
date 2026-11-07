@@ -41,7 +41,7 @@ from pydantic import BaseModel, Field, StrictBool
 
 from . import study
 from .common import ask_json, http_from
-from .llm import LLMError
+from .llm import LLMError, ProviderName
 
 # ---- limits ----------------------------------------------------------------------------------
 
@@ -99,7 +99,7 @@ DEV_FAKES = {
     "You sort small personal expenses into categories": json.dumps({"items": []}),
 }
 
-Provider = Literal["local", "claude"]
+Provider = ProviderName
 
 ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
