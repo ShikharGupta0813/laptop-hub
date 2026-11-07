@@ -380,7 +380,7 @@ export function init(container, ctx) {
       el("h3", { class: "au-h" }, "Steps"), stepsBox, ui.button({ label: "Add a step", icon: "plus", variant: "tonal", block: true, onClick: addStepSheet }),
       el("h3", { class: "au-h" }, "Schedule"), schedBox,
       el("div", { class: "ui-row au-toggle" }, el("div", { class: "ui-row__body" }, el("div", { class: "ui-row__title" }, "Schedule on"), el("div", { class: "ui-row__sub" }, "Off keeps the routine but never starts it by itself")), enabledSw),
-      isNew ? null : ui.button({ label: "Delete routine", icon: "trash", variant: "danger-soft", block: true, onClick: () => del() }));
+      ...(isNew ? [] : [ui.button({ label: "Delete routine", icon: "trash", variant: "danger-soft", block: true, onClick: () => del() })]));
 
     function validate() {
       if (!d.name.trim()) return "Give the routine a name.";

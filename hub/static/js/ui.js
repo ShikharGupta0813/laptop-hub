@@ -44,7 +44,14 @@ export function button({ label, icon: ic, variant = "secondary", size, block, ic
 }
 
 // Show a spinner in a button while a promise runs. Returns the promise's value.
+const inFlight = new WeakMap();   // button -> the promise of its running action (a double tap joins it)
 export async function busy(btn, promise) {
+  if (inFlight.has(btn)) return inFlight.get(btn);   // already running: a second tap does nothing new
+  const run = _busy(btn, promise);
+  inFlight.set(btn, run);
+  try { return await run; } finally { inFlight.delete(btn); }
+}
+async function _busy(btn, promise) {
   btn.classList.add("is-loading");
   btn.setAttribute("aria-busy", "true");
   try { return await (typeof promise === "function" ? promise() : promise); }
@@ -223,7 +230,12 @@ export function sheet({ title = "", content, actions = [], onClose, dismissible 
     el: node, body, foot,
     setTitle(text) { titleNode.textContent = text; },
     setActions(list) {
-      foot.replaceChildren(...list.map((a) => button({ ...a, onClick: async () => { if ((await a.onClick?.(api)) !== false) api.close(); } })));
+      foot.replaceChildren(...list.map((a) => (() => {
+        let running = null;   // a second tap while the action runs must not run it again
+        return button({ ...a, onClick: () => running || (running = (async () => {
+          try { if ((await a.onClick?.(api)) !== false) api.close(); } finally { running = null; }
+        })()) });
+      })()));
       if (list.length && !foot.isConnected) node.append(foot);
       if (!list.length) foot.remove();
     },
