@@ -36,6 +36,7 @@ export const VIEWS = [
   { id: "bookmarks", label: "Read later", icon: "bookmark", path: "./bookmarks.js", under: "apps" },
   { id: "tools", label: "Tools", icon: "sliders", path: "./tools.js", under: "apps" },
   { id: "cards", label: "Flashcards", icon: "layers", path: "./cards.js", under: "learn" },
+  { id: "setup", label: "Setup", icon: "check-circle", path: "./setup.js", under: "home" },
   { id: "launcher", label: "Launcher", icon: "grid", path: "./launcher.js", under: "apps" },
   { id: "friday", label: "Friday", icon: "sparkles", path: "./friday.js", under: "home" },
   { id: "watch", label: "Watch", icon: "eye", path: "./watch.js", under: "apps" },
