@@ -107,6 +107,21 @@ Start-ScheduledTask -TaskName "LaptopHub"
 
 Your config, notes and data live in `C:\Users\YOU\.laptop-hub` and are not touched. Reload the app on the phone afterwards (the service worker updates itself). A new APK is only needed when `mobile/` changed.
 
+## 9b. Remote workspace (company VPN + NiFi from the phone)
+
+The Remote screen has a **Workspaces** row. One tap connects the Cloudflare WARP agent, opens `https://nifi.onestack.in` in the laptop's browser, starts the live view and then asks you to enable control. First make the "connect" button on the laptop (quick buttons can only be added here, never from the phone):
+
+```powershell
+python -m hub add-script warp_connect --label "Connect Cloudflare" -- "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe" connect
+```
+
+Then restart the hub, open Remote on the phone, tap **+ New**, **Add NiFi template**.
+
+- Check the path first: that is the usual install folder, but verify it in File Explorer. Run `& "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe" status` in PowerShell: it should print the connection state.
+- Your company policy may block command-line control of WARP (the command then fails or asks for a login). If so, open the Cloudflare app by hand once and remove the button from the workspace: the launcher then only opens the URL.
+- If the button fails, the phone shows the error and offers **Open anyway**, which skips the buttons.
+- Control stays off until you tap **Enable control** and confirm. A workspace never turns it on by itself.
+
 ## 10. Verify each feature in 10 minutes
 
 Tick as you go. Anything that fails is worth writing down: none of this has been run on real hardware yet.

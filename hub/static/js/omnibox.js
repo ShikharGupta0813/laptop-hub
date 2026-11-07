@@ -7,6 +7,7 @@ import { QUICK_ACTIONS, runQuickAction } from "./home.js";
 
 const RECENT_KEY = "hub.search.recent";
 const KIND = {
+  workspace: { label: "Workspaces", icon: "cast", tone: "teal" },
   note: { label: "Notes", icon: "note", tone: "orange" },
   notes: { label: "Notes", icon: "note", tone: "orange" },
   task: { label: "Tasks", icon: "task", tone: "accent" },

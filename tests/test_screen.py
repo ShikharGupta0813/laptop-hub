@@ -896,3 +896,14 @@ class HelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrowserKeysTest(unittest.TestCase):
+    def test_browser_shortcuts_are_allowed_and_aliases_work(self):
+        from hub import screen as S
+        for keys in (["ctrl", "l"], ["ctrl", "0"], ["ctrl", "plus"], ["ctrl", "minus"], ["alt", "left"],
+                     ["ctrl", "shift", "tab"]):
+            S.clean_hotkey(keys)
+        for bad in (["ctrl", "n"], ["ctrl", "shift", "esc"], ["alt", "right"], ["win", "r"]):
+            with self.assertRaises(S.BadInput):
+                S.clean_hotkey(bad)

@@ -62,13 +62,16 @@ NAMED_KEYS = frozenset(
 KEY_ALIASES = {"escape": "esc", "return": "enter", "del": "delete", "pgup": "pageup", "pgdn": "pagedown",
                "pageup": "pageup", "pagedown": "pagedown", "spacebar": "space", "arrowup": "up",
                "arrowdown": "down", "arrowleft": "left", "arrowright": "right"}
-MODIFIER_ALIASES = {"control": "ctrl", "windows": "win", "super": "win", "meta": "win"}
+MODIFIER_ALIASES = {"control": "ctrl", "windows": "win", "super": "win", "meta": "win", "plus": "=", "minus": "-"}
 # Shortcut -> does it need confirm:true. Written in the one canonical order the code produces.
 HOTKEYS: dict[tuple[str, ...], bool] = {
     ("ctrl", "c"): False, ("ctrl", "v"): False, ("ctrl", "x"): False, ("ctrl", "a"): False,
     ("ctrl", "z"): False, ("ctrl", "y"): False, ("ctrl", "s"): False, ("ctrl", "f"): False,
     ("ctrl", "t"): False, ("ctrl", "w"): False, ("ctrl", "tab"): False, ("alt", "tab"): False,
     ("alt", "f4"): True, ("win", "d"): False, ("win", "tab"): False,
+    # Browser keys for using a laptop browser from the phone (address bar, zoom, back, previous tab).
+    ("ctrl", "l"): False, ("ctrl", "0"): False, ("ctrl", "="): False, ("ctrl", "-"): False,
+    ("alt", "left"): False, ("ctrl", "shift", "tab"): False,
 }
 INPUT_ACTIONS = ("move", "click", "double_click", "right_click", "drag", "scroll", "type", "key", "hotkey")
 BUTTONS = ("left", "right", "middle")

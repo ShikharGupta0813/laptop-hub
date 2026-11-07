@@ -1,8 +1,9 @@
-"""Command line: python -m hub init | serve | token | doctor"""
+"""Command line: python -m hub init | serve | token | doctor | add-script"""
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import secrets
 import shutil
 import sys
@@ -59,6 +60,36 @@ def cmd_token(args) -> int:
     config.session_secret = secrets.token_bytes(32)  # logs every phone out
     cfg.save(config, path)
     print(f"New token (shown once):\n\n    {token}\n\nEvery phone is logged out. Restart the hub.")
+    return 0
+
+
+SCRIPT_NAME_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
+
+
+def cmd_add_script(args) -> int:
+    """Save a quick button into hub.json. Buttons are hand-edited on purpose (never through the API): this is
+    the owner-run command on the laptop."""
+    if not SCRIPT_NAME_RE.match(args.name or ""):
+        print("The name must be 1-40 characters: lowercase letters, digits, - or _ (for example warp_connect).")
+        return 1
+    argv = list(args.argv or [])
+    if not argv or not all(isinstance(a, str) and a and "\0" not in a for a in argv):
+        print("Give the program after --, for example:  python -m hub add-script NAME --label \"Label\" -- program.exe arg")
+        return 1
+    path = Path(args.config) if args.config else cfg.default_path()
+    try:
+        config = cfg.load(path)
+    except cfg.ConfigError as exc:
+        print(exc)
+        return 1
+    label = (args.label or args.name).strip() or args.name
+    replaced = args.name in config.scripts
+    config.scripts[args.name] = {"label": label, "argv": argv}
+    cfg.save(config, path)
+    print(f"{'Replaced' if replaced else 'Saved'} quick button '{args.name}' in {path}:")
+    print(f"    label: {label}")
+    print(f"    runs:  {json.dumps(argv)}")
+    print("Restart the hub (or wait for the next start) for it to appear.")
     return 0
 
 
@@ -140,8 +171,20 @@ def main(argv=None) -> int:
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
+    add = sub.add_parser("add-script", help="save a quick button: add-script NAME --label \"Label\" -- PROGRAM ARGS")
+    add.add_argument("name", help="lowercase letters, digits, - and _ (for example warp_connect)")
+    add.add_argument("--label", help="the text on the button")
+    # Everything after a bare "--" is the program and its arguments, untouched by option parsing.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    tail: list[str] = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, tail = argv[:cut], argv[cut + 1:]
     args = parser.parse_args(argv)
-    return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor}[args.command](args)
+    if args.command == "add-script":
+        args.argv = tail
+    return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
+            "add-script": cmd_add_script}[args.command](args)
 
 
 if __name__ == "__main__":
