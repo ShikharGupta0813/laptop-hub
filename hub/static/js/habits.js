@@ -3,6 +3,14 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => actions.map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+
+
 const COLORS = ["green", "blue", "red", "amber", "violet", "pink", "teal", "orange"];
 const TONE_OF = { green: "good", red: "bad", blue: "info", amber: "warn", yellow: "warn", violet: "violet", purple: "violet", pink: "pink", teal: "teal", orange: "orange", gray: "gray", grey: "gray", accent: "accent" };
 const EMOJI = ["📚", "💪", "🧘", "💧", "🏃", "🥗", "😴", "✍️", "🎸", "🧹", "🌱", "💊"];
@@ -177,7 +185,7 @@ export function init(container, ctx) {
       } catch (e) { ctx.toast(e.message, { kind: "bad" }); return false; }
       return true;
     } });
-    ui.sheet({ title: editing ? "Edit habit" : "New habit", content, actions, class: "hb-sheet" });
+    ui.sheet({ title: editing ? "Edit habit" : "New habit", content, actions: guard(actions), class: "hb-sheet" });
   }
 
   ui.pullToRefresh(container, () => load());

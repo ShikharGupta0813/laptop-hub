@@ -17,8 +17,14 @@ from typing import Any, Callable
 
 API_BASE = "https://app.asana.com/api/1.0"
 TOKEN_FILES = (".claude/.asana_token", ".config/task-agent/asana_token")
-TASK_FIELDS = "name,due_on,completed,permalink_url,projects.name,memberships.project.name"
-DETAIL_FIELDS = TASK_FIELDS + ",notes"
+CUSTOM_FIELDS = ("custom_fields.name,custom_fields.type,custom_fields.display_value,"
+                 "custom_fields.enum_value.name,custom_fields.text_value,custom_fields.number_value")
+TASK_FIELDS = ("name,due_on,completed,permalink_url,projects.name,memberships.project.name,"
+               "assignee.gid,followers.gid," + CUSTOM_FIELDS)
+DETAIL_FIELDS = TASK_FIELDS + ",notes,html_notes,modified_at,created_by.name"
+STORY_FIELDS = "resource_subtype,text,html_text,created_at,created_by.name,created_by.gid"
+FOLLOWED_TTL = 90.0          # seconds the "tasks I follow" search result is reused (rate limits)
+MAX_FIELDS = 8
 MAX_PAGES = 50
 MAX_RETRY_WAIT = 30.0
 
@@ -87,6 +93,8 @@ class AsanaClient:
         self._retries = retries
         self._sleep = sleep
         self._me: dict | None = None
+        self._followed: tuple[float, list[dict]] | None = None
+        self._clock = time.monotonic
 
     # ---- plumbing ------------------------------------------------------------------------
 
@@ -168,19 +176,49 @@ class AsanaClient:
                                         "completed_since": "now", "opt_fields": TASK_FIELDS})
         return [task_summary(r) for r in rows if not r.get("completed")]
 
+    def followed_tasks(self) -> list[dict]:
+        """Open tasks I follow but am not assigned (workspace task search; cached for a short while).
+        The search needs a paid Asana plan: where Asana refuses it, this is an empty list."""
+        now = self._clock()
+        if self._followed and now - self._followed[0] < FOLLOWED_TTL:
+            return [dict(t) for t in self._followed[1]]
+        me = self.me()
+        if not me["workspace_gid"]:
+            return []
+        try:
+            rows = self._get_all(f"/workspaces/{me['workspace_gid']}/tasks/search",
+                                 {"followers.any": "me", "completed": "false", "opt_fields": TASK_FIELDS})
+        except AsanaError as exc:
+            if exc.status in (402, 403, 404):
+                rows = []
+            else:
+                raise
+        out = [task_summary(r) for r in rows if not r.get("completed")
+               and str((r.get("assignee") or {}).get("gid") or "") != me["gid"]]
+        self._followed = (now, out)
+        return [dict(t) for t in out]
+
     def task_detail(self, gid: str) -> dict:
         check_gid(gid)
         raw = self._call("GET", f"/tasks/{gid}", {"opt_fields": DETAIL_FIELDS}).get("data") or {}
         subtasks = self._get_all(f"/tasks/{gid}/subtasks", {"opt_fields": "name,completed"})
         stories = self._get_all(f"/tasks/{gid}/stories",
-                                {"opt_fields": "resource_subtype,text,created_at,created_by.name"})
+                                {"opt_fields": STORY_FIELDS})
         task = task_summary(raw)
         task["gid"] = task["gid"] or gid
         task["notes"] = raw.get("notes") or ""
+        task["notes_mentions"] = mention_gids(raw.get("html_notes"))
+        task["modified_at"] = raw.get("modified_at") or ""
+        task["created_by"] = (raw.get("created_by") or {}).get("name") or ""
+        me = self.me()
+        task["assigned_to_me"] = str((raw.get("assignee") or {}).get("gid") or "") == me["gid"] != ""
+        task["followed_by_me"] = any(str((f or {}).get("gid")) == me["gid"] for f in raw.get("followers") or []
+                                     if isinstance(f, dict)) and me["gid"] != ""
         task["subtasks"] = [{"gid": str(s.get("gid", "")), "name": (s.get("name") or "").strip(),
                              "completed": bool(s.get("completed"))} for s in subtasks]
         task["comments"] = [{"author": (s.get("created_by") or {}).get("name") or "Someone",
-                             "text": s.get("text") or "", "created_at": s.get("created_at") or ""}
+                             "text": s.get("text") or "", "created_at": s.get("created_at") or "",
+                             "mentions": mention_gids(s.get("html_text"))}
                             for s in stories if s.get("resource_subtype") == "comment_added"]
         return task
 
@@ -211,4 +249,55 @@ def task_summary(raw: dict) -> dict[str, Any]:
     return {"gid": str(raw.get("gid", "")), "name": (raw.get("name") or "").strip() or "(untitled)",
             "due_on": raw.get("due_on") or None, "project": project,
             "completed": bool(raw.get("completed")),
-            "permalink_url": link if link.startswith("https://") else ""}
+            "permalink_url": link if link.startswith("https://") else "",
+            "priority": priority_of(raw), "custom_fields": custom_fields_of(raw)}
+
+
+_MENTION_GID = re.compile(r'data-asana-gid="([0-9]{1,30})"')
+_HIGH = re.compile(r"\b(high|urgent|critical|p0|p1)\b", re.I)
+_MEDIUM = re.compile(r"\b(medium|p2)\b", re.I)
+_LOW = re.compile(r"\b(low|p3)\b", re.I)
+
+
+def mention_gids(html: Any) -> list[str]:
+    """Asana user/object ids linked in rich text (`<A data-asana-gid="123">`), de-duplicated."""
+    if not isinstance(html, str):
+        return []
+    return list(dict.fromkeys(_MENTION_GID.findall(html[:100000])))[:50]
+
+
+def priority_level(name: Any) -> int:
+    """Asana 'Priority' value name -> 3 high (High, Urgent, Critical, P0, P1), 2 medium (Medium, P2),
+    1 low (Low, P3), else 0."""
+    text = name if isinstance(name, str) else ""
+    return 3 if _HIGH.search(text) else 2 if _MEDIUM.search(text) else 1 if _LOW.search(text) else 0
+
+
+def _field_value(field: dict) -> str:
+    enum = field.get("enum_value")
+    if isinstance(enum, dict) and enum.get("name"):
+        return str(enum["name"])
+    for key in ("display_value", "text_value", "number_value"):
+        if field.get(key) not in (None, ""):
+            return str(field[key])
+    return ""
+
+
+def custom_fields_of(raw: dict) -> list[dict]:
+    """Minimal [{name, value}] for custom fields that have a value (read-only)."""
+    out = []
+    for f in raw.get("custom_fields") or []:
+        if isinstance(f, dict) and str(f.get("name") or "").strip():
+            value = _field_value(f)
+            if value:
+                out.append({"name": str(f["name"]).strip()[:60], "value": value[:100]})
+        if len(out) >= MAX_FIELDS:
+            break
+    return out
+
+
+def priority_of(raw: dict) -> int:
+    for f in raw.get("custom_fields") or []:
+        if isinstance(f, dict) and str(f.get("name") or "").strip().lower() == "priority":
+            return priority_level(_field_value(f))
+    return 0

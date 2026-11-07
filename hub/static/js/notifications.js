@@ -93,7 +93,13 @@ export function init(container, ctx) {
     try { await api("/api/notifications/read", { method: "POST", json: { all: true } }); ui.toast("All caught up.", { kind: "good" }); ctx.refreshNotifications?.(); }
     catch (error) { items.forEach((n, i) => { n.read = before[i]; }); unread = items.filter((n) => !n.read).length; render(); ui.toast(error.message, { kind: "bad" }); }
   }
+  let clearing = false;   // two quick taps must not stack two confirm dialogs
   async function clearAll() {
+    if (clearing) return;
+    clearing = true;
+    try { await clearAllNow(); } finally { clearing = false; }
+  }
+  async function clearAllNow() {
     if (!await ui.confirm({ title: "Clear all notifications?", message: "They are deleted from the hub and can't be brought back.", confirmLabel: "Clear all", danger: true })) return;
     try { await api("/api/notifications/clear", { method: "POST", json: { confirm: true } }); items = []; unread = 0; filter = "all"; render(); ui.toast("Cleared.", { kind: "good" }); ctx.refreshNotifications?.(); }
     catch (error) { ui.toast(error.message, { kind: "bad" }); }

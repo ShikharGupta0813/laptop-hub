@@ -37,7 +37,7 @@ from .common import Ctx
 # ---- what may be changed -------------------------------------------------------------------------------
 
 MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model")
-ALLOWED_KEYS = (*MODEL_KEYS, "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic")
+ALLOWED_KEYS = (*MODEL_KEYS, "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation")
@@ -141,6 +141,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             changes[key] = _clean_name(value, key)
         elif key in ("kb_roots", "writable_roots"):
             changes[key] = _clean_roots(value, key, config.roots)
+        elif key == "display_name":
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= 40 or not value.isprintable():
+                raise HTTPException(400, "display_name must be 1 to 40 printable characters.")
+            changes[key] = value.strip()
         elif key == "ntfy_server":
             changes[key] = _clean_ntfy_server(value)
         elif key == "ntfy_topic":
@@ -404,6 +408,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "embed_model": config.embed_model,
             "kb_roots": list(config.kb_roots), "writable_roots": list(config.writable_roots),
             "roots": [{"name": n, "exists": Path(p).is_dir()} for n, p in config.roots.items()],
+            "display_name": config.display_name,
             "ntfy_server": config.ntfy_server, "ntfy_topic_set": bool(config.ntfy_topic),
             "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
             "shells": list(config.shell_table()), "apps": list(config.apps), "scripts": list(config.scripts),

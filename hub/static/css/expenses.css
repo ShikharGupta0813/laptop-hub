@@ -47,7 +47,7 @@
 #view-expenses .sp-chip.is-on .ui-icon { color: var(--c-accent-text); }
 
 /* quick add */
-#view-expenses .sp-add { display: grid; gap: var(--sp-2); }
+#view-expenses .sp-add { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 #view-expenses .sp-add__form { display: flex; gap: var(--sp-2); align-items: center; }
 #view-expenses .sp-add__wrap { flex: 1; min-width: 0; }
 #view-expenses .sp-add__input { width: 100%; min-height: 50px; font-size: var(--fs-base); }
@@ -57,6 +57,7 @@
 #view-expenses .sp-echo__card { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: var(--r-lg);
   background: var(--c-good-soft); border: 1px solid color-mix(in oklab, var(--c-good) 35%, transparent); animation: sp-pop var(--dur-base) var(--ease-out); }
 #view-expenses .sp-echo__card strong { font-weight: var(--fw-semibold); display: block; }
+#view-expenses .sp-echo__card .grow { min-width: 0; overflow-wrap: anywhere; }
 @keyframes sp-pop { from { opacity: 0; transform: translateY(-4px); } }
 
 /* total */

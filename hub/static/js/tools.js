@@ -4,6 +4,15 @@ import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 import { copyText } from "./laptop.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (_) { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* private mode */ } },
@@ -293,7 +302,7 @@ export function init(container, ctx) {
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Date"), date),
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Emoji (optional)"), emoji),
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Repeat"), repeat), err);
-      const sh = ui.sheet({ title: "New countdown", content: form, actions: [
+      const sh = gsheet({ title: "New countdown", content: form, actions: [
         { label: "Cancel", variant: "secondary" },
         { label: "Save", variant: "primary", onClick: async () => {
           if (!title.value.trim() || !date.value) { err.textContent = "Give it a name and a date."; err.hidden = false; return false; }
@@ -358,7 +367,7 @@ export function init(container, ctx) {
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Title"), title),
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Text"), text),
         el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Tags (comma separated)"), tags), err);
-      ui.sheet({ title: sn ? "Edit snippet" : "New snippet", content: form, actions: [
+      gsheet({ title: sn ? "Edit snippet" : "New snippet", content: form, actions: [
         { label: "Cancel", variant: "secondary" },
         { label: "Save", variant: "primary", onClick: async () => {
           if (!title.value.trim() || !text.value.trim()) { err.textContent = "A snippet needs a title and some text."; err.hidden = false; return false; }
@@ -439,7 +448,7 @@ export function init(container, ctx) {
     function pasteSheet() {
       const area = el("textarea", { rows: "5", placeholder: "Long-press here and choose Paste", "aria-label": "Text to send" });
       const err = el("p", { class: "tl-hint is-error", hidden: true });
-      ui.sheet({ title: "Paste what you copied", content: el("div", { class: "ui-stack" }, area, err), actions: [
+      gsheet({ title: "Paste what you copied", content: el("div", { class: "ui-stack" }, area, err), actions: [
         { label: "Cancel", variant: "secondary" },
         { label: "Send", variant: "primary", onClick: async () => {
           if (!area.value.trim()) { err.textContent = "Paste something first."; err.hidden = false; return false; }

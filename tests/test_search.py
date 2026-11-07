@@ -50,7 +50,7 @@ class Fake:
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self.config, self.root = make_config()
+        self.config, self.root = make_config(display_name="")
         self.config.data_dir = str(self.root / "data")
         self.config.apps = {"Chrome": {"target": "chrome.exe"}}
         self.config.scripts = {"hello": {"label": "Say hello", "argv": ["echo", "hi"]},
@@ -456,3 +456,9 @@ class HomeTest(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CallSignGreeting(unittest.TestCase):
+    def test_display_name_beats_the_asana_name_on_home(self):
+        config, _ = make_config(display_name="Chief")
+        self.assertEqual(config.display_name, "Chief")

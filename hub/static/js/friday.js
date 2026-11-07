@@ -5,6 +5,7 @@
 // This file also exports the shared "brain" (state + actions + speech) that voicemode.js and home.js reuse.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { guardedSheet } from "./sourcepicker.js";
 
 // ------------------------------------------------------------------------------------------------ css
 const CSS = "/css/friday.css";
@@ -522,9 +523,13 @@ export function init(container, ctx) {
           ui.button({ variant: "primary", icon: "list-checks", label: "Add to my to-dos", onClick: (e) => applyThePlan(e.currentTarget) })),
       applied != null ? ui.button({ variant: "tonal", size: "sm", icon: "list-checks", label: "Open to-dos", onClick: () => ctx.open("todos") }) : null].filter(Boolean));
   }
+  let confirming = false;   // a double tap must not stack two confirm dialogs (and so run the action twice)
   async function applyThePlan(btn) {
+    if (confirming || btn.getAttribute("aria-busy") === "true") return;
     const blocks = (FR.plan && FR.plan.blocks) || [];
-    if (!await ui.confirm({ title: "Add these to your to-dos?", message: `${blocks.length} ${blocks.length === 1 ? "block" : "blocks"} from today's plan will be added as to-dos. Nothing is sent to anyone.`, confirmLabel: "Add them" })) return;
+    confirming = true;
+    const yes = await ui.confirm({ title: "Add these to your to-dos?", message: `${blocks.length} ${blocks.length === 1 ? "block" : "blocks"} from today's plan will be added as to-dos. Nothing is sent to anyone.`, confirmLabel: "Add them" }).finally(() => { confirming = false; });
+    if (!yes) return;
     try { await ui.busy(btn, applyPlan()); ui.toast("Added to your to-dos.", { kind: "good" }); ui.haptic("success"); }
     catch (e) { ui.toast(isMissing(e) ? "Friday is not set up on the laptop yet." : `Could not add them. ${e.message}`, { kind: "bad" }); }
   }
@@ -586,14 +591,15 @@ export function init(container, ctx) {
     if (!prep.done) updateRunBtn();
   }
   async function approveAndOpen(btn) {
-    const prep = FR.prep; if (!prep) return;
+    const prep = FR.prep; if (!prep || confirming || btn.getAttribute("aria-busy") === "true") return;
     const chosen = prep.items.filter((i) => selected.has(i.id));
     if (!chosen.length) return;
+    confirming = true;
     const ok = await ui.confirm({
       title: `Open ${chosen.length} ${chosen.length === 1 ? "thing" : "things"} on your laptop?`,
       message: `This will open exactly:\n${prepLines(chosen).map((l) => "• " + l).join("\n")}`,
       confirmLabel: "Yes, open them", icon: "laptop",
-    });
+    }).finally(() => { confirming = false; });
     if (!ok) return;
     speaker.stop();
     try {
@@ -644,8 +650,8 @@ export function init(container, ctx) {
   // ---------- settings + help
   function openSettings() {
     const cur = { ...DEFAULTS, ...FR.settings };
-    const name = el("input", { type: "text", value: cur.name, maxlength: 24, autocomplete: "off", id: "fr-set-name" });
-    const addr = el("input", { type: "text", value: cur.address_as, maxlength: 24, autocomplete: "off", id: "fr-set-addr", placeholder: "sir, boss, or your name" });
+    const name = el("input", { type: "text", value: cur.name, maxlength: 20, autocomplete: "off", id: "fr-set-name" });
+    const addr = el("input", { type: "text", value: cur.address_as, maxlength: 20, autocomplete: "off", id: "fr-set-addr", placeholder: "sir, boss, or your name" });
     const spoken = ui.switchControl({ checked: !!cur.spoken_alerts, label: "Speak alerts" });
     const proactive = ui.switchControl({ checked: !!cur.proactive, label: "Keep watch for me" });
     const model = ui.segmented({ options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }], value: cur.brief_model === "claude" ? "claude" : "local", label: "Brain for briefs", block: true });
@@ -658,7 +664,7 @@ export function init(container, ctx) {
       row("Keep watch for me", "While the hub is running, I look through your mail, chats and tasks now and then, and tell you when someone tags you or something turns urgent. I only read and tell you. I never reply, send or change anything on my own.", proactive),
       el("div", { class: "ui-field" }, el("span", { class: "ui-label" }, "Who thinks for me"), model,
         el("p", { class: "ui-hint" }, "Local stays on your laptop. Claude writes a little more warmly but sends the text of your brief to Anthropic.")));
-    const sheet = ui.sheet({
+    const sheet = guardedSheet(ui, {
       title: "Friday settings", content,
       actions: [{ label: "Save", variant: "primary", icon: "check", async onClick(s) {
         const next = { name: name.value.trim() || "Friday", address_as: addr.value.trim(), spoken_alerts: spoken.input.checked, proactive: proactive.input.checked, brief_model: model.value };
@@ -670,7 +676,7 @@ export function init(container, ctx) {
     return sheet;
   }
   function openHelp() {
-    ui.sheet({
+    guardedSheet(ui, {
       title: "How Friday works",
       content: el("div", { class: "fr-help ui-stack" },
         el("p", {}, el("strong", {}, "Tap the mic to talk to Friday.")),

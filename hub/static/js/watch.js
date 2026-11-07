@@ -3,6 +3,15 @@
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const CSS = "/css/watch.css";
 const INTERVALS = [[60, "1 minute"], [120, "2 minutes"], [300, "5 minutes"], [600, "10 minutes"], [900, "15 minutes"]];
 const LEVELS = [{ value: "info", label: "Info" }, { value: "warn", label: "Warning" }, { value: "error", label: "Urgent" }];
@@ -258,7 +267,7 @@ export function init(container, ctx) {
         if (!await ui.confirm({ title: `Delete “${rule.name}”?`, message: "Alerts it already raised stay in your history.", confirmLabel: "Delete", danger: true })) return;
         try { await api(`/api/watch/rules/${encodeURIComponent(rule.id)}`, { method: "DELETE" }); s.close(); ui.toast("Rule deleted.", { kind: "good" }); load(); } catch (error) { fail(error); }
       } }) : null);
-    const s = ui.sheet({ title: isNew ? "New rule" : builtin ? "Built-in rule" : "Edit rule", content: body, class: "wt-sheet", actions: [
+    const s = gsheet({ title: isNew ? "New rule" : builtin ? "Built-in rule" : "Edit rule", content: body, class: "wt-sheet", actions: [
       { label: isNew ? "Add rule" : "Save", variant: "primary", icon: "check", onClick: async () => {
         const rb = build();
         if (!builtin && !rb.ai_urgent && !rb.match.from_contains.length && !rb.match.subject_contains.length && !rb.match.keywords.length && !rb.match.chat_space_contains.length) {

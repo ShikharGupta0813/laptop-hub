@@ -51,15 +51,18 @@ Priority rules (no model involved):
 | Meeting on now, or starting within 2 hours | urgent | 3 |
 | Urgent mail/chat alert from Watch in the last 24 h | urgent | 3 |
 | To-do with priority 3 due today | urgent | 3 |
-| Someone else @mentioned the owner in an Asana comment (24 h) | tagged | 3 |
-| Someone else commented on one of the owner's open tasks (24 h) | tagged | 2 |
-| Asana task / to-do due today; task with `priority` high | tasks | 2 |
+| Someone else @mentioned the owner in a comment, or in the description, of a task assigned to or followed by the owner (24 h) | tagged | 3 |
+| Someone else commented on one of the owner's open assigned tasks (24 h) | tagged | 2 |
+| Asana task / to-do due today; Asana task with `priority` 3 (custom field "Priority": High, Urgent, Critical, P0, P1) | tasks | 2 |
 | Non-urgent Watch alert (24 h) | mail / chat | 2 |
 | Reminder already due | reminders | 2 |
 | Due tomorrow; meeting later today; reminder later today; unread mail (top 5) | tasks / meetings / reminders / mail | 1 |
 | All-day events, count of later tasks, more unread mail | other | 0 |
 
-Comments by the owner (matched on the Asana user name) are ignored; comment bodies are not shown in the brief.
+A mention is "@" plus the owner's full or first Asana name (any case; "@Shikharr" does not match "Shikhar"; e-mail
+addresses do not match), or the owner's Asana gid in the comment's rich text (from `GET /api/work/status`, `asana.gid`).
+Comments on followed-only tasks count only when they mention the owner. Comments by the owner (matched on the Asana
+user name) are ignored; comment bodies are not shown in the brief.
 `spoken`: 15-45 seconds, no markdown, no links, numbers and times as words, most important first, ends with
 "Want me to plan the day?". The model's script is used only if it passes checks (no links or domains, no markup,
 no echo of the data fence, 12-140 words, every number spellable); otherwise, or if the model fails, a fixed
@@ -110,15 +113,19 @@ resolve inside its shared folder and not be a program; app must still be configu
 
 ## Proactive alerts
 Off until `POST /settings {"proactive": true}`. Every 3 minutes:
-- **Tagged**: new comments by other people on the owner's open Asana tasks (the up to 12 soonest-due tasks; per-task
+- **Tagged**: new comments by other people on the owner's open Asana tasks (the up to 12 soonest-due tasks), plus
+  @mentions in comments and descriptions of up to 6 tasks the owner follows (`GET /api/work/asana/followed`; per-task
   high-water marks; first run looks back 1 hour, later runs at most 24 hours). Title `"Sir, you were tagged"`, body
-  `"<person> on <task>: “<first 120 characters>”"`, level `warn`.
-- **Priority**: a task that newly became due today, overdue or high priority (first run is a silent baseline). One
+  `"<person> on <task>: “<first 120 characters>”"` or `"<person> mentioned you on <task>: ..."` (description:
+  `"... mentioned you in the description of <task>"`), level `warn`.
+- **Priority**: a task that newly became due today, overdue or high priority (`priority` 3) (first run is a silent baseline). One
   alert per task per day. Title `"Sir, <task> is due today|is overdue|is now high priority"`, level `warn`.
 - **Meeting**: a meeting starting within about 10 minutes. Title `"Sir, <meeting> starts in 10 minutes"`, body with
   the time and join link, level `info`.
 
-Each alert fires once (seen ids kept, last 2000), at most 10 per round. Notifications use
+Each alert fires once (seen ids kept, last 2000). A round records up to 50 alerts (the rest wait: the check time
+only advances past what was processed) but sends at most 5 notifications, mentions first; the others are stored with
+`batched: true` and one summary notification `"Sir, and N more"` follows. Meeting alerts always notify. Notifications use
 `ctx.notify(title, body, level, link="friday", source="friday")`; text is built from fields, cleaned of control
 characters and capped (title 120, body 300). In quiet hours the alert is stored with `quiet: true, notified: false`.
 

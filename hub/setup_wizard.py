@@ -1,0 +1,816 @@
+"""`python -m hub setup`: one interactive command that sets everything up on THIS laptop.
+
+Secrets (Gmail app password, Asana token, calendar link, Google Chat webhooks, Claude key) are read with
+getpass and saved only where the existing code already looks for them: the OS keyring (services
+jarvis-gmail / jarvis-calendar / jarvis-gchat), ~/.claude/.asana_token, and the user environment variable
+ANTHROPIC_API_KEY. They are never printed, never written to hub.json, and never sent anywhere except to the
+service they belong to when testing the login. Every question goes through ask()/ask_secret()/confirm() and every
+effect on the machine through a `System` object, so tests never touch the real laptop.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+from . import config as cfg
+
+GMAIL_SERVICE = "jarvis-gmail"        # mailer.py and hub/inbox.py
+CALENDAR_SERVICE = "jarvis-calendar"  # agenda.py (key "ics_url")
+CHAT_SERVICE = "jarvis-gchat"         # gchat.py (key "_spaces" plus one entry per space)
+ASANA_TOKEN_FILE = ".claude/.asana_token"   # first file hub/work/asana.py reads
+CLONE_URL = "https://github.com/ShikharGupta0813/jarvis-voice-assistant"
+WEBHOOK_PREFIX = "https://chat.googleapis.com/v1/spaces/"
+WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
+TASK_NAME = "LaptopHub"
+EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "claude", "phone", "name", "warp", "autostart")
+ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
+           "claude-key": "claude", "key": "claude", "startup": "autostart", "auto-start": "autostart"}
+TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
+          "chat": "Google Chat", "claude": "Claude key", "phone": "Phone push", "name": "Your name",
+          "warp": "Cloudflare WARP", "autostart": "Auto-start"}
+
+TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
+
+
+def scrub(text: Any, secrets_: tuple[str, ...] | list[str] = ()) -> str:
+    """Text safe to print: known secrets and anything token-like or URL-like is replaced."""
+    out = str(text)
+    for secret in secrets_:
+        if secret and len(secret) >= 4:
+            out = out.replace(secret, "***")
+    return TOKENISH.sub("[hidden]", out)
+
+
+class CheckFailed(Exception):
+    """Raised by System tests. `kind` is auth, network or other; the message is never shown raw."""
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
+@dataclass
+class Result:
+    status: str   # ok | warn | fail | skip
+    message: str
+
+
+# ---------------------------------------------------------------------------------------------------------
+# The real machine
+# ---------------------------------------------------------------------------------------------------------
+
+class System:
+    """Everything that touches the real laptop. Tests replace this whole object."""
+
+    platform = sys.platform
+
+    def isatty(self) -> bool:
+        return bool(sys.stdin and sys.stdin.isatty() and sys.stdout.isatty())
+
+    def home(self) -> Path:
+        return Path.home()
+
+    def env(self, name: str) -> str:
+        return os.environ.get(name, "")
+
+    def username(self) -> str:
+        return os.environ.get("USERNAME") or os.environ.get("USER") or ""
+
+    def python_dir(self) -> Path:
+        return Path(sys.executable).parent
+
+    def exists(self, path: str | Path) -> bool:
+        return Path(path).exists()
+
+    def isdir(self, path: str | Path) -> bool:
+        return Path(path).is_dir()
+
+    def isfile(self, path: str | Path) -> bool:
+        return Path(path).is_file()
+
+    def listdir(self, path: str | Path) -> list[str]:
+        return os.listdir(path)
+
+    def makedirs(self, path: str | Path) -> None:
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    def which(self, name: str) -> str | None:
+        return shutil.which(name)
+
+    def read_text(self, path: str | Path) -> str:
+        return Path(path).read_text(encoding="utf-8")
+
+    def run(self, argv: list[str], cwd: str | None = None, timeout: float = 900,
+            on_line: Callable[[str], None] | None = None) -> tuple[int, str]:
+        try:
+            proc = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, errors="replace")
+        except OSError:
+            return 127, "program not found"
+        lines: list[str] = []
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                line = line.rstrip()
+                lines.append(line)
+                if on_line and line:
+                    on_line(line)
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return 124, "timed out"
+        return proc.returncode, "\n".join(lines[-20:])
+
+    # -- keyring -------------------------------------------------------------------------------------------
+    def keyring_get(self, service: str, key: str) -> str | None:
+        import keyring
+        return keyring.get_password(service, key)
+
+    def keyring_set(self, service: str, key: str, value: str) -> None:
+        import keyring
+        keyring.set_password(service, key, value)
+
+    # -- network tests (nothing is sent but the login itself) -----------------------------------------------
+    def imap_check(self, address: str, password: str) -> None:
+        import imaplib
+        try:
+            conn = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=10)
+        except (OSError, socket.timeout):
+            raise CheckFailed("network") from None
+        try:
+            conn.login(address, password)
+            conn.select("INBOX", readonly=True)
+        except imaplib.IMAP4.error:
+            raise CheckFailed("auth") from None
+        except (OSError, socket.timeout):
+            raise CheckFailed("network") from None
+        finally:
+            try:
+                conn.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def smtp_check(self, address: str, password: str) -> None:
+        import smtplib
+        import ssl
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context(), timeout=10) as smtp:
+                smtp.login(address, password)
+        except smtplib.SMTPAuthenticationError:
+            raise CheckFailed("auth") from None
+        except (OSError, smtplib.SMTPException):
+            raise CheckFailed("network") from None
+
+    def http_get(self, url: str, headers: dict | None = None, follow_redirects: bool = True,
+                 timeout: float = 10) -> tuple[int, bytes]:
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        handlers = [] if follow_redirects else [NoRedirect]
+        opener = urllib.request.build_opener(*handlers)
+        request = urllib.request.Request(url, headers=headers or {})
+        try:
+            with opener.open(request, timeout=timeout) as resp:
+                return resp.status, resp.read(5_000_000)
+        except urllib.error.HTTPError as exc:
+            return exc.code, b""
+        except (urllib.error.URLError, OSError, ValueError):
+            raise CheckFailed("network") from None
+
+    def count_events_today(self, ics: bytes) -> int:
+        try:
+            import icalendar
+            import recurring_ical_events
+            cal = icalendar.Calendar.from_ical(ics)
+            today = dt.date.today()
+            return len(recurring_ical_events.of(cal).between(today, today + dt.timedelta(days=1)))
+        except ImportError:
+            return len(re.findall(rb"^BEGIN:VEVENT", ics, re.M))   # coarse: events in the feed
+        except Exception:  # noqa: BLE001
+            raise CheckFailed("other") from None
+
+    # -- files and settings that hold secrets ----------------------------------------------------------------
+    def write_private_file(self, path: str | Path, text: str) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        if sys.platform == "win32":
+            user = self.username()
+            if user:
+                subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+                               capture_output=True, timeout=30, check=False)
+        else:
+            os.chmod(path, 0o600)
+
+    def set_user_env(self, name: str, value: str) -> bool:
+        """Persist for new shells. Uses the registry directly so the value is never on a command line."""
+        if sys.platform != "win32":
+            return False
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        return True
+
+
+# ---------------------------------------------------------------------------------------------------------
+# The wizard
+# ---------------------------------------------------------------------------------------------------------
+
+class Wizard:
+    def __init__(self, config_path: Path, system: System | None = None, *,
+                 ask: Callable[[str, str], str] | None = None,
+                 ask_secret: Callable[[str], str] | None = None,
+                 confirm: Callable[[str, bool], bool] | None = None,
+                 out: Callable[[str], None] | None = None, color: bool | None = None):
+        self.system = system or System()
+        self.config_path = Path(config_path)
+        self._ask = ask or _real_ask
+        self._ask_secret = ask_secret or _real_ask_secret
+        self._confirm = confirm or _real_confirm
+        self._out = out or print
+        self.color = (self.system.isatty() and not os.environ.get("NO_COLOR")) if color is None else color
+        self.config: cfg.Config | None = None
+        self.known_secrets: list[str] = []
+        self.results: list[tuple[str, Result]] = []
+
+    # -- io (every printed line is scrubbed of anything entered as a secret) -------------------------------------
+    def say(self, text: str = "") -> None:
+        self._out(scrub_known(str(text), self.known_secrets))
+
+    def ask(self, prompt: str, default: str = "") -> str:
+        return (self._ask(prompt, default) or "").strip() or default
+
+    def secret(self, prompt: str) -> str:
+        value = (self._ask_secret(prompt) or "").strip()
+        if value:
+            self.known_secrets.append(value)
+        return value
+
+    def confirm(self, prompt: str, default: bool = True) -> bool:
+        return bool(self._confirm(prompt, default))
+
+    def tone(self, status: str, text: str) -> str:
+        label = {"ok": "OK ", "warn": "!! ", "fail": "XX ", "skip": "-- "}[status]
+        if not self.color:
+            return f"[{label.strip():<4}] {text}"
+        code = {"ok": "32", "warn": "33", "fail": "31", "skip": "90"}[status]
+        return f"\033[{code}m[{label.strip():<4}]\033[0m {text}"
+
+    def report(self, step: str, result: Result) -> Result:
+        self.results.append((step, result))
+        self.say(self.tone(result.status, f"{TITLES[step]}: {result.message}"))
+        return result
+
+    # -- config ----------------------------------------------------------------------------------------------
+    def load_config(self, create: bool) -> cfg.Config | None:
+        if self.config is not None:
+            return self.config
+        try:
+            self.config = cfg.load(self.config_path)
+        except cfg.ConfigError:
+            if not create:
+                return None
+            self.config, token = cfg.make()
+            for folder in (self.config.notes_dir, self.config.inbox_dir):
+                self.system.makedirs(folder)
+            cfg.save(self.config, self.config_path)
+            self.say(f"Created {self.config_path}. Your hub login token (shown once, copy it now):")
+            self.say(f"    {token}")
+        return self.config
+
+    def save_config(self) -> None:
+        if self.config is not None:
+            cfg.save(self.config, self.config_path)
+
+    def keyring_ok(self) -> bool:
+        try:
+            self.system.keyring_get(GMAIL_SERVICE, "address")
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+
+def scrub_known(text: str, known: list[str]) -> str:
+    for secret in known:
+        if secret and len(secret) >= 4:
+            text = text.replace(secret, "***")
+    return text
+
+
+def _real_ask(prompt: str, default: str = "") -> str:
+    suffix = f" [{default}]" if default else ""
+    return input(f"{prompt}{suffix}: ")
+
+
+def _real_ask_secret(prompt: str) -> str:
+    import getpass
+    return getpass.getpass(f"{prompt} (hidden, Enter to skip): ")
+
+
+def _real_confirm(prompt: str, default: bool = True) -> bool:
+    answer = input(f"{prompt} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
+    return default if not answer else answer in ("y", "yes")
+
+
+def _fail_text(kind: str, what: str) -> str:
+    return {"auth": f"{what} rejected the login.", "network": f"couldn't reach {what} (network or timeout).",
+            }.get(kind, f"{what} test failed.")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Steps. Each returns a Result; check_* functions test without asking or changing anything.
+# ---------------------------------------------------------------------------------------------------------
+
+def default_jarvis_dir(w: Wizard) -> str:
+    if w.system.platform == "win32" and w.system.isdir("D:\\"):
+        return "D:\\jarvis-voice-assistant"
+    return str(w.system.home() / "jarvis-voice-assistant")
+
+
+def check_jarvis(w: Wizard) -> Result:
+    config = w.load_config(False)
+    if config is None or not config.jarvis_dir:
+        return Result("warn", "no Jarvis folder set in hub.json")
+    helpers = [h for h in ("agenda", "mailer", "gchat") if not w.system.isfile(Path(config.jarvis_dir) / f"{h}.py")]
+    if helpers:
+        return Result("fail", f"{config.jarvis_dir} is missing {', '.join(h + '.py' for h in helpers)}")
+    return Result("ok", f"helpers found in {config.jarvis_dir}")
+
+
+def step_jarvis(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    folder = w.ask("Where is (or should I put) your Jarvis folder?", config.jarvis_dir or default_jarvis_dir(w))
+    path = Path(folder).expanduser()
+    s = w.system
+    if s.isdir(path) and s.listdir(path):
+        if not s.isfile(path / "jarvis.py"):
+            return Result("fail", f"{path} exists but has no jarvis.py. I won't touch it; pick another folder.")
+        w.say(f"Found {path}; leaving its files alone.")
+    elif s.exists(path) and not s.isdir(path):
+        return Result("fail", f"{path} is a file, not a folder.")
+    else:
+        if not w.confirm(f"{path} isn't there. Download Jarvis from GitHub into it?", True):
+            return Result("skip", "no Jarvis folder; email, calendar and chat stay off")
+        if not s.which("git"):
+            return Result("fail", "git isn't installed (winget install --id Git.Git -e), then run setup again")
+        w.say("If git asks you to sign in to GitHub, a browser window or a prompt will appear. Finish it there.")
+        rc, _ = s.run(["git", "clone", CLONE_URL, str(path)], on_line=lambda l: w.say("   " + l[:100]))
+        if rc != 0:
+            return Result("fail", "git clone failed (not signed in, or no network). Run setup again after fixing")
+    msg = f"hub will use {path}"
+    if s.isfile(path / "requirements.txt") and not s.exists(path / ".venv"):
+        w.say("Jarvis's own virtual environment (.venv) is only needed to run Jarvis the voice assistant itself.")
+        w.say("The hub does NOT need it: it only loads agenda.py, mailer.py and gchat.py, using the hub's Python "
+              "(pip install -r requirements-work.txt).")
+        if w.confirm("Create Jarvis's .venv and install its requirements anyway? (takes a few minutes)", False):
+            rc, _ = s.run([sys.executable, "-m", "venv", str(path / ".venv")], on_line=lambda l: w.say("   " + l[:100]))
+            py = path / ".venv" / ("Scripts" if s.platform == "win32" else "bin") / ("python.exe" if s.platform == "win32" else "python")
+            if rc == 0:
+                rc, _ = s.run([str(py), "-m", "pip", "install", "-r", "requirements.txt"], cwd=str(path),
+                              on_line=lambda l: w.say("   " + l[:100]))
+            msg += "; Jarvis venv ready" if rc == 0 else "; Jarvis venv install failed (the hub doesn't need it)"
+    config.jarvis_dir = str(path)
+    w.save_config()
+    return Result("ok", msg)
+
+
+def check_gmail(w: Wizard) -> Result:
+    try:
+        address = w.system.keyring_get(GMAIL_SERVICE, "address")
+        password = w.system.keyring_get(GMAIL_SERVICE, address) if address else None
+    except Exception:  # noqa: BLE001
+        return Result("fail", "can't read the keyring (pip install keyring)")
+    if not address or not password:
+        return Result("warn", "not set up")
+    w.known_secrets.append(password)
+    return test_gmail(w, address, password, saved=True)
+
+
+def test_gmail(w: Wizard, address: str, password: str, saved: bool = False) -> Result:
+    problems = []
+    for name, fn in (("IMAP (reading)", w.system.imap_check), ("SMTP (sending)", w.system.smtp_check)):
+        try:
+            fn(address, password)
+        except CheckFailed as exc:
+            problems.append(_fail_text(exc.kind, name))
+        except Exception:  # noqa: BLE001
+            problems.append(_fail_text("other", name))
+    if problems:
+        return Result("fail", f"{address}: " + " ".join(problems))
+    return Result("ok", f"{address}: reading and sending logins work" + ("" if saved else " and the password is saved"))
+
+
+def step_gmail(w: Wizard) -> Result:
+    s = w.system
+    try:
+        current = s.keyring_get(GMAIL_SERVICE, "address")
+    except Exception:  # noqa: BLE001
+        return Result("fail", "the OS keyring isn't available. Run: pip install -r requirements-work.txt")
+    if current and not w.confirm(f"Gmail is already saved for {current}. Replace it?", False):
+        return check_gmail(w)
+    address = w.ask("Your Gmail / Google Workspace address (Enter to skip)")
+    if not address:
+        return Result("skip", "skipped")
+    if not EMAIL_RE.match(address):
+        return Result("fail", "that doesn't look like an email address; nothing saved")
+    w.say("Gmail needs an App password, not your normal password:")
+    w.say("  1. Turn on 2-Step Verification for the Google account.")
+    w.say("  2. Open https://myaccount.google.com/apppasswords and create one named Jarvis.")
+    w.say("  3. Paste the 16 letters here (hidden; right-click pastes in this window).")
+    password = w.secret("App password").replace(" ", "")
+    if not password:
+        return Result("skip", "skipped")
+    if len(password) != 16 or not password.isalpha():
+        return Result("fail", f"received {len(password)} characters; app passwords are exactly 16 letters. Nothing saved")
+    result = test_gmail(w, address, password)
+    if result.status == "fail" and "rejected" in result.message:
+        return result
+    if result.status == "fail" and not w.confirm("The test failed (probably the network). Save it anyway?", False):
+        return result
+    try:
+        s.keyring_set(GMAIL_SERVICE, "address", address)
+        s.keyring_set(GMAIL_SERVICE, address, password)
+        back = s.keyring_get(GMAIL_SERVICE, address) == password and s.keyring_get(GMAIL_SERVICE, "address") == address
+    except Exception:  # noqa: BLE001
+        return Result("fail", "couldn't save to the keyring")
+    if not back:
+        return Result("fail", "saved, but reading it back from the keyring did not match")
+    return result if result.status == "ok" else Result("warn", f"saved for {address}, but {result.message}")
+
+
+def asana_token_path(w: Wizard) -> Path:
+    return w.system.home() / ASANA_TOKEN_FILE
+
+
+def _asana_user(w: Wizard, token: str) -> Result:
+    try:
+        status, body = w.system.http_get("https://app.asana.com/api/1.0/users/me",
+                                         {"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                                         follow_redirects=False)
+    except CheckFailed as exc:
+        return Result("fail", _fail_text(exc.kind, "Asana"))
+    if status in (401, 403):
+        return Result("fail", "Asana rejected the token")
+    if status != 200:
+        return Result("fail", f"Asana answered with status {status}")
+    try:
+        name = json.loads(body)["data"]["name"]
+    except (ValueError, KeyError, TypeError):
+        return Result("fail", "Asana's answer wasn't understood")
+    return Result("ok", f"connected as {scrub(name)[:60]}")
+
+
+def _current_asana_token(w: Wizard) -> str:
+    from .work.asana import find_token
+    env = {"ASANA_TOKEN": w.system.env("ASANA_TOKEN")}
+    return find_token(env, w.system.home()) or ""
+
+
+def check_asana(w: Wizard) -> Result:
+    token = _current_asana_token(w)
+    if not token:
+        return Result("warn", "not set up")
+    w.known_secrets.append(token)
+    return _asana_user(w, token)
+
+
+def step_asana(w: Wizard) -> Result:
+    if _current_asana_token(w) and not w.confirm("An Asana token is already saved. Replace it?", False):
+        return check_asana(w)
+    w.say("Create a Personal Access Token at https://app.asana.com/0/my-apps and paste it (hidden).")
+    token = w.secret("Asana token")
+    if not token:
+        return Result("skip", "skipped")
+    result = _asana_user(w, token)
+    if result.status == "fail":
+        return Result("fail", result.message + "; nothing saved")
+    try:
+        w.system.write_private_file(asana_token_path(w), token + "\n")
+    except OSError:
+        return Result("fail", "couldn't write the token file")
+    return Result("ok", result.message + f" (token saved in {asana_token_path(w)}, readable only by you)")
+
+
+def _calendar_check(w: Wizard, url: str) -> Result:
+    if url.lower().startswith("webcal://"):
+        url = "https://" + url[9:]
+    if not url.lower().startswith("https://"):
+        return Result("fail", "the calendar link must start with https:// (or webcal://)")
+    try:
+        status, body = w.system.http_get(url)
+        if status != 200:
+            return Result("fail", f"the calendar link answered with status {status}")
+        count = w.system.count_events_today(body)
+    except CheckFailed as exc:
+        return Result("fail", _fail_text(exc.kind, "the calendar link"))
+    return Result("ok", f"{count} event{'s' if count != 1 else ''} today")
+
+
+def check_calendar(w: Wizard) -> Result:
+    try:
+        url = w.system.keyring_get(CALENDAR_SERVICE, "ics_url")
+    except Exception:  # noqa: BLE001
+        return Result("fail", "can't read the keyring (pip install keyring)")
+    if not url:
+        return Result("warn", "not set up")
+    w.known_secrets.append(url)
+    return _calendar_check(w, url)
+
+
+def step_calendar(w: Wizard) -> Result:
+    try:
+        current = w.system.keyring_get(CALENDAR_SERVICE, "ics_url")
+    except Exception:  # noqa: BLE001
+        return Result("fail", "the OS keyring isn't available. Run: pip install -r requirements-work.txt")
+    if current and not w.confirm("A calendar link is already saved. Replace it?", False):
+        return check_calendar(w)
+    w.say("Google Calendar: Settings, click your calendar, Integrate calendar, copy 'Secret address in iCal format'.")
+    w.say("Anyone with that link can read your calendar; it stays on this laptop.")
+    url = w.secret("Calendar link")
+    if not url:
+        return Result("skip", "skipped")
+    if url.lower().startswith("webcal://"):
+        url = "https://" + url[9:]
+    result = _calendar_check(w, url)
+    if result.status == "fail":
+        return Result("fail", result.message + "; nothing saved")
+    try:
+        w.system.keyring_set(CALENDAR_SERVICE, "ics_url", url)
+        if w.system.keyring_get(CALENDAR_SERVICE, "ics_url") != url:
+            return Result("fail", "saved, but reading it back did not match")
+    except Exception:  # noqa: BLE001
+        return Result("fail", "couldn't save to the keyring")
+    return Result("ok", result.message + " (link saved)")
+
+
+def _chat_spaces(w: Wizard) -> list[str]:
+    return json.loads(w.system.keyring_get(CHAT_SERVICE, "_spaces") or "[]")
+
+
+def check_chat(w: Wizard) -> Result:
+    try:
+        names = _chat_spaces(w)
+    except Exception:  # noqa: BLE001
+        return Result("fail", "can't read the keyring (pip install keyring)")
+    return Result("ok", f"{len(names)} space{'s' if len(names) != 1 else ''}: {', '.join(names)}") if names else Result("warn", "no spaces added")
+
+
+def step_chat(w: Wizard) -> Result:
+    try:
+        names = _chat_spaces(w)
+    except Exception:  # noqa: BLE001
+        return Result("fail", "the OS keyring isn't available. Run: pip install -r requirements-work.txt")
+    if names:
+        w.say(f"Spaces already saved: {', '.join(names)}")
+    w.say("In a Google Chat space: space name menu, Apps & integrations, Webhooks, create one, copy its URL.")
+    added = 0
+    while True:
+        name = w.ask("Space name to add (Enter to finish)").lower()
+        if not name:
+            break
+        if not re.fullmatch(r"[a-z0-9 _-]{1,40}", name) or name == "_spaces":
+            w.say(w.tone("fail", "use letters, digits, spaces, - or _ for the name"))
+            continue
+        url = w.secret(f"Webhook URL for '{name}'")
+        if not url:
+            continue
+        if not url.startswith(WEBHOOK_PREFIX):
+            w.say(w.tone("fail", f"that isn't a Google Chat webhook (it must start with {WEBHOOK_PREFIX}); not saved"))
+            continue
+        try:
+            current = [n for n in _chat_spaces(w) if n != name] + [name]
+            w.system.keyring_set(CHAT_SERVICE, name, url)
+            w.system.keyring_set(CHAT_SERVICE, "_spaces", json.dumps(current))
+            if w.system.keyring_get(CHAT_SERVICE, name) != url:
+                raise RuntimeError
+        except Exception:  # noqa: BLE001
+            return Result("fail", "couldn't save to the keyring")
+        added += 1
+        w.say(w.tone("ok", f"saved space '{name}'"))
+    if not added and not names:
+        return Result("skip", "skipped")
+    return Result("ok", f"{added} added; spaces: {', '.join(_chat_spaces(w))}")
+
+
+def check_claude(w: Wizard) -> Result:
+    key = w.system.env("ANTHROPIC_API_KEY")
+    if not key:
+        return Result("warn", "ANTHROPIC_API_KEY isn't set in this shell (the assistant needs it, or use the local model)")
+    w.known_secrets.append(key)
+    return Result("ok", "ANTHROPIC_API_KEY is set")
+
+
+def step_claude(w: Wizard) -> Result:
+    if w.system.env("ANTHROPIC_API_KEY") and not w.confirm("A Claude key is already set. Replace it?", False):
+        return check_claude(w)
+    w.say("Optional: a Claude API key (console.anthropic.com) for the assistant and 'Ask Claude'. Saved as your "
+          "user environment variable on this laptop only.")
+    key = w.secret("Claude API key")
+    if not key:
+        return Result("skip", "skipped (the local model still works)")
+    if not key.startswith("sk-ant-"):
+        w.say(w.tone("warn", "that doesn't start with sk-ant-; saving anyway"))
+    try:
+        stored = w.system.set_user_env("ANTHROPIC_API_KEY", key)
+    except Exception:  # noqa: BLE001
+        return Result("fail", "couldn't save the user environment variable")
+    if not stored:
+        return Result("warn", "not saved: this isn't Windows. Add ANTHROPIC_API_KEY to your shell profile yourself")
+    return Result("ok", "saved as ANTHROPIC_API_KEY for your user; it appears in NEW terminals only, so restart the hub from one")
+
+
+def check_phone(w: Wizard) -> Result:
+    config = w.load_config(False)
+    if config is None or not config.ntfy_topic:
+        return Result("warn", "no push topic yet")
+    return Result("ok", f"topic {config.ntfy_topic} on {config.ntfy_server}")
+
+
+def step_phone(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    if not config.ntfy_topic:
+        config.ntfy_topic = secrets.token_urlsafe(18)   # 24 characters
+    if not config.ntfy_server:
+        config.ntfy_server = "https://ntfy.sh"
+    w.save_config()
+    w.say(f"Install the free ntfy app on your phone and subscribe to this topic: {config.ntfy_topic}")
+    w.say(f"(server {config.ntfy_server}; the topic works like a password, so don't share it)")
+    return Result("ok", "push topic ready")
+
+
+def check_name(w: Wizard) -> Result:
+    config = w.load_config(False)
+    return Result("ok", f"I call you {config.display_name}") if config else Result("warn", "no hub.json yet")
+
+
+def step_name(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    name = w.ask("What should I call you?", config.display_name or "Chief")
+    if len(name) > 40 or not name.isprintable():
+        return Result("fail", "use up to 40 ordinary characters")
+    config.display_name = name
+    w.save_config()
+    return Result("ok", f"I'll call you {name}")
+
+
+def check_warp(w: Wizard) -> Result:
+    config = w.load_config(False)
+    if config and "warp_connect" in config.scripts:
+        return Result("ok", "quick button 'warp_connect' exists")
+    return Result("warn", "no warp_connect button")
+
+
+def step_warp(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    path = WARP_PATH
+    if not w.system.exists(path):
+        return Result("skip", "Cloudflare WARP isn't at its usual place; add the button by hand with `python -m hub add-script`")
+    if not w.confirm("Add a 'Connect Cloudflare' quick button that runs warp-cli connect?", False):
+        return Result("skip", "skipped")
+    config.scripts["warp_connect"] = {"label": "Connect Cloudflare", "argv": [path, "connect"]}
+    w.save_config()
+    return Result("ok", "quick button 'warp_connect' saved")
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _ps_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def check_autostart(w: Wizard) -> Result:
+    if w.system.platform != "win32":
+        return Result("skip", "Windows only")
+    rc, _ = w.system.run(["schtasks", "/Query", "/TN", TASK_NAME])
+    return Result("ok", f"scheduled task {TASK_NAME} exists") if rc == 0 else Result("warn", f"no scheduled task {TASK_NAME}")
+
+
+def step_autostart(w: Wizard) -> Result:
+    s = w.system
+    if s.platform != "win32":
+        return Result("skip", "scheduled tasks are Windows only")
+    result = check_autostart(w)
+    question = "Update the auto-start task (hub starts when you log in)?" if result.status == "ok" \
+        else "Start the hub automatically when you log in?"
+    if not w.confirm(question, True):
+        return Result("skip", "skipped")
+    pythonw = s.python_dir() / "pythonw.exe"
+    exe = str(pythonw if s.exists(pythonw) else s.python_dir() / "python.exe")
+    arguments = "-m hub serve"
+    if w.config_path != cfg.default_path():
+        arguments = f'-m hub --config "{w.config_path}" serve'
+    script = (
+        f"$a = New-ScheduledTaskAction -Execute {_ps_quote(exe)} -Argument {_ps_quote(arguments)} "
+        f"-WorkingDirectory {_ps_quote(str(repo_root()))}; "
+        "$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; "
+        "$p = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); "
+        f"Register-ScheduledTask -TaskName {_ps_quote(TASK_NAME)} -Action $a -Trigger $t -Settings $p -Force | Out-Null")
+    rc, _ = s.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=60)
+    if rc != 0:
+        return Result("fail", "couldn't register the scheduled task (try an administrator PowerShell)")
+    msg = f"task {TASK_NAME} runs the hub at logon"
+    if w.confirm("Stop the laptop sleeping while plugged in (powercfg standby-timeout-ac 0)?", True):
+        rc, _ = s.run(["powercfg", "/change", "standby-timeout-ac", "0"], timeout=30)
+        msg += "; sleep on AC disabled" if rc == 0 else "; couldn't change the sleep setting"
+        if rc != 0:
+            return Result("warn", msg)
+    return Result("ok", msg)
+
+
+STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] = {
+    "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
+    "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "claude": (step_claude, check_claude),
+    "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
+    "autostart": (step_autostart, check_autostart),
+}
+
+
+def parse_only(text: str | None) -> list[str]:
+    if not text:
+        return list(STEP_IDS)
+    chosen: list[str] = []
+    for raw in text.split(","):
+        key = ALIASES.get(raw.strip().lower(), raw.strip().lower())
+        if key not in STEPS:
+            raise ValueError(f"Unknown step '{raw.strip()[:30]}'. Steps: {', '.join(STEP_IDS)}")
+        if key not in chosen:
+            chosen.append(key)
+    return [s for s in STEP_IDS if s in chosen]
+
+
+def run_wizard(w: Wizard, only: str | None = None, check: bool = False, run_doctor: Callable[[], None] | None = None) -> int:
+    try:
+        chosen = parse_only(only)
+    except ValueError as exc:
+        w.say(str(exc))
+        return 2
+    w.say("Laptop Hub setup. " + ("Checking what is configured (nothing is changed)." if check else
+          "Press Enter to skip any step. Secrets are typed hidden and stay on this laptop."))
+    for step in chosen:
+        w.say("")
+        w.say(f"== {TITLES[step]}")
+        act, test = STEPS[step]
+        try:
+            if check:
+                result = test(w)
+            elif w.confirm(f"Set up {TITLES[step]}?", True):
+                result = act(w)
+            else:
+                result = Result("skip", "skipped")
+        except (KeyboardInterrupt, EOFError):
+            w.say("")
+            result = Result("skip", "interrupted")
+        except Exception as exc:  # noqa: BLE001 - a step must never stop the others, and must not leak
+            result = Result("fail", "unexpected problem: " + scrub(type(exc).__name__))
+        w.report(step, result)
+    w.say("")
+    w.say("== Summary")
+    for step, result in w.results:
+        w.say(w.tone(result.status, f"{TITLES[step]:<16} {result.message}"))
+    if run_doctor and not check:
+        w.say("")
+        w.say("== Hub doctor")
+        run_doctor()
+    if not check:
+        w.say("")
+        w.say("Restart the hub so it picks everything up:  python -m hub serve  (or log out and in if auto-start is on).")
+    return 1 if any(r.status == "fail" for _, r in w.results) else 0
+
+
+def run_setup(args, wizard: Wizard | None = None) -> int:
+    path = Path(args.config) if getattr(args, "config", None) else cfg.default_path()
+    w = wizard or Wizard(path)
+    check = bool(getattr(args, "check", False))
+    if not check and not w.system.isatty():
+        w.say("Setup is interactive and needs a real terminal (it asks for secrets with hidden input). "
+              "Open PowerShell and run: python -m hub setup")
+        return 2
+
+    def doctor() -> None:
+        from .__main__ import cmd_doctor
+        import argparse
+        cmd_doctor(argparse.Namespace(config=str(path)))
+
+    return run_wizard(w, getattr(args, "only", None), check, doctor)

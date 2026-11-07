@@ -212,6 +212,7 @@ export function init(container, ctx) {
   }
 
   async function runSummary(uid, box, btn) {
+    if (btn.getAttribute("aria-busy") === "true") return;
     fill(box, ui.skeleton("lines", 3));
     try {
       const s = await ui.busy(btn, api(`/api/inbox/messages/${encodeURIComponent(uid)}/summary`, { method: "POST", json: { model: "local" } }));
@@ -227,6 +228,7 @@ export function init(container, ctx) {
   }
 
   async function draftReply(uid, sheet, btn) {
+    if (btn.getAttribute("aria-busy") === "true") return;
     const tone = sheet.tone ? sheet.tone.value : "professional";
     try {
       const d = await ui.busy(btn, api(`/api/inbox/messages/${encodeURIComponent(uid)}/draft-reply`, { method: "POST", json: { model: "local", tone } }));

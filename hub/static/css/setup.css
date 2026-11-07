@@ -1,0 +1,41 @@
+/* Setup checklist. Scoped under #view-setup (plus the fix sheet, which lives in <body>). */
+#view-setup .su { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-5); min-width: 0; }
+#view-setup .su > *, #view-setup .su-list > * { min-width: 0; }
+#view-setup .su-hero { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4); }
+#view-setup .su-hero-title { margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); }
+#view-setup .su-hero-sub { margin: 4px 0 0; color: var(--c-text-2); font-size: var(--fs-sm); }
+#view-setup .su-ring-host { flex: none; min-width: 84px; min-height: 84px; }
+#view-setup .su-list { display: grid; gap: var(--sp-5); }
+#view-setup .su-group { display: grid; gap: var(--sp-2); }
+#view-setup .su-hint { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); }
+#view-setup .ui-row { align-items: flex-start; }
+#view-setup .su-sub { display: grid; gap: 3px; white-space: normal; justify-items: start; margin-top: 2px; }
+#view-setup .su-unlocks { color: var(--c-text-2); }
+#view-setup .su-detail { font-size: var(--fs-xs); color: var(--c-text-3); overflow-wrap: anywhere; }
+#view-setup .su-detail--bad { color: var(--c-bad); }
+#view-setup .su-detail--ok { color: var(--c-good); }
+#view-setup .su-detail--warn { color: var(--c-warn); }
+#view-setup .ui-row__chev { align-self: center; }
+#view-setup .ui-row__title { white-space: normal; }
+
+.su-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-full); font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold); white-space: nowrap; background: var(--c-surface-3); color: var(--c-text-2); }
+.su-pill--ok { background: var(--c-good-soft); color: var(--c-good); }
+.su-pill--warn { background: var(--c-warn-soft); color: var(--c-warn); }
+.su-pill--bad { background: var(--c-bad-soft); color: var(--c-bad); }
+.su-pill--info { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.su-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.su-pill--na .su-dot { background: var(--c-text-3); }
+
+.su-sheet { display: grid; gap: var(--sp-4); }
+.su-sheet-top { display: flex; gap: var(--sp-3); align-items: center; }
+.su-sheet-top .grow { display: grid; gap: 6px; justify-items: start; min-width: 0; }
+.su-sheet-detail { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+.su-sheet-unlocks, .su-sheet-ok { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); }
+.su-steps { margin: 0; padding-left: var(--sp-5); display: grid; gap: var(--sp-2); font-size: var(--fs-md); }
+.su-cmd { display: grid; gap: 4px; }
+.su-cmd-note { margin: 0; font-size: var(--fs-xs); color: var(--c-text-2); }
+.su-cmd-row { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  background: var(--c-surface-2); border: 1px solid var(--c-line); border-radius: var(--r-md); }
+.su-code { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-sm); overflow-wrap: anywhere; user-select: all; }
+.su-copy-ta { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; }

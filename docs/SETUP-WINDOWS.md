@@ -3,6 +3,25 @@
 Copy and paste each block into **PowerShell**. Replace `YOU` with your Windows user name. Run the hub on Windows itself, not in WSL.
 Nothing here has been run on a real Windows machine yet; if a step fails, run `python -m hub doctor` and read what it says.
 
+## One-command setup
+
+After step 2 below (code and packages installed), one command does the rest and asks before each part. Press Enter to skip any step; run it again any time.
+
+```powershell
+python -m hub init
+python -m hub setup
+```
+
+It sets up, in order: the Jarvis folder (clones it if missing), Gmail (App password: 2-Step Verification on, then myaccount.google.com/apppasswords), Asana token (app.asana.com/0/my-apps), calendar iCal link, Google Chat webhooks, Claude API key, phone push topic (ntfy), what to call you, the Cloudflare WARP button, and auto-start at logon.
+
+- Secrets are typed hidden and saved only on this laptop: Gmail, calendar and Chat in the Windows keyring, Asana in `~\.claude\.asana_token` (locked to your user), the Claude key as your user environment variable. They are never printed or written to `hub.json`, and each is tested against its own service only.
+- `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, claude, phone, name, warp, autostart).
+- `python -m hub setup --check` changes nothing and just tests what is configured.
+- The Jarvis `.venv` is optional: the hub only loads Jarvis's helper files with its own Python.
+- Open a new terminal and restart the hub afterwards (a new Claude key shows up in new terminals only).
+
+The sections below are the manual steps, in case you prefer them.
+
 ## 1. Install the tools
 
 ```powershell

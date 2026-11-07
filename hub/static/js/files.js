@@ -340,7 +340,28 @@ export function init(container, ctx) {
     panel.hidden = !panelKind;
     fab.hidden = !(inBrowser && !selecting && root && writable(root) && !searchResults);
     selbar.hidden = !(inBrowser && selecting);
+    syncOverlayHistory(!inBrowser);
   }
+
+  // Android Back closes the reader or a panel (Trash, Recent, Storage) instead of leaving Files: while one is
+  // open it owns one history entry. Closing it with its own button rewinds that entry.
+  let overlayEntry = false;
+  let skipPops = 0;
+  function syncOverlayHistory(open) {
+    if (open && !overlayEntry) {
+      try { history.pushState({ ...(history.state || {}), fileOverlay: true }, ""); overlayEntry = true; } catch (_) { /* sandboxed */ }
+    } else if (!open && overlayEntry) {
+      overlayEntry = false;
+      if (history.state?.fileOverlay) { skipPops += 1; history.back(); }
+    }
+  }
+  window.addEventListener("popstate", (event) => {
+    if (skipPops > 0) { skipPops -= 1; return; }
+    if (!overlayEntry || event.state?.fileOverlay) return;
+    overlayEntry = false;                       // the entry is already gone: close without rewinding again
+    if (panelKind) closePanel();
+    if (readerOpen) closeReader();
+  });
 
   // ---- Roots and listing -------------------------------------------------------------------
 
@@ -755,15 +776,18 @@ export function init(container, ctx) {
     });
     const hintEl = el("div", { class: "ui-hint" }, hint || "");
     const field = el("div", { class: "ui-field fo-field" }, el("label", { class: "ui-label" }, label, input), hintEl);
+    let working = false;   // a double-tap (or Enter + tap) must not send the request twice
     const s = ui.sheet({
       title, content: field,
       actions: [{
         label: confirmLabel, variant: "primary", onClick: async () => {
+          if (working) return false;
           const text = input.value.trim();
           if (!text) { field.classList.add("is-error"); hintEl.textContent = "Type a name first."; input.focus(); return false; }
+          working = true;
           try { await onSubmit(text); } catch (error) {
             field.classList.add("is-error"); hintEl.textContent = error.message; input.focus(); return false;
-          }
+          } finally { working = false; }
           return undefined;
         },
       }],

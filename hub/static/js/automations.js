@@ -6,6 +6,15 @@
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const ICONS = { sun: "sun", book: "book", door: "logout", moon: "moon", timer: "timer", calendar: "calendar", check: "check-circle", briefcase: "work", bolt: "zap" };
 const ICON_TONES = { sun: "orange", book: "info", door: "violet", moon: "violet", timer: "teal", calendar: "accent", check: "good", briefcase: "info", bolt: "accent" };
 const STEP_ICONS = { laptop_action: "laptop", script: "terminal", jarvis_say: "jarvis", jarvis_start: "jarvis", open_url: "globe", notify: "bell", note: "note", wait: "clock", briefing: "inbox", reminder: "alarm" };
@@ -192,7 +201,7 @@ export function init(container, ctx) {
         el("div", { class: "au-result__body" }, el("strong", {}, `${x.index != null ? x.index + 1 + ". " : ""}${typeLabel(x.type)}`), x.message ? el("span", {}, x.message) : null),
         x.skipped ? ui.badge("Skipped") : null);
     }) : [el("li", { class: "au-result" }, el("div", { class: "au-result__body" }, el("span", {}, "No step results were recorded.")))];
-    ui.sheet({ title: name, class: "au-sheet", content: el("div", { class: "ui-stack" },
+    gsheet({ title: name, class: "au-sheet", content: el("div", { class: "ui-stack" },
       el("div", { class: "au-resulthead" }, ui.badge(STATUS_WORD[status] || status, STATUS_TONE[status]), sub ? el("span", {}, sub) : null),
       el("ol", { class: "au-results" }, rows)) });
   }
@@ -200,7 +209,7 @@ export function init(container, ctx) {
   // ---- history ----------------------------------------------------------------------------------
   async function historySheet(r) {
     const body = el("div", { class: "ui-stack" }, ui.skeleton("list", 3));
-    ui.sheet({ title: `${r.name} history`, class: "au-sheet", content: body });
+    gsheet({ title: `${r.name} history`, class: "au-sheet", content: body });
     try {
       const runs = (await api(`/api/automations/${encodeURIComponent(r.id)}/runs`)).runs || [];
       body.replaceChildren(runs.length ? el("div", { class: "ui-list ui-list--inset" }, runs.map((run) => ui.listRow({
@@ -297,7 +306,7 @@ export function init(container, ctx) {
       }));
     }
     function addStepSheet() {
-      const sh = ui.sheet({ title: "Add a step", class: "au-sheet", content: el("div", { class: "ui-list ui-list--inset" }, S.spec.types.map((t) => ui.listRow({
+      const sh = gsheet({ title: "Add a step", class: "au-sheet", content: el("div", { class: "ui-list ui-list--inset" }, S.spec.types.map((t) => ui.listRow({
         icon: STEP_ICONS[t.type] || "circle", title: t.label, sub: t.description, chevron: true,
         onClick: () => { d.steps.push({ type: t.type, on_error: "stop" }); sh.close(); renderSteps(); renderSchedule(); requestAnimationFrame(() => stepsBox.lastElementChild?.scrollIntoView({ block: "center", behavior: "smooth" })); },
       }))) });
@@ -428,7 +437,7 @@ export function init(container, ctx) {
       try { await api(`/api/automations/${encodeURIComponent(routine.id)}`, { method: "DELETE" }); S.routines = S.routines.filter((x) => x.id !== routine.id); render(); sheetRef?.close(); ui.toast("Deleted", { kind: "good" }); }
       catch (error) { errBox.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
     }
-    sheetRef = ui.sheet({ title: isNew ? "New routine" : "Edit routine", class: "au-sheet au-editor", content: form,
+    sheetRef = gsheet({ title: isNew ? "New routine" : "Edit routine", class: "au-sheet au-editor", content: form,
       actions: [{ label: isNew ? "Add routine" : "Save", icon: "check", variant: "primary", onClick: (s) => save(s) }] });
   }
 

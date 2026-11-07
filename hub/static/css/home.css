@@ -125,3 +125,14 @@
 #view-home .hm-friday-sub { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--c-text-2); }
 #view-home .hm-friday-btns { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2); }
 @media (prefers-reduced-motion: reduce) { #view-home .hm-friday-orb span { animation: none; } }
+
+/* "Finish setting up" card */
+#view-home .hm-setup { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-2);
+  border-radius: var(--r-xl); border: 1px solid var(--c-line-strong); background: var(--c-accent-soft); }
+#view-home .hm-setup[hidden] { display: none; }
+#view-home .hm-setup-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding: var(--sp-1);
+  background: none; border: 0; color: var(--c-text); text-align: left; cursor: pointer; }
+#view-home .hm-setup-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+#view-home .hm-setup-title { font-weight: var(--fw-semibold); font-size: var(--fs-md); }
+#view-home .hm-setup-sub { font-size: var(--fs-sm); color: var(--c-text-2); }
+#view-home .hm-setup-go .ui-icon { color: var(--c-text-2); flex: none; }

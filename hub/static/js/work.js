@@ -3,6 +3,10 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// ui.busy does not stop a second tap while the first is running, so a double tap sent two requests.
+const busy = (btn, fn) => (btn.getAttribute("aria-busy") === "true" ? Promise.resolve() : ui.busy(btn, fn));
+const asking = new Set(); // confirm dialogs already open, so a double tap does not stack two
+
 // replaceChildren that skips null/false entries (conditional children).
 function fill(node, ...kids) { node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); }
 
@@ -255,7 +259,9 @@ export function init(container, ctx) {
     }
 
     async function quickComplete(task, check) {
-      const yes = await ui.confirm({ title: "Mark this task complete?", message: `"${task.name}" will be marked complete in Asana.`, confirmLabel: "Mark complete" });
+      if (asking.has(task.gid) || check.classList.contains("is-busy")) return;
+      asking.add(task.gid);
+      const yes = await ui.confirm({ title: "Mark this task complete?", message: `"${task.name}" will be marked complete in Asana.`, confirmLabel: "Mark complete" }).finally(() => asking.delete(task.gid));
       if (!yes) return;
       check.classList.add("is-busy");
       try {
@@ -357,7 +363,7 @@ export function init(container, ctx) {
               el("span", {}, s.name))))
         : el("p", { class: "wk-muted" }, "No subtasks.");
 
-      const textarea = el("textarea", { rows: "3", placeholder: "Write a comment…", "aria-label": "Comment" });
+      const textarea = el("textarea", { rows: "3", placeholder: "Write a comment…", maxlength: "8000", "aria-label": "Comment" });
       const sendBtn = ui.button({ label: "Comment", icon: "send", variant: "primary", size: "sm", onClick: sendComment });
       const completeBtn = ui.button({ label: "Mark complete", icon: "check-circle", variant: "primary", block: true, onClick: completeTask });
       const msg = inlineMsg("bad");
@@ -366,7 +372,7 @@ export function init(container, ctx) {
         const text = textarea.value.trim();
         if (!text) { msg.show("Write something to comment."); textarea.focus(); return; }
         msg.clear();
-        await ui.busy(sendBtn, async () => {
+        await busy(sendBtn, async () => {
           try {
             await api(`/api/work/asana/tasks/${encodeURIComponent(task.gid)}/comment`, { method: "POST", json: { text } });
             textarea.value = "";
@@ -382,9 +388,11 @@ export function init(container, ctx) {
       }
 
       async function completeTask() {
-        const yes = await ui.confirm({ title: "Mark this task complete?", message: `"${task.name}" will be marked complete in Asana.`, confirmLabel: "Mark complete" });
+        if (asking.has(task.gid)) return;
+        asking.add(task.gid);
+        const yes = await ui.confirm({ title: "Mark this task complete?", message: `"${task.name}" will be marked complete in Asana.`, confirmLabel: "Mark complete" }).finally(() => asking.delete(task.gid));
         if (!yes) return;
-        await ui.busy(completeBtn, async () => {
+        await busy(completeBtn, async () => {
           try {
             await api(`/api/work/asana/tasks/${encodeURIComponent(task.gid)}/complete`, { method: "POST" });
             ui.toast("Task completed", { kind: "good" });
@@ -502,7 +510,7 @@ export function init(container, ctx) {
     let reviewing = null;   // {draft_id, to, subject, body, typed}
 
     // (a) Write with AI: a glass card
-    const instruction = el("textarea", { rows: "3", placeholder: "e.g. write a mail to Rahul about the demo on Thursday",
+    const instruction = el("textarea", { rows: "3", maxlength: "2000", placeholder: "e.g. write a mail to Rahul about the demo on Thursday",
       "aria-label": "Instruction for the AI" });
     const providerSeg = ui.segmented({ label: "AI provider", options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }],
       value: provider, onChange: (v) => { provider = v; store("hub.work.provider", v); } });
@@ -514,12 +522,12 @@ export function init(container, ctx) {
       instruction, el("div", { class: "wk-split" }, providerSeg, aiBtn), aiMsg);
 
     // (b) fields
-    const to = el("input", { type: "text", list: "wk-contacts", placeholder: "Name or email address", autocomplete: "off",
+    const to = el("input", { type: "text", maxlength: "200", list: "wk-contacts", placeholder: "Name or email address", autocomplete: "off",
       autocapitalize: "off", spellcheck: "false", "aria-describedby": "wk-to-error" });
     const datalist = el("datalist", { id: "wk-contacts" });
     const toError = el("p", { class: "ui-hint wk-to-error", id: "wk-to-error", role: "alert", hidden: true });
-    const subject = el("input", { type: "text", placeholder: "Subject" });
-    const text = el("textarea", { rows: "8", placeholder: "Write your message…" });
+    const subject = el("input", { type: "text", maxlength: "300", placeholder: "Subject" });
+    const text = el("textarea", { rows: "8", maxlength: "20000", placeholder: "Write your message…" });
     const reviewBtn = ui.button({ label: "Review draft", icon: "eye", variant: "primary", block: true, onClick: review });
     const formMsg = inlineMsg("bad");
     const form = el("section", { class: "ui-card wk-stack", "aria-label": "Email" },
@@ -564,7 +572,7 @@ export function init(container, ctx) {
       const ask = instruction.value.trim();
       if (!ask) { aiMsg.show("Tell the AI what to write first."); instruction.focus(); return; }
       aiMsg.clear();
-      await ui.busy(aiBtn, async () => {
+      await busy(aiBtn, async () => {
         try {
           const d = await api("/api/work/email/ai-draft", { method: "POST", json: { instruction: ask, provider } });
           if (d.to_hint) to.value = d.to_hint;
@@ -585,7 +593,7 @@ export function init(container, ctx) {
       const typed = to.value.trim();
       if (!typed) { toError.textContent = "Who is this for? Enter a name or an email address."; toError.hidden = false; to.setAttribute("aria-invalid", "true"); to.focus(); return; }
       if (!subject.value.trim() && !text.value.trim()) { formMsg.show("Write a subject or a message first."); return; }
-      await ui.busy(reviewBtn, async () => {
+      await busy(reviewBtn, async () => {
         try {
           const d = await api("/api/work/email/draft", { method: "POST", json: { to: typed, subject: subject.value, body: text.value } });
           reviewing = { ...d, typed };
@@ -615,12 +623,13 @@ export function init(container, ctx) {
       const msg = inlineMsg("bad");
       async function send() {
         const draft = reviewing;
-        if (!draft) return;
+        if (!draft || asking.has("send")) return;
         const who = draft.typed && draft.typed.toLowerCase() !== draft.to.toLowerCase()
           ? `${draft.typed} <${draft.to}>` : draft.to;
-        const yes = await ui.confirm({ title: `Send to ${who}?`, message: `Subject: ${draft.subject || "(no subject)"}`, confirmLabel: "Send now" });
-        if (!yes) return;
-        await ui.busy(sendBtn, async () => {
+        asking.add("send");
+        const yes = await ui.confirm({ title: `Send to ${who}?`, message: `Subject: ${draft.subject || "(no subject)"}`, confirmLabel: "Send now" }).finally(() => asking.delete("send"));
+        if (!yes || reviewing !== draft) return;
+        await busy(sendBtn, async () => {
           reviewing = null;   // this draft can only ever be sent once from here
           try {
             await api("/api/work/email/send", { method: "POST", json: { draft_id: draft.draft_id } });
@@ -667,7 +676,7 @@ export function init(container, ctx) {
 
     const spaceBar = el("div", { class: "ui-hscroll wk-chips", role: "group", "aria-label": "Google Chat space" });
     const spaceBox = el("div", { class: "wk-stack" });
-    const text = el("textarea", { rows: "5", placeholder: "Write a message…", "aria-label": "Message" });
+    const text = el("textarea", { rows: "5", maxlength: "4000", placeholder: "Write a message…", "aria-label": "Message" });
     const msg = inlineMsg("bad");
     const reviewBtn = ui.button({ label: "Review", icon: "eye", variant: "primary", block: true, onClick: review });
     const formView = el("section", { class: "ui-card wk-stack", "aria-label": "Google Chat message" },
@@ -713,9 +722,11 @@ export function init(container, ctx) {
       const err = inlineMsg("bad");
       async function post() {
         const item = reviewing;
-        const yes = await ui.confirm({ title: `Post to ${item.space}?`, message: "Everyone in the space will see this message.", confirmLabel: "Post now" });
-        if (!yes) return;
-        await ui.busy(postBtn, async () => {
+        if (!item || asking.has("post")) return;
+        asking.add("post");
+        const yes = await ui.confirm({ title: `Post to ${item.space}?`, message: "Everyone in the space will see this message.", confirmLabel: "Post now" }).finally(() => asking.delete("post"));
+        if (!yes || reviewing !== item) return;
+        await busy(postBtn, async () => {
           try {
             await api("/api/work/chat/send", { method: "POST", json: { space: item.space, text: item.text } });
             ui.toast(`Posted to ${item.space}`, { kind: "good" });

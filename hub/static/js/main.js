@@ -208,7 +208,7 @@ function paintChrome(v) {
   if (pill) { pill.style.setProperty("--i", String(Math.max(0, i))); pill.classList.toggle("is-off", i < 0); }
   const bar = $("appbar");
   const title = bar.querySelector("h1");
-  const text = v.id === "home" ? "Laptop Hub" : (v.title || v.label);
+  const text = v.id === "home" ? "Redline" : (v.title || v.label);
   if (title.textContent !== text) {
     title.textContent = text;
     title.classList.remove("is-changing"); void title.offsetWidth; title.classList.add("is-changing");
@@ -218,7 +218,7 @@ function paintChrome(v) {
   bar.querySelector(".sh-back").hidden = !sub;
   bar.querySelector(".sh-logo").hidden = sub;
   bar.classList.toggle("is-scrolled", ($("view-" + v.id)?.scrollTop || 0) > 4);
-  document.title = v.id === "home" ? "Laptop Hub" : `${text} · Laptop Hub`;
+  document.title = v.id === "home" ? "REDLINE" : `${text} · REDLINE`;
 }
 
 function onViewScroll(event) {
@@ -314,14 +314,14 @@ const ctx = {
 function buildChrome() {
   const bar = $("appbar");
   const back = ui.el("button", { type: "button", class: "sh-iconbtn sh-back", "aria-label": "Back", hidden: true, onclick: goBack }, ui.icon("chevron-left"));
-  const logo = ui.el("span", { class: "sh-logo", "aria-hidden": "true" }, ui.icon("laptop"));
+  const logo = ui.el("span", { class: "sh-logo", "aria-hidden": "true" }, ui.icon("redline"));
   const search = ui.el("button", { type: "button", class: "sh-iconbtn", "aria-label": "Search", "data-tip": "Search",
     onclick: () => openSearch(ctx) }, ui.icon("search"));
   const bell = ui.el("button", { type: "button", id: "ab-bell", class: "sh-iconbtn", "aria-label": "Notifications", "data-badge-for": "notifications",
     onclick: () => { ui.haptic("select"); show("notifications"); } }, ui.icon("bell"));
   const gear = ui.el("button", { type: "button", class: "sh-iconbtn", "aria-label": "Settings", "data-tip": "Settings",
     onclick: () => show("settings") }, ui.icon("settings"));
-  bar.replaceChildren(back, ui.el("div", { class: "sh-title" }, logo, ui.el("h1", {}, "Laptop Hub")),
+  bar.replaceChildren(back, ui.el("div", { class: "sh-title" }, logo, ui.el("h1", {}, "Redline")),
     ui.el("div", { class: "sh-actions" }, search, bell, gear));
 
   const nav = $("tabs");

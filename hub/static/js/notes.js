@@ -4,6 +4,14 @@
 import { api, renderMarkdown, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => actions.map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+
+
 const MAX_RECORD_SECONDS = 600;
 const POLL_MS = 3000;
 const POLL_WINDOW_MS = 45000;
@@ -185,7 +193,7 @@ export function init(container, ctx) {
     const area = el("textarea", { class: "nt-typed", rows: "7", placeholder: "What's on your mind?", "aria-label": "Note text", enterkeyhint: "enter" });
     const s = ui.sheet({
       title: "New note", content: [area, el("p", { class: "ui-hint nt-hint" }, "A title and #tags are added for you in a few seconds.")],
-      actions: [{
+      actions: guard([{
         label: "Save note", variant: "primary", icon: "check",
         async onClick() {
           const text = area.value.trim();
@@ -199,7 +207,7 @@ export function init(container, ctx) {
           startPolling();
           return true;
         },
-      }],
+      }]),
     });
     return s;
   }

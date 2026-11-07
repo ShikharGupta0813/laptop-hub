@@ -4,6 +4,15 @@
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const CSS = "/css/settings.css";
 const SECTION_ALIAS = { notifications: "push", ntfy: "push", backups: "backup", log: "audit", activity: "audit", phone: "capture" };
 const MODEL_SLOTS = [
@@ -96,6 +105,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "inbox", tone: "accent", title: "Notifications", sub: "Everything the hub told you", chevron: true, onClick: () => ctx.open("notifications") })));
     rows.push(group("This phone",
       ui.listRow({ icon: "phone", tone: "teal", title: "Phone capture", sub: capture() ? "Spending and message capture" : "Needs the installed Android app", chevron: true, onClick: () => openSection("capture") })));
+    rows.push(group("Account & security", logoutAllRow()));
     rows.push(group("System",
       ui.listRow({ icon: "activity", tone: "good", title: "Diagnostics", sub: "Is everything set up?", chevron: true, onClick: () => openSection("diagnostics"),
         meta: diag && diag.bad ? ui.badge(`${diag.bad} to fix`, "bad") : diag && diag.warn ? ui.badge(`${diag.warn} tips`, "warn") : null }),
@@ -103,6 +113,25 @@ export function init(container, ctx) {
       ui.listRow({ icon: "download", tone: "info", title: "Backups", sub: "Save your data as a zip", chevron: true, onClick: () => openSection("backup") }),
       ui.listRow({ icon: "info", tone: "gray", title: "About", sub: "Version, uptime, locked options", chevron: true, onClick: () => openSection("about") })));
     return rows;
+  }
+
+  // Log out of all devices: POST /api/logout-all kills every session cookie (this phone's too), then the
+  // login screen comes back through the same event api.js raises on a 401.
+  let loggingOut = false;
+  function logoutAllRow() {
+    return ui.listRow({ icon: "lock", tone: "bad", title: "Log out of all devices", sub: "Every phone and browser must log in again", chevron: true,
+      onClick: async () => {
+        if (loggingOut) return;
+        if (!await ui.confirm({ title: "Log out of all devices?", message: "Every phone and browser signed in to this hub, including this one, will have to enter the token again.", confirmLabel: "Log out everywhere", danger: true })) return;
+        if (loggingOut) return;
+        loggingOut = true;
+        try {
+          await api("/api/logout-all", { method: "POST" });
+          window.dispatchEvent(new Event("hub:unauthorized"));
+        } catch (error) {
+          if (error.status !== 401) fail(error);
+        } finally { loggingOut = false; }
+      } });
   }
 
   function paint() {
@@ -138,7 +167,7 @@ export function init(container, ctx) {
 
   // A sheet whose body is rebuilt by `render()` (async, returns nodes).
   function drill(title, render, { tall = true, actions = [] } = {}) {
-    const s = ui.sheet({ title, content: ui.skeleton("list", 4), class: "st-sheet" + (tall ? " st-sheet--tall" : ""), actions,
+    const s = gsheet({ title, content: ui.skeleton("list", 4), class: "st-sheet" + (tall ? " st-sheet--tall" : ""), actions,
       onClose: () => { s.closed = true; s.onClose?.(); } });
     s.reload = async () => {
       try { const nodes = await render(s); if (!s.closed) s.body.replaceChildren(...[nodes].flat().filter(Boolean)); }
@@ -243,7 +272,7 @@ export function init(container, ctx) {
       el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, options.length ? "Or type a name" : "Model name"), input,
         el("span", { class: "ui-hint" }, slot.sub)),
       slot.source === "ollama" ? test : null, result);
-    ui.sheet({ title: slot.label + " model", content: body, class: "st-sheet", actions: [
+    gsheet({ title: slot.label + " model", content: body, class: "st-sheet", actions: [
       { label: "Save", variant: "primary", icon: "check", onClick: async () => {
         const name = input.value.trim();
         if (!name) { fail({ message: "Enter a model name." }); return false; }
@@ -454,7 +483,7 @@ export function init(container, ctx) {
     const sentinel = el("div", { class: "st-sentinel", "aria-hidden": "true" });
     const search = el("input", { type: "search", placeholder: "Search the log", "aria-label": "Search the activity log", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
     const select = el("select", { "aria-label": "Filter by event" }, el("option", { value: "" }, "All events"));
-    const s = ui.sheet({ title: "Activity log", class: "st-sheet st-sheet--tall", content: el("div", { class: "ui-stack" },
+    const s = gsheet({ title: "Activity log", class: "st-sheet st-sheet--tall", content: el("div", { class: "ui-stack" },
       el("div", { class: "st-auditbar" }, el("div", { class: "ui-input-wrap" }, ui.icon("search"), search), select), list, status, sentinel) });
     let io = null, timer = null;
     const prev = s.close;

@@ -697,6 +697,7 @@ export function init(container, ctx) {
     });
 
     promptBtn.addEventListener("click", async () => {
+      if (promptBtn.getAttribute("aria-busy") === "true") return;   // double tap
       promptText = "";
       promptBody.replaceChildren(ui.skeleton("lines", 2));
       try {
@@ -1106,15 +1107,16 @@ export function init(container, ctx) {
   // =========================================================================================
   function buildCorrect() {
     const pane = el("section", { class: "eng-pane", "aria-label": "Fix writing" });
-    const input = el("textarea", { id: "eng-correct-text", rows: "6", maxlength: "5000",
+    const input = el("textarea", { id: "eng-correct-text", rows: "6", maxlength: "4000",
       placeholder: "Paste or write an email, message or paragraph here.", "aria-label": "Your text" });
-    const counter = el("span", { class: "eng-counter ui-num muted" }, "0 / 5000");
-    input.addEventListener("input", () => { counter.textContent = `${input.value.length} / 5000`; });
+    const counter = el("span", { class: "eng-counter ui-num muted" }, "0 / 4000");
+    input.addEventListener("input", () => { counter.textContent = `${input.value.length} / 4000`; });
     const button = ui.button({ label: "Fix my English", icon: "wand", variant: "primary", size: "lg", block: true });
     const clear = ui.button({ label: "Clear", variant: "ghost" });
     const result = el("div", { class: "eng-result", "aria-live": "polite" });
 
     async function run() {
+      if (button.getAttribute("aria-busy") === "true") return;   // double tap
       const text = input.value.trim();
       if (!text) { result.replaceChildren(emptyBox("Nothing to check yet", "Write or paste some text first.", "pen")); input.focus(); return; }
       result.setAttribute("aria-busy", "true");
@@ -1161,7 +1163,7 @@ export function init(container, ctx) {
       }
     }
     button.addEventListener("click", run);
-    clear.addEventListener("click", () => { input.value = ""; counter.textContent = "0 / 5000"; result.replaceChildren(); input.focus(); });
+    clear.addEventListener("click", () => { input.value = ""; counter.textContent = "0 / 4000"; result.replaceChildren(); input.focus(); });
 
     pane.append(
       el("div", { class: "ui-card eng-setup" },
@@ -1296,6 +1298,7 @@ export function init(container, ctx) {
       event.preventDefault();
       const word = addInput.value.trim();
       if (!word) { addInput.focus(); return; }
+      if (addBtn.getAttribute("aria-busy") === "true") return;   // double tap
       added.replaceChildren(loadingBox(`Looking up "${word}"...`));
       try {
         const entry = await ui.busy(addBtn, api("/api/english/vocab/add", { method: "POST", json: { word, provider } }));

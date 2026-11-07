@@ -3,7 +3,7 @@
 // Card text, deck names and model output are only ever shown with textContent (via el()).
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
-import { createSourcePicker, createProviderSwitch, ensureCss, store, clip } from "./sourcepicker.js";
+import { createSourcePicker, createProviderSwitch, ensureCss, store, clip, guardedSheet } from "./sourcepicker.js";
 
 const COLORS = ["#6366f1", "#3b82f6", "#14b8a6", "#22c55e", "#f59e0b", "#f97316", "#ef4444", "#ec4899", "#8b5cf6", "#64748b"];
 const GRADES = [
@@ -31,6 +31,11 @@ function stateTone(card) {
   if (card.state === "new") return "accent";
   const l = dueLabel(card);
   return l.startsWith("Due") ? "warn" : "";
+}
+
+// Card text is plain, but authors write `code`. Show those spans as code instead of with literal backticks.
+function withCode(text) {
+  return String(text ?? "").split(/`([^`\n]+)`/).map((part, i) => (i % 2 ? el("code", {}, part) : part)).filter((x) => x !== "");
 }
 
 export function init(container, ctx) {
@@ -244,7 +249,7 @@ export function init(container, ctx) {
   }
 
   function deckMenu(deck) {
-    const s = ui.sheet({ title: deck.name, content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
+    const s = guardedSheet(ui, { title: deck.name, content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
       ui.listRow({ icon: "edit", title: "Rename or recolour", onClick: () => { s.close(); deckSheet(deck); } }),
       ui.listRow({ icon: "upload", tone: "teal", title: "Import cards", sub: "Paste tab-separated or CSV text", onClick: () => { s.close(); importSheet(deck); } }),
       ui.listRow({ icon: "download", tone: "info", title: "Export deck", sub: "Download as TSV, CSV or JSON", onClick: () => { s.close(); exportSheet(deck); } }),
@@ -263,7 +268,7 @@ export function init(container, ctx) {
       document.body.append(a); a.click(); a.remove();
       s.close();
     } });
-    const s = ui.sheet({ title: "Export deck", content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
+    const s = guardedSheet(ui, { title: "Export deck", content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
       row("tsv", "Tab-separated (TSV)", "Front, back, tags. Works with Anki."), row("csv", "CSV", "Opens in spreadsheets."), row("json", "JSON", "Everything, including review history."),
     ]) });
   }
@@ -282,7 +287,7 @@ export function init(container, ctx) {
     }
     paintSw();
     const err = el("div", {});
-    const s = ui.sheet({ title: deck ? "Edit deck" : "New deck", content: el("div", { class: "ui-stack" },
+    const s = guardedSheet(ui, { title: deck ? "Edit deck" : "New deck", content: el("div", { class: "ui-stack" },
       el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Name"), name),
       el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Description"), desc),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Colour"), swatches), err),
@@ -337,7 +342,7 @@ export function init(container, ctx) {
         return true;
       } catch (error) { err.replaceChildren(ui.notice(error.message, { tone: "bad" })); return false; }
     }
-    const s = ui.sheet({ title: card ? "Edit card" : "New card", content: el("div", { class: "ui-stack" }, ...parts),
+    const s = guardedSheet(ui, { title: card ? "Edit card" : "New card", content: el("div", { class: "ui-stack" }, ...parts),
       actions: [
         ...(card ? [] : [{ label: "Save and add another", variant: "tonal", async onClick() {
           if (await save()) { front.value = ""; back.value = ""; front.focus(); ctx.toast("Card added", { kind: "good" }); }
@@ -351,7 +356,7 @@ export function init(container, ctx) {
   async function explainCard(card, button) {
     const run = async () => {
       const data = await api(`/api/cards/cards/${encodeURIComponent(card.id)}/explain`, { method: "POST", json: { model: model() } });
-      const s = ui.sheet({ title: "Explanation", content: el("div", { class: "ui-stack" },
+      const s = guardedSheet(ui, { title: "Explanation", content: el("div", { class: "ui-stack" },
         el("div", { class: "cd-explain-card" }, el("strong", {}, card.front_render || card.front), el("span", {}, card.back_render || card.back)),
         el("p", { class: "cd-explain" }, data.explanation || "No explanation came back.")) });
       return s;
@@ -374,7 +379,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Style"), styleSeg),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Model"), providerHost));
     let controller = null;
-    const s = ui.sheet({ title: "Generate cards", content: setup, class: "cd-gensheet", onClose: () => controller?.abort() });
+    const s = guardedSheet(ui, { title: "Generate cards", content: setup, class: "cd-gensheet", onClose: () => controller?.abort() });
     s.setActions([{ label: "Generate", icon: "sparkles", variant: "primary", onClick: () => { run(); return false; } }]);
 
     function showSetup(errorText) {
@@ -460,7 +465,7 @@ export function init(container, ctx) {
       if (!select.value && !newName.value.trim()) { result.replaceChildren(ui.notice("Name the new deck.", { tone: "warn" })); return false; }
       return true;
     };
-    const s = ui.sheet({ title: "Import cards", content: el("div", { class: "ui-stack" },
+    const s = guardedSheet(ui, { title: "Import cards", content: el("div", { class: "ui-stack" },
       el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Cards"), text,
         el("p", { class: "ui-hint" }, "One per line: front, a tab, back, and optional tags. CSV works too.")),
       ui.button({ label: "Choose a file", icon: "file", variant: "tonal", size: "sm", onClick: () => pick.click() }), pick,
@@ -549,10 +554,10 @@ export function init(container, ctx) {
       const faceHead = (text) => el("div", { class: "cd-face-kind" }, text);
       const meta = el("div", { class: "cd-face-meta" }, ui.badge(STATE_LABEL[card.state] || "Card", card.state === "new" ? "accent" : ""),
         ...(card.tags || []).slice(0, 3).map((t) => el("span", { class: "cd-tag" }, `#${t}`)));
-      const front = el("div", { class: "cd-face cd-face--front" }, faceHead(card.is_cloze ? "Fill the gap" : "Question"), el("div", { class: "cd-face-text" }, card.front_render || card.front), meta,
+      const front = el("div", { class: "cd-face cd-face--front" }, faceHead(card.is_cloze ? "Fill the gap" : "Question"), el("div", { class: "cd-face-text" }, ...withCode(card.front_render || card.front)), meta,
         el("div", { class: "cd-face-hint" }, "Tap to show the answer"));
       const explain = ui.button({ label: "Explain", icon: "sparkles", variant: "tonal", size: "sm", onClick: (e) => { e.stopPropagation(); explainCard(card, e.currentTarget); } });
-      const back = el("div", { class: "cd-face cd-face--back" }, faceHead("Answer"), el("div", { class: "cd-face-text" }, card.back_render || card.back || card.front_render), explain);
+      const back = el("div", { class: "cd-face cd-face--back" }, faceHead("Answer"), el("div", { class: "cd-face-text" }, ...withCode(card.back_render || card.back || card.front_render)), explain);
       const inner = el("div", { class: "cd-flip-inner" }, front, back);
       const flip = el("div", { class: "cd-flip", role: "button", tabindex: "0", "aria-label": "Flip card", onclick: () => flipNow() }, inner);
       flip.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); flipNow(); } });
@@ -696,7 +701,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Your level"), levelSeg),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Model"), providerHost), err);
     let ctl = null;
-    const s = ui.sheet({ title: "New roadmap", content: form, onClose: () => ctl?.abort() });
+    const s = guardedSheet(ui, { title: "New roadmap", content: form, onClose: () => ctl?.abort() });
     function showForm(message) {
       s.setTitle("New roadmap");
       s.body.replaceChildren(message ? el("div", {}, ui.notice(message, { tone: "bad" })) : null, form);
@@ -795,7 +800,7 @@ export function init(container, ctx) {
   function regenerateSheet(rm, w) {
     const note = el("textarea", { rows: "3", maxlength: "300", placeholder: "Optional: for example, more hands-on projects", "aria-label": "What should change" });
     const err = el("div", {});
-    ui.sheet({ title: `Redo week ${w.n}`, content: el("div", { class: "ui-stack" },
+    guardedSheet(ui, { title: `Redo week ${w.n}`, content: el("div", { class: "ui-stack" },
       el("p", { class: "cd-sub" }, "The model rewrites this week. Its tasks start unticked; other weeks stay as they are."),
       el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "What should change?"), note), err),
     actions: [{ label: "Rewrite week", icon: "sparkles", variant: "primary", async onClick() {
@@ -805,7 +810,7 @@ export function init(container, ctx) {
   }
 
   function roadmapMenu(rm) {
-    const s = ui.sheet({ title: rm.title, content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
+    const s = guardedSheet(ui, { title: rm.title, content: el("div", { class: "ui-list ui-list--inset ui-list--icons" }, [
       ui.listRow({ icon: "edit", title: "Rename", onClick: () => { s.close(); renameSheet(rm); } }),
       ui.listRow({ icon: "trash", tone: "bad", title: "Delete roadmap", sub: "Decks made from it are kept", onClick: async () => {
         s.close();
@@ -818,7 +823,7 @@ export function init(container, ctx) {
   function renameSheet(rm) {
     const input = el("input", { type: "text", maxlength: "200", value: rm.title, "aria-label": "Roadmap name" });
     const err = el("div", {});
-    ui.sheet({ title: "Rename roadmap", content: el("div", { class: "ui-stack" }, input, err),
+    guardedSheet(ui, { title: "Rename roadmap", content: el("div", { class: "ui-stack" }, input, err),
       actions: [{ label: "Save", variant: "primary", async onClick() {
         if (!input.value.trim()) { err.replaceChildren(ui.notice("The name can't be empty.", { tone: "warn" })); return false; }
         try { await api(`/api/roadmaps/${encodeURIComponent(rm.id)}`, { method: "PATCH", json: { title: input.value.trim() } }); renderRoadmap(); }

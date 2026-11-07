@@ -1,4 +1,4 @@
-"""Command line: python -m hub init | serve | token | doctor | add-script"""
+"""Command line: python -m hub setup | init | serve | token | doctor | add-script"""
 from __future__ import annotations
 
 import argparse
@@ -158,6 +158,11 @@ def cmd_doctor(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_setup(args) -> int:
+    from .setup_wizard import run_setup
+    return run_setup(args)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m hub", description=__doc__)
     parser.add_argument("--config", help="path to hub.json (default ~/.laptop-hub/hub.json)")
@@ -168,6 +173,9 @@ def main(argv=None) -> int:
     init.add_argument("--jarvis-dir", metavar="FOLDER", help="your jarvis-voice-assistant folder (optional)")
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
+    setup = sub.add_parser("setup", help="interactive one-command setup: Jarvis, Gmail, Asana, calendar, push, auto-start")
+    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,claude,phone,name,warp,autostart")
+    setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -184,7 +192,7 @@ def main(argv=None) -> int:
     if args.command == "add-script":
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
-            "add-script": cmd_add_script}[args.command](args)
+            "add-script": cmd_add_script, "setup": cmd_setup}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -24,13 +24,18 @@ class DemoAsana:
         def due(offset: int | None) -> str | None:
             return None if offset is None else (t + dt.timedelta(days=offset)).isoformat()
 
-        def task(gid, name, offset, project, notes, subtasks=(), comments=()):
-            return {"gid": gid, "name": name, "due_on": due(offset), "project": project,
+        def task(gid, name, offset, project, notes, subtasks=(), comments=(), priority=None):
+            level = {"High": 3, "Medium": 2}.get(priority, 0)
+            return {"priority": level, "custom_fields": [{"name": "Priority", "value": priority}] if priority else [],
+                    "notes_mentions": [], "assigned_to_me": True, "followed_by_me": False,
+                    "modified_at": "", "created_by": "",
+                    "gid": gid, "name": name, "due_on": due(offset), "project": project,
                     "completed": False, "permalink_url": f"https://app.asana.com/0/0/{gid}",
                     "notes": _notes(notes),
                     "subtasks": [{"gid": f"{gid}{i}", "name": n, "completed": done}
                                  for i, (n, done) in enumerate(subtasks, 1)],
-                    "comments": [{"author": a, "text": x, "created_at": c} for a, x, c in comments]}
+                    "comments": [{"author": a, "text": x, "created_at": c, "mentions": []}
+                                 for a, x, c in comments]}
 
         stamp = f"{t.isoformat()}T08:30:00.000Z"
         self.tasks = [
@@ -42,10 +47,10 @@ class DemoAsana:
                  "Users land on a blank page after the SSO callback on Safari.",
                  [("Reproduce on Safari", True), ("Patch the callback", False), ("Add a regression test", False)],
                  [("Rahul Sharma", "I can reproduce it on iOS 17 only.", stamp),
-                  ("You", "Looking at the cookie flags now.", stamp)]),
+                  ("You", "Looking at the cookie flags now.", stamp)], priority="High"),
             task("1003", "Prepare the demo for Thursday", 0, "Launch",
                  "Walk through signup, the dashboard and the export. Keep it under 15 minutes.",
-                 [("Write the script", False), ("Rehearse once", False)]),
+                 [("Write the script", False), ("Rehearse once", False)], priority="Medium"),
             task("1004", "Review Priya's pull request", 0, "Web app",
                  "PR adds rate limiting to the public API. Check the limits and the tests."),
             task("1005", "Plan next sprint", 2, "Team",
@@ -59,6 +64,9 @@ class DemoAsana:
     def me(self) -> dict:
         return {"gid": "1", "name": "Demo User", "workspace_gid": "9"}
 
+    def followed_tasks(self) -> list[dict]:
+        return []
+
     def _find(self, gid: str) -> dict:
         check_gid(gid)
         for t in self.tasks:
@@ -67,8 +75,8 @@ class DemoAsana:
         raise AsanaError("Asana can't find that task. It may be deleted or not shared with you.", 404)
 
     def open_tasks(self) -> list[dict]:
-        keys = ("gid", "name", "due_on", "project", "completed", "permalink_url")
-        return [{k: t[k] for k in keys} for t in self.tasks if not t["completed"]]
+        keys = ("gid", "name", "due_on", "project", "completed", "permalink_url", "priority", "custom_fields")
+        return [copy.deepcopy({k: t[k] for k in keys}) for t in self.tasks if not t["completed"]]
 
     def task_detail(self, gid: str) -> dict:
         return copy.deepcopy(self._find(gid))
@@ -76,7 +84,7 @@ class DemoAsana:
     def comment(self, gid: str, text: str) -> None:
         task = self._find(gid)
         task["comments"].append({"author": "You", "text": text,
-                                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat()})
+                                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat(), "mentions": []})
 
     def complete(self, gid: str) -> None:
         self._find(gid)["completed"] = True

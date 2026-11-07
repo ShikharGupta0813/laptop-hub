@@ -2,6 +2,7 @@
 // Everything from the API is rendered with el()/textContent, never innerHTML.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { guardedSheet } from "./sourcepicker.js";
 
 // replaceChildren that skips null/false entries (conditional children).
 function fill(node, ...kids) { node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); }
@@ -89,7 +90,7 @@ export function init(container, ctx) {
 
   async function save() {
     const text = input.value.trim();
-    if (!text || !previewOk) return;
+    if (!text || !previewOk || addBtn.getAttribute("aria-busy") === "true") return;
     try {
       const r = await ui.busy(addBtn, api("/api/reminders/quick", { method: "POST", json: { text } }));
       ui.toast(r.echo || "Saved", { kind: "good", icon: r.kind === "timer" ? "timer" : "alarm" });
@@ -110,12 +111,16 @@ export function init(container, ctx) {
     return Number.isNaN(ends) ? t.remaining_seconds : (ends - Date.now()) / 1000;
   }
 
+  let startingTimer = false;
   async function startTimer(minutes) {
+    if (startingTimer) return;   // a double tap would start two timers
+    startingTimer = true;
     try {
       await api("/api/reminders/timers", { method: "POST", json: { seconds: minutes * 60, label: `${minutes} min timer` } });
       ui.haptic("success");
       await loadTimers();
     } catch (error) { ui.toast(message(error), { kind: "bad" }); }
+    finally { startingTimer = false; }
   }
 
   async function cancelTimer(t) {
@@ -170,7 +175,7 @@ export function init(container, ctx) {
     try {
       const data = await api("/api/reminders/timers");
       timers = data.timers || [];
-    } catch (_) { timers = []; }
+    } catch (_) { /* offline for a moment: keep the timers already on screen */ }
     renderTimers();
   }
 
@@ -242,6 +247,7 @@ export function init(container, ctx) {
   async function loadAll(force) { await Promise.all([load(force), loadTimers()]); }
 
   async function markDone(r, check) {
+    if (check.classList.contains("is-done")) return;   // a double tap would mark a repeating reminder done twice
     check.classList.add("is-done");
     try {
       await api(`/api/reminders/${encodeURIComponent(r.id)}/done`, { method: "POST" });
@@ -269,7 +275,7 @@ export function init(container, ctx) {
 
   function openSnooze(r) {
     const opts = [["10 minutes", "In 10 minutes", 10], ["1 hour", "In 1 hour", 60], ["tomorrow 9:00", "Tomorrow at 9:00", minutesUntilTomorrow()]];
-    const s = ui.sheet({ title: "Snooze", content: el("div", { class: "ui-list ui-list--inset" },
+    const s = guardedSheet(ui, { title: "Snooze", content: el("div", { class: "ui-list ui-list--inset" },
       ...opts.map(([short, long, min]) => el("button", { type: "button", class: "ui-row rm-snooze-opt", onclick: () => { s.close(); snooze(r, min, short); } },
         ui.tile("clock", "accent", "sm"), el("span", { class: "grow" }, long), ui.icon("chevron-right")))) });
     s.body.prepend(el("p", { class: "rm-snooze-for" }, r.text));
@@ -296,7 +302,7 @@ export function init(container, ctx) {
         try { await api(`/api/reminders/${encodeURIComponent(r.id)}`, { method: "DELETE" }); sheet.close(); ui.toast("Deleted", { kind: "good" }); load(true); }
         catch (error) { err.textContent = message(error); err.hidden = false; }
       } }));
-    const sheet = ui.sheet({ title: "Edit reminder", content: body, actions: [
+    const sheet = guardedSheet(ui, { title: "Edit reminder", content: body, actions: [
       { label: "Save", icon: "check", variant: "primary", onClick: async () => {
         const patch = {};
         const t = text.value.trim();

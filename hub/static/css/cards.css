@@ -176,3 +176,4 @@ body.cd-noscroll { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .cd-flip-inner, .cd-review { transition: none; }
 }
+.cd-face-text code { font-size: .85em; padding: 0 .3em; border-radius: var(--r-xs); background: var(--c-surface-2); }

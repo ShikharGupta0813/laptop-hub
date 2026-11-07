@@ -400,6 +400,10 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         hour = now().hour
         period = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening" if 17 <= hour < 22 else "night"
         out: dict = {"period": period}
+        nick = str(getattr(ctx.config, "display_name", "") or "").strip()
+        if nick:                                        # the owner's chosen call-sign beats their Asana name
+            out["name"] = nick[:40]
+            return out
         status = await memo.try_get("/api/work/status")
         user = ((status or {}).get("asana") or {}).get("user") if isinstance(status, dict) else None
         if isinstance(user, str) and user.strip():

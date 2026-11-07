@@ -2,6 +2,8 @@
 
 Your laptop, from your phone, in one app you install on the home screen.
 
+First time? Run `python -m hub setup` (see docs/SETUP-WINDOWS.md, "One-command setup").
+
 | Screen | What it does |
 |---|---|
 | **Home** | One dashboard: what needs you now (reminders, urgent mail, pending payments), today's meetings, quick actions. |

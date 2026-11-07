@@ -363,7 +363,8 @@ class AsanaTest(WorkCase):
     def test_task_shape(self):
         first = self.tasks("?filter=overdue")["tasks"][0]
         self.assertEqual(first, {"gid": "14", "name": "Old", "due_on": "2026-11-02", "project": "Web",
-                                 "completed": False, "permalink_url": "https://app.asana.com/0/0/14"})
+                                 "completed": False, "permalink_url": "https://app.asana.com/0/0/14",
+                                 "priority": 0, "custom_fields": []})
         beta = [t for t in self.tasks("?filter=today")["tasks"] if t["gid"] == "15"][0]
         self.assertIsNone(beta["project"])
 
@@ -395,7 +396,8 @@ class AsanaTest(WorkCase):
         self.assertEqual(task["notes"], "Do the thing")
         self.assertEqual(task["subtasks"], [{"gid": "121", "name": "Step one", "completed": True},
                                             {"gid": "122", "name": "Step two", "completed": False}])
-        self.assertEqual(task["comments"], [{"author": "Priya", "text": "Looks good", "created_at": "2026-11-03T10:00:00Z"}])
+        self.assertEqual(task["comments"], [{"author": "Priya", "text": "Looks good", "created_at": "2026-11-03T10:00:00Z",
+                                             "mentions": []}])
         self.assertEqual(task["name"], "Alpha today")
 
     def test_comment_and_complete_write_and_audit_without_the_text(self):
@@ -484,10 +486,88 @@ class AsanaTest(WorkCase):
 
     def test_status_shows_the_user_and_calendar_etc(self):
         status = self.build().get("/api/work/status").json()
-        self.assertEqual(status["asana"], {"configured": True, "user": "Owner"})
+        self.assertEqual(status["asana"], {"configured": True, "user": "Owner", "gid": "1"})
         self.assertEqual(status["calendar"], {"configured": True})
         self.assertEqual(status["email"], {"configured": True, "address": "owner@example.com"})
         self.assertEqual(status["chat"], {"configured": True, "spaces": ["engineering", "standup"]})
+
+
+class PriorityAndMentionsTest(WorkCase):
+    def test_priority_mapping_table(self):
+        table = {"High": 3, "high": 3, "Urgent": 3, "P0": 3, "p1": 3, "Critical": 3, "P1 - ship it": 3,
+                 "Medium": 2, "P2": 2, "Low": 1, "P3": 1, "low priority": 1,
+                 "": 0, "Someday": 0, "Highlight": 0, "P10": 0, None: 0, 5: 0}
+        for name, want in table.items():
+            self.assertEqual(asana_mod.priority_level(name), want, name)
+
+    def field(self, name, value, **extra):
+        return {"name": name, "type": "enum", "enum_value": {"name": value}, **extra}
+
+    def test_task_list_exposes_priority_and_minimal_custom_fields(self):
+        rows = [{**task_row("21", "Hot", "2026-11-04"), "custom_fields": [
+                    self.field("Priority", "P1 High"), self.field("Team", "Core"),
+                    {"name": "Empty", "enum_value": None}]},
+                {**task_row("22", "Mild", "2026-11-04"), "custom_fields": [self.field("priority", "Medium")]},
+                {**task_row("23", "Other field only", "2026-11-04"), "custom_fields": [self.field("Severity", "High")]},
+                task_row("24", "Plain", "2026-11-04")]
+        t = make_asana([("GET", "/tasks", ok(rows))])
+        got = {x["gid"]: x for x in self.build(transport=t).get("/api/work/asana/tasks?filter=all").json()["tasks"]}
+        self.assertEqual([got[g]["priority"] for g in "21 22 23 24".split()], [3, 2, 0, 0])
+        self.assertEqual(got["21"]["custom_fields"], [{"name": "Priority", "value": "P1 High"},
+                                                      {"name": "Team", "value": "Core"}])
+        self.assertEqual(got["24"]["custom_fields"], [])
+        query = t.calls[-1][2]["opt_fields"]
+        for f in ("custom_fields.name", "custom_fields.enum_value.name", "assignee.gid", "followers.gid"):
+            self.assertIn(f, query)
+
+    def test_demo_data_has_a_high_and_a_medium_task(self):
+        os.environ["HUB_WORK_DEMO"] = "1"
+        try:
+            client = self.build(transport=None)
+            tasks = client.get("/api/work/asana/tasks?filter=all").json()["tasks"]
+        finally:
+            os.environ.pop("HUB_WORK_DEMO", None)
+        self.assertEqual(sorted(t["priority"] for t in tasks if t["priority"]), [2, 3])
+        self.assertTrue(all("custom_fields" in t for t in tasks))
+
+    def test_followed_tasks_search_is_cached_and_skips_assigned_and_degrades(self):
+        calls = []
+
+        def search(q, b):
+            calls.append(q)
+            return 200, {}, {"data": [{**task_row("31", "Followed", "2026-11-05"), "assignee": {"gid": "99"}},
+                                      {**task_row("32", "Mine", "2026-11-05"), "assignee": {"gid": "1"}},
+                                      {**task_row("33", "Done", "2026-11-05", completed=True)}]}
+        t = make_asana([("GET", "/workspaces/77/tasks/search", search)])
+        client = AsanaClient("secret-token", t, sleep=self.sleeps.append)
+        self.assertEqual([x["gid"] for x in client.followed_tasks()], ["31"])
+        client.followed_tasks()
+        self.assertEqual(len(calls), 1)                       # cached
+        self.assertEqual(calls[0]["followers.any"], "me")
+        self.assertEqual(calls[0]["completed"], "false")
+        # a free plan: Asana refuses the search; that is an empty list, not an error
+        t2 = make_asana([("GET", "/workspaces/77/tasks/search", lambda q, b: (402, {}, {"errors": []}))])
+        self.assertEqual(AsanaClient("secret-token", t2).followed_tasks(), [])
+        response = self.build(transport=t2).get("/api/work/asana/followed")
+        self.assertEqual((response.status_code, response.json()), (200, {"tasks": []}))
+
+    def test_detail_exposes_mention_gids_from_rich_text_only(self):
+        html = '<body>Hi <A data-asana-gid="1">@Owner</A> and <a data-asana-gid="1">again</a> <a data-asana-gid="x\'1">no</a></body>'
+        t = make_asana([
+            ("GET", "/tasks/12", ok({**task_row("12", "A", "2026-11-04"), "notes": "n", "html_notes": html,
+                                     "modified_at": "2026-11-04T01:00:00Z", "created_by": {"name": "Pepper"},
+                                     "assignee": {"gid": "1"}, "followers": [{"gid": "5"}]})),
+            ("GET", "/tasks/12/subtasks", ok([])),
+            ("GET", "/tasks/12/stories", ok([{"resource_subtype": "comment_added", "text": "hey", "html_text": html,
+                                              "created_at": "2026-11-04T02:00:00Z", "created_by": {"name": "P"}}]))])
+        task = self.build(transport=t).get("/api/work/asana/tasks/12").json()["task"]
+        self.assertEqual(task["notes_mentions"], ["1"])
+        self.assertEqual(task["comments"][0]["mentions"], ["1"])
+        self.assertTrue(task["assigned_to_me"])
+        self.assertFalse(task["followed_by_me"])
+        self.assertEqual((task["created_by"], task["modified_at"]), ("Pepper", "2026-11-04T01:00:00Z"))
+        stories = [c for c in t.calls if c[1] == "/tasks/12/stories"][0]
+        self.assertIn("html_text", stories[2]["opt_fields"])
 
 
 class TokenTest(unittest.TestCase):

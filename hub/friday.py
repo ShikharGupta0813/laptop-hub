@@ -42,8 +42,10 @@ MAX_APPS = 5
 MAX_SEEN = 2000
 MAX_ALERTS = 200
 MAX_MARKS = 500
-MAX_ALERTS_PER_TICK = 10
-MAX_DETAIL_TASKS = 12            # Asana task details read per brief / per check
+MAX_ALERTS_PER_TICK = 50         # alerts recorded per round; the rest wait for the next round
+MAX_NOTIFY_PER_TICK = 5          # notifications per round; the rest become one "and N more" summary
+MAX_DETAIL_TASKS = 12            # assigned Asana task details read per brief / per check
+MAX_FOLLOWED_TASKS = 6           # followed (not assigned) task details read per brief / per check
 SECTION_CAP = 8
 FILE_SCAN_VISITS = 3000
 MEETING_SOON = dt.timedelta(hours=2)
@@ -79,6 +81,28 @@ ID_RE = re.compile(r"^[0-9a-f]{12}$")
 BLOCK_ID_RE = re.compile(r"^[0-9a-f]{10}$")
 CLOCK_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 NAME_RE = re.compile(r"^[\w .'\-]{1,20}$")
+
+
+def priority_value(task: dict) -> int:
+    """0-3 from the work route's `priority` (an int); an old-style word ("high", "urgent") counts as 3."""
+    p = task.get("priority")
+    if isinstance(p, bool):
+        return 0
+    if isinstance(p, int):
+        return max(0, min(3, p))
+    return 3 if str(p or "").strip().lower() in ("high", "urgent") else 0
+
+
+def mentions_owner(text: str, owner: str) -> bool:
+    """True when `text` has "@<full name>" or "@<first name>" (any case, any punctuation after it).
+    A longer name that merely starts the same ("@Shikharr" for "Shikhar") does not match, and neither does
+    an e-mail address."""
+    names = {n for n in (" ".join(owner.split()).lower(), owner.split()[0].lower() if owner.split() else "") if n}
+    if not names:
+        return False
+    flat = " ".join(text.lower().split())
+    return any(re.search(r"(?<![\w.@])@" + r"\s+".join(map(re.escape, n.split())) + r"(?!\w)", flat)
+               for n in names)
 
 
 def clean(value: Any, limit: int = 200) -> str:
@@ -396,7 +420,8 @@ class Engine:
                 "marks": {"last_check": marks.get("last_check") if isinstance(marks.get("last_check"), str) else None,
                           "comments": marks.get("comments") if isinstance(marks.get("comments"), dict) else {},
                           "task_state": marks.get("task_state") if isinstance(marks.get("task_state"), dict) else None,
-                          "owner": marks.get("owner") if isinstance(marks.get("owner"), str) else ""},
+                          "owner": marks.get("owner") if isinstance(marks.get("owner"), str) else "",
+                          "owner_gid": marks.get("owner_gid") if isinstance(marks.get("owner_gid"), str) else ""},
                 "plan": raw.get("plan") if isinstance(raw.get("plan"), dict) else None}
 
     def save(self) -> None:
@@ -422,12 +447,18 @@ class Engine:
 
     def address(self, capital: bool = False) -> str:
         a = self.settings["address_as"]
+        nick = str(getattr(self.ctx.config, "display_name", "") or "").strip()
+        if nick and a == DEFAULTS["address_as"]:      # never changed by the owner: use their own call-sign
+            a = nick[:20]
         return a[:1].upper() + a[1:] if capital else a
 
     # -- sources (each one may fail on its own)
 
     async def src_asana(self) -> list[dict]:
         return _rows(await self.get("/api/work/asana/tasks", {"filter": "all"}), "tasks")
+
+    async def src_followed(self) -> list[dict]:
+        return _rows(await self.get("/api/work/asana/followed"), "tasks")
 
     async def src_todos(self) -> list[dict]:
         return _rows(await self.get("/api/todos", {"done": "false"}), "tasks")
@@ -456,26 +487,53 @@ class Engine:
     async def src_reminders(self) -> list[dict]:
         return _rows(await self.get("/api/reminders"), "reminders")
 
-    async def owner_name(self) -> str:
+    async def owner_ids(self) -> tuple[str, str]:
+        """(Asana user name, Asana user gid) of the owner, from the work status (which caches users/me).
+        The last good answer is kept when Asana is briefly unreachable."""
+        marks = self.data["marks"]
         data = await self.get("/api/work/status")
-        name = clean(((data or {}).get("asana") or {}).get("user"), 100)
+        info = (data or {}).get("asana") or {}
+        name = clean(info.get("user"), 100)
+        gid = str(info.get("gid") or "")
+        gid = gid if re.fullmatch(r"[0-9]{1,30}", gid) else ""
         if name:
-            self.data["marks"]["owner"] = name
-            return name
-        if self.data["marks"]["owner"]:
-            return self.data["marks"]["owner"]
+            marks["owner"] = name
+            if gid:
+                marks["owner_gid"] = gid
+            return name, gid or marks["owner_gid"]
+        if marks["owner"]:
+            return marks["owner"], marks["owner_gid"]
         raise RuntimeError("Asana did not say who you are, so comments can't be checked.")
 
-    async def comments_since(self, tasks: list[dict], since: dt.datetime) -> list[dict]:
-        """Comments by other people on the owner's open tasks, newer than `since` (newest tasks first)."""
-        owner = (await self.owner_name()).lower()
+    async def owner_name(self) -> str:
+        return (await self.owner_ids())[0]
+
+    async def comments_since(self, tasks: list[dict], since: dt.datetime,
+                             followed: list[dict] | None = None) -> list[dict]:
+        """Things that concern the owner, newer than `since`, oldest first. Each: gid, task, author, text,
+        created_at, mention (bool), kind ("comment" | "description").
+
+        On the owner's open tasks: every comment by someone else, and an @mention (the owner's name in text, or the
+        owner's gid in the comment's rich text) is flagged. On tasks the owner only follows: mentions only.
+        A mention in a task description (checked when the task changed after `since`) is a "description" item."""
+        owner, owner_gid = await self.owner_ids()
+        owner_l = owner.lower()
         tz = self.clock().tzinfo
-        picked = sorted([t for t in tasks if re.fullmatch(r"[0-9]{1,30}", str(t.get("gid") or ""))],
-                        key=lambda t: (t.get("due_on") is None, str(t.get("due_on") or "")))[:MAX_DETAIL_TASKS]
+        ok_gid = lambda t: re.fullmatch(r"[0-9]{1,30}", str(t.get("gid") or ""))   # noqa: E731
+        by_due = lambda t: (t.get("due_on") is None, str(t.get("due_on") or ""))   # noqa: E731
+        mine = sorted([t for t in tasks if ok_gid(t)], key=by_due)[:MAX_DETAIL_TASKS]
+        taken = {str(t["gid"]) for t in mine}
+        theirs = sorted([t for t in followed or [] if ok_gid(t) and str(t["gid"]) not in taken],
+                        key=by_due)[:MAX_FOLLOWED_TASKS]
+        picked = [(t, False) for t in mine] + [(t, True) for t in theirs]
         gate = asyncio.Semaphore(4)
         failures = []
 
-        async def one(task):
+        def is_mention(text: str, gids: Any) -> bool:
+            listed = isinstance(gids, list) and bool(owner_gid) and owner_gid in [str(g) for g in gids]
+            return listed or mentions_owner(text, owner)
+
+        async def one(task, follower_only):
             async with gate:
                 try:
                     detail = (await self.get(f"/api/work/asana/tasks/{task['gid']}")).get("task") or {}
@@ -483,19 +541,31 @@ class Engine:
                     failures.append(str(exc))
                     return []
             found = []
+            name = clean(task.get("name"), 120) or "a task"
             for c in _rows(detail.get("comments")):
                 author = clean(c.get("author"), 60) or "Someone"
                 when = parse_when(c.get("created_at"), tz)
-                if when is None or when <= since or author.lower() == owner:
+                if when is None or when <= since or author.lower() == owner_l:
                     continue
                 text = clean(c.get("text"), 2000)
-                first = owner.split(" ")[0] if owner else ""
-                mention = bool(owner) and ("@" + owner in text.lower() or (first and "@" + first in text.lower()))
-                found.append({"gid": str(task["gid"]), "task": clean(task.get("name"), 120) or "a task",
-                              "author": author, "text": text, "created_at": when, "mention": mention})
+                mention = is_mention(text, c.get("mentions"))
+                if follower_only and not mention:
+                    continue
+                found.append({"gid": str(task["gid"]), "task": name, "author": author, "text": text,
+                              "created_at": when, "mention": mention, "kind": "comment"})
+            notes = detail.get("notes") if isinstance(detail.get("notes"), str) else ""
+            changed = parse_when(detail.get("modified_at"), tz)
+            author = clean(detail.get("created_by"), 60) or "Someone"
+            if author.lower() == owner_l:
+                author = "Someone"   # the creator is not necessarily who edited the description
+            if changed and changed > since \
+                    and is_mention(clean(notes[:20000], 20000), detail.get("notes_mentions")):
+                found.append({"gid": str(task["gid"]), "task": name, "author": author,
+                              "text": clean(notes, 2000), "created_at": changed, "mention": True,
+                              "kind": "description"})
             return found
 
-        results = await asyncio.gather(*(one(t) for t in picked))
+        results = await asyncio.gather(*(one(t, f) for t, f in picked))
         if picked and len(failures) == len(picked):
             raise RuntimeError(failures[0])
         return sorted([c for r in results for c in r], key=lambda c: c["created_at"])
@@ -520,7 +590,12 @@ class Engine:
         if "asana_comments" in names:
             if "asana" in got:
                 try:
-                    got["asana_comments"] = await self.comments_since(got["asana"], now - dt.timedelta(hours=24))
+                    try:
+                        followed = await self.src_followed()
+                    except Exception:  # noqa: BLE001  following is a bonus; the rest still works
+                        followed = []
+                    got["asana_comments"] = await self.comments_since(got["asana"], now - dt.timedelta(hours=24),
+                                                                      followed)
                 except Exception:  # noqa: BLE001
                     failed.append("asana_comments")
             else:
@@ -554,7 +629,7 @@ class Engine:
                 continue
             name = clean(t.get("name"), 120) or "(untitled)"
             p, when = due_rank(t.get("due_on"))
-            if str(t.get("priority") or "").lower() in ("high", "urgent"):
+            if priority_value(t) >= 3:
                 p = max(p, 2)
             if p == 0:
                 later += 1
@@ -629,8 +704,10 @@ class Engine:
                 "mail")
 
         for c in got.get("asana_comments") or []:
-            add("tagged", f"{c['author']} {'mentioned you' if c['mention'] else 'commented'} on {c['task']}",
-                f"{c['author']} {'mentioned you' if c['mention'] else 'commented'} on {c['task']}",
+            verb = "mentioned you" if c["mention"] else "commented"
+            place = "in the description of" if c.get("kind") == "description" else "on"
+            add("tagged", f"{c['author']} {verb} {place} {c['task']}",
+                f"{c['author']} {verb} {place} {c['task']}",
                 3 if c["mention"] else 2, "asana", {"view": "work", "section": "asana", "id": c["gid"]},
                 -c["created_at"].timestamp())
 
@@ -1041,7 +1118,8 @@ class Engine:
         if len(self.data["seen"]) > MAX_SEEN:
             del self.data["seen"][:len(self.data["seen"]) - MAX_SEEN]
 
-    def raise_alert(self, key: str, kind: str, title: str, body: str, level: str, now: dt.datetime) -> dict | None:
+    def raise_alert(self, key: str, kind: str, title: str, body: str, level: str, now: dt.datetime,
+                    notify: bool = True) -> dict | None:
         if self._seen(key):
             return None
         self._remember(key)
@@ -1052,6 +1130,8 @@ class Engine:
             alert["spoken"] = speakable(f"{title}. {body}", 240)
         if in_quiet(self.settings["quiet_hours"], now):
             alert["quiet"] = True
+        elif not notify:
+            alert["batched"] = True   # recorded, but folded into the round's "and N more" notification
         else:
             try:
                 self.ctx.notify(title, body=body, level=level, link="friday", source="friday")
@@ -1073,36 +1153,71 @@ class Engine:
         raised: list[dict] = []
         Address = self.address(capital=True)
 
+        notified = 0       # notifications sent this round
+        held = 0           # alerts recorded this round without their own notification
+        resume: dt.datetime | None = None   # set when the round stops early: the next round starts here
+
         def budget_left() -> bool:
             return len(raised) < MAX_ALERTS_PER_TICK
 
+        def may_notify() -> bool:
+            return notified < MAX_NOTIFY_PER_TICK
+
+        def sent(alert: dict | None) -> None:
+            nonlocal notified, held
+            if alert is None:
+                return
+            raised.append(alert)
+            if alert["notified"]:
+                notified += 1
+            elif alert.get("batched"):
+                held += 1
+
         tasks = None
+        followed: list[dict] = []
         try:
             tasks = await self.src_asana()
         except Exception:  # noqa: BLE001
             pass
-
-        # (a) comments by other people on the owner's open tasks
         if tasks is not None:
             try:
-                comments = await self.comments_since(tasks, floor)
+                followed = await self.src_followed()
+            except Exception:  # noqa: BLE001  following is a bonus
+                followed = []
+
+        # (a) @mentions of the owner, and comments by other people on the owner's open tasks (oldest first)
+        if tasks is not None:
+            try:
+                comments = await self.comments_since(tasks, floor, followed)
             except Exception:  # noqa: BLE001
                 comments = []
+            fresh = []
             for c in comments:
-                mark = parse_when(marks["comments"].get(c["gid"]), now.tzinfo)
+                mark = parse_when(marks["comments"].get(("d:" if c["kind"] == "description" else "") + c["gid"]),
+                                  now.tzinfo)
                 if mark and c["created_at"] <= mark:
                     continue
-                if not budget_left():
-                    break
+                fresh.append(c)
+            take = fresh[:MAX_ALERTS_PER_TICK]
+            if len(fresh) > len(take):
+                resume = take[-1]["created_at"]   # everything after this is still waiting
+            # Mentions get the notification slots first; the rest of the alerts are still all recorded.
+            slots = {id(c) for c in sorted(take, key=lambda c: not c["mention"])[:MAX_NOTIFY_PER_TICK]}
+            for c in take:
                 snippet = clean(c["text"], BODY_SNIPPET)
-                body = f"{c['author']} on {c['task']}" + (f": “{snippet}”" if snippet else "")
-                key = "c:" + _hash(c["gid"], c["created_at"].isoformat(), c["author"], c["text"][:200])[:20]
-                a = self.raise_alert(key, "tagged", f"{Address}, you were tagged", body, "warn", now)
-                if a:
-                    raised.append(a)
-                prev = parse_when(marks["comments"].get(c["gid"]), now.tzinfo)
+                verb = "mentioned you in the description of" if c["kind"] == "description" else \
+                    "mentioned you on" if c["mention"] else "on"
+                body = f"{c['author']} {verb} {c['task']}" + (f": “{snippet}”" if snippet and c["kind"] == "comment" else "")
+                if c["kind"] == "description":
+                    key = "c:" + _hash(c["gid"], "description", c["text"][:2000])[:20]
+                else:
+                    key = "c:" + _hash(c["gid"], c["created_at"].isoformat(), c["author"], c["text"][:200])[:20]
+                sent(self.raise_alert(key, "tagged", f"{Address}, you were tagged", body, "warn", now,
+                                      notify=id(c) in slots))
+                mark_key = ("d:" if c["kind"] == "description" else "") + c["gid"]
+                prev = parse_when(marks["comments"].get(mark_key), now.tzinfo)
                 if prev is None or c["created_at"] > prev:
-                    marks["comments"][c["gid"]] = c["created_at"].isoformat()
+                    marks["comments"][mark_key] = c["created_at"].isoformat()
             if len(marks["comments"]) > MAX_MARKS:
                 for k in list(marks["comments"])[:len(marks["comments"]) - MAX_MARKS]:
                     del marks["comments"][k]
@@ -1117,17 +1232,15 @@ class Engine:
                     continue
                 due = t.get("due_on") if isinstance(t.get("due_on"), str) else ""
                 state = "overdue" if due and due[:10] < today else "today" if due[:10] == today and due else \
-                    "high" if str(t.get("priority") or "").lower() in ("high", "urgent") else "other"
+                    "high" if priority_value(t) >= 3 else "other"
                 states[gid] = state
                 baseline = marks.get("task_state")
                 if baseline is None or state == "other" or baseline.get(gid) == state or not budget_left():
                     continue
                 name = clean(t.get("name"), 100) or "a task"
                 what = {"overdue": "is overdue", "today": "is due today", "high": "is now high priority"}[state]
-                a = self.raise_alert(f"p:{gid}:{today}", "priority", f"{Address}, {name} {what}",
-                                     clean(t.get("project"), 80) or "Asana", "warn", now)
-                if a:
-                    raised.append(a)
+                sent(self.raise_alert(f"p:{gid}:{today}", "priority", f"{Address}, {name} {what}",
+                                      clean(t.get("project"), 80) or "Asana", "warn", now, notify=may_notify()))
             marks["task_state"] = dict(list(states.items())[:MAX_MARKS])
 
         # (c) a meeting about to start
@@ -1136,18 +1249,23 @@ class Engine:
         except Exception:  # noqa: BLE001
             meetings = []
         for m in meetings:
-            if m["all_day"] or not budget_left():
+            if m["all_day"]:
                 continue
             lead = m["start"] - now
             if dt.timedelta(0) < lead <= MEETING_ALERT:
                 mins = max(1, round(lead.total_seconds() / 60))
                 body = f"{m['title']} at {m['start']:%H:%M}" + (f". Join: {m['link']}" if m["link"] else "")
-                a = self.raise_alert("m:" + _hash(m["start"].isoformat(), m["title"])[:20], "meeting",
-                                     f"{Address}, {m['title'][:60]} starts in {mins} minutes", body, "info", now)
-                if a:
-                    raised.append(a)
+                # A meeting about to start always gets its own notification: it cannot wait.
+                sent(self.raise_alert("m:" + _hash(m["start"].isoformat(), m["title"])[:20], "meeting",
+                                      f"{Address}, {m['title'][:60]} starts in {mins} minutes", body, "info", now))
 
-        marks["last_check"] = now.isoformat()
+        if held and not in_quiet(self.settings["quiet_hours"], now):
+            try:
+                self.ctx.notify(f"{Address}, and {held} more", body="More alerts are waiting in Friday.",
+                                level="warn", link="friday", source="friday")
+            except Exception:  # noqa: BLE001
+                log.warning("friday notify failed")
+        marks["last_check"] = (min(now, resume) if resume else now).isoformat()
         self.save()
         return {"skipped": False, "raised": raised}
 

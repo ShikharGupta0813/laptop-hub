@@ -1,4 +1,4 @@
-// The app's icon set: 24x24, 1.8px round strokes, drawn for Laptop Hub (MIT, same as the app).
+// The app's icon set: 24x24, 1.8px round strokes, drawn for Laptop Hub / REDLINE (MIT, same as the app).
 // Each value is SVG child markup; `.f` marks a filled shape. Use icon(name) from ui.js, not this file.
 export const ICONS = {
   // navigation
@@ -111,7 +111,11 @@ export const ICONS = {
   star: '<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8L12 3Z"/>',
   award: '<circle cx="12" cy="9" r="6"/><path d="m8.5 14 -1.5 7.5 5-2.5 5 2.5-1.5-7.5"/>',
   // ai and energy
-  sparkles: '<path d="M10 3.5 11.6 8a3 3 0 0 0 1.9 1.9L18 11.5l-4.5 1.6a3 3 0 0 0-1.9 1.9L10 19.5 8.4 15a3 3 0 0 0-1.9-1.9L2 11.5l4.5-1.6A3 3 0 0 0 8.4 8L10 3.5Z"/><path d="M18.5 2.5v4M16.5 4.5h4M19 16.5v3M17.5 18h3"/>',
+  // "sparkles" is the AI glyph used across the app; in REDLINE it is a shell prompt with a lit cursor block.
+  sparkles: '<path d="m3.5 6.5 5.5 5.5-5.5 5.5"/><path d="M11.5 18h8"/><path class="f" d="M16.5 3.5h4v4h-4z"/>',
+  prompt: '<path d="m4.5 6.5 5.5 5.5-5.5 5.5"/><path d="M12.5 18h7"/>',
+  crosshair: '<circle cx="12" cy="12" r="7"/><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5"/><circle class="f" cx="12" cy="12" r="1.3"/>',
+  redline: '<path d="M6.5 19.5v-15h6a3.75 3.75 0 0 1 0 7.5h-6M11.5 12l4 7.5"/><path class="f" d="M18 16.5h3v3h-3z"/>',
   wand: '<path d="m3.5 20.5 11-11M13 4.5V2.5M17.5 7l1.5-1.5M19.5 11h2M17.5 15l1.5 1.5M13 8.5l2.5 2.5"/>',
   bot: '<rect x="4" y="8" width="16" height="12" rx="3.5"/><path d="M12 8V4.5M9.5 4.5h5M2 13v3M22 13v3"/><path d="M9 13.5v1.5M15 13.5v1.5" stroke-width="2.4"/>',
   jarvis: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle class="f" cx="12" cy="12" r="1.6"/>',

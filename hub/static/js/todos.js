@@ -3,6 +3,14 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => actions.map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+
+
 const SMART = [
   { key: "today", label: "Today", icon: "sun", count: "today", empty: ["sun", "Nothing due today", "Enjoy it, or add something above."] },
   { key: "overdue", label: "Overdue", icon: "alert-circle", count: "overdue", tone: "bad", empty: ["check-circle", "Nothing overdue", "You're on top of things."] },
@@ -57,7 +65,7 @@ export function init(container, ctx) {
 
   // quick add
   const quickInput = el("input", { type: "text", class: "td-quick__input", placeholder: "Add a task: buy milk tomorrow !2 #errands", "aria-label": "Quick add a task", enterkeyhint: "send", autocomplete: "off", maxlength: "260" });
-  const quickBtn = ui.button({ variant: "primary", iconOnly: true, icon: "arrow-up", label: "Add task" });
+  const quickBtn = ui.button({ variant: "primary", iconOnly: true, icon: "arrow-up", label: "Add task", type: "submit" });
   const quick = el("form", { class: "td-quick", novalidate: true }, ui.icon("plus", { class: "td-quick__plus" }), quickInput, quickBtn);
   const echo = el("div", { class: "td-echo", hidden: true, role: "status", "aria-live": "polite" });
   const chips = el("div", { class: "td-chips ui-hscroll", role: "group", "aria-label": "Task lists" });
@@ -100,7 +108,7 @@ export function init(container, ctx) {
 
   async function addList() {
     const input = el("input", { type: "text", placeholder: "List name", maxlength: "40", "aria-label": "List name", autocomplete: "off" });
-    ui.sheet({ title: "New list", content: input, actions: [{ label: "Create list", variant: "primary", icon: "plus",
+    ui.sheet({ title: "New list", content: input, actions: guard([{ label: "Create list", variant: "primary", icon: "plus",
       async onClick() {
         const name = input.value.trim();
         if (!name) { input.focus(); return false; }
@@ -108,11 +116,11 @@ export function init(container, ctx) {
         state.view = "list:" + name;
         await Promise.all([loadMeta(), load({ showLoading: true })]);
         return true;
-      } }] });
+      } }]) });
   }
   function renameList(name) {
     const input = el("input", { type: "text", value: name, maxlength: "40", "aria-label": "List name", autocomplete: "off" });
-    ui.sheet({ title: "Rename list", content: input, actions: [{ label: "Save", variant: "primary", icon: "check",
+    ui.sheet({ title: "Rename list", content: input, actions: guard([{ label: "Save", variant: "primary", icon: "check",
       async onClick() {
         const next = input.value.trim();
         if (!next || next === name) return true;
@@ -120,7 +128,7 @@ export function init(container, ctx) {
         state.view = "list:" + next;
         await Promise.all([loadMeta(), load()]);
         return true;
-      } }] });
+      } }]) });
   }
   async function deleteList(name) {
     if (!await ui.confirm({ title: `Delete "${name}"?`, message: "Its tasks move to Inbox.", confirmLabel: "Delete list", danger: true })) return;
@@ -224,7 +232,11 @@ export function init(container, ctx) {
   }
   const reload = () => Promise.all([loadMeta(), load()]);
 
+  const toggling = new Set();   // a double-tap must not toggle a task twice
   async function toggle(task, check) {
+    if (toggling.has(task.id)) return;
+    toggling.add(task.id);
+    setTimeout(() => toggling.delete(task.id), 900);
     check.classList.toggle("is-done", !task.done);
     ui.haptic(task.done ? "light" : "success");
     try {
@@ -232,7 +244,7 @@ export function init(container, ctx) {
       if (res.spawned) ctx.toast(`Next one: ${dueLabel(res.spawned.due)?.text || "scheduled"}`, { kind: "good", icon: "refresh" });
       else if (res.task?.done) ctx.toast("Done", { kind: "good", action: { label: "Undo", onClick: async () => { try { await api(`/api/todos/${task.id}/toggle`, { method: "POST", json: { done: false } }); reload(); } catch (e) { ctx.toast(e.message, { kind: "bad" }); } } } });
       setTimeout(reload, 350);
-    } catch (e) { check.classList.toggle("is-done", task.done); ctx.toast(e.message, { kind: "bad" }); }
+    } catch (e) { toggling.delete(task.id); check.classList.toggle("is-done", task.done); ctx.toast(e.message, { kind: "bad" }); }
   }
 
   // ---------- quick add ----------
@@ -254,6 +266,7 @@ export function init(container, ctx) {
     e.preventDefault();
     const text = quickInput.value.trim();
     if (!text) { quickInput.focus(); return; }
+    if (quickBtn.getAttribute("aria-busy") === "true") return;
     const json = { text };
     if (customList()) json.list = customList();
     try {
@@ -376,7 +389,7 @@ export function init(container, ctx) {
         stepBar, stepList, proposal,
         el("div", { class: "ui-input-wrap td-stepadd" }, ui.icon("plus"), stepAdd),
         el("div", { class: "td-ai" }, el("div", { class: "td-ai__row" }, breakBtn), model, modelHint))));
-    s.setActions([
+    s.setActions(guard([
       { label: "Delete", icon: "trash", variant: "danger-soft", async onClick() {
         if (!await ui.confirm({ title: "Delete this task?", message: task.title, confirmLabel: "Delete", danger: true })) return false;
         try { await api(`/api/todos/${task.id}`, { method: "DELETE" }); ui.toast("Task deleted", { kind: "good" }); reload(); } catch (e) { ctx.toast(e.message, { kind: "bad" }); return false; }
@@ -392,7 +405,7 @@ export function init(container, ctx) {
         } catch (e) { ctx.toast(e.message, { kind: "bad" }); return false; }
         return true;
       } },
-    ]);
+    ]));
   }
 
   ui.pullToRefresh(container, reload);

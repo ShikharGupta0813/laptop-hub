@@ -37,6 +37,7 @@ export function init(container, ctx) {
     current = id;
     for (const section of SECTIONS) panes[section.id].hidden = section.id !== id;
     seg.value = id;
+    seg.querySelector('[aria-checked="true"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
     head.classList.toggle("is-chat", id === "chat");
     try { localStorage.setItem("hub.learn", id); } catch (_) { /* ignore */ }
     handles[id]?.show?.();

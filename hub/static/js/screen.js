@@ -6,6 +6,15 @@
 import { api, ApiError, el, renderMarkdown } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const KEYS = [
   { label: "Esc", key: "esc" }, { label: "Tab", key: "tab" }, { label: "Enter", key: "enter" },
   { label: "Back", key: "backspace", icon: "arrow-left" }, { label: "Del", key: "delete" },
@@ -400,7 +409,7 @@ export function init(container, ctx) {
     const fromPhone = navigator.clipboard?.readText ? ui.button({ label: "Use phone clipboard", icon: "clipboard", variant: "tonal", size: "sm", onClick: async () => {
       try { area.value = await navigator.clipboard.readText(); } catch (_) { ctx.toast("Allow clipboard access, or long-press the box to paste.", { kind: "warn" }); }
     } }) : null;
-    ui.sheet({
+    gsheet({
       title: "Paste to laptop", content: el("div", { class: "ui-stack" }, el("p", { class: "sc-hint" }, "This replaces the laptop's clipboard, then presses Ctrl+V where the cursor is."), area, fromPhone),
       actions: [{ label: "Paste on laptop", variant: "primary", icon: "send", onClick: async () => {
         if (!area.value) return false;
@@ -504,7 +513,7 @@ export function init(container, ctx) {
   function askSheet() {
     const q = el("input", { type: "text", class: "sc-ask", maxlength: "500", value: "What is on my screen?", "aria-label": "Your question" });
     const out = el("div", { class: "sc-answer" });
-    const sheet = ui.sheet({
+    const sheet = gsheet({
       title: "Ask about my screen", content: el("div", { class: "ui-stack" }, q, out),
       actions: [{ label: "Ask Claude", icon: "sparkles", variant: "primary", onClick: async () => {
         const question = q.value.trim();
@@ -531,7 +540,7 @@ export function init(container, ctx) {
   }
   async function windowsSheet() {
     const body = el("div", { class: "ui-stack" }, ui.skeleton("list", 4));
-    ui.sheet({ title: "Windows", content: body });
+    gsheet({ title: "Windows", content: body });
     try {
       S.windows = (await api("/api/screen/windows")).windows || [];
       body.replaceChildren(...(S.windows.length ? [
@@ -661,7 +670,7 @@ export function init(container, ctx) {
       await api("/api/workspaces", { method: "POST", json: body });
       ui.haptic("success");
       if (missing.length) {
-        ui.sheet({ title: "Template added without the VPN step", content: el("div", { class: "ui-stack" },
+        gsheet({ title: "Template added without the VPN step", content: el("div", { class: "ui-stack" },
           el("p", { class: "sc-hint" }, `The quick button "${missing[0]}" does not exist yet, so for now this only opens the address. To add it, run this once on the laptop, then edit the workspace and add it as a step:`),
           el("code", { class: "sc-code" }, `python -m hub add-script ${missing[0]} --label "Connect Cloudflare" -- "C:\\Program Files\\Cloudflare\\Cloudflare WARP\\warp-cli.exe" connect`)) });
       } else ui.toast("NiFi added", { kind: "good" });
@@ -731,14 +740,14 @@ export function init(container, ctx) {
       if (!(await ui.confirm({ title: `Delete ${existing.name}?`, message: "This only removes the shortcut. Nothing on the laptop changes.", confirmLabel: "Delete", danger: true }))) return false;
       try { await api(`/api/workspaces/${existing.id}`, { method: "DELETE" }); loadWorkspaces(); } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
     } });
-    const sheet = ui.sheet({ title: existing ? "Edit workspace" : "New workspace", content, actions });
+    const sheet = gsheet({ title: existing ? "Edit workspace" : "New workspace", content, actions });
     drawSteps();
     (await loadScripts()).forEach((sc) => { labels[sc.name] = sc.label || sc.name; });
     drawSteps();
   }
   async function pickScript(add) {
     const body = el("div", { class: "ui-stack" }, ui.skeleton("list", 2));
-    const s = ui.sheet({ title: "Run a quick button", content: body });
+    const s = gsheet({ title: "Run a quick button", content: body });
     const scripts = await loadScripts();
     body.replaceChildren(...(scripts.length
       ? [el("div", { class: "ui-list ui-list--inset" }, scripts.map((sc) => ui.listRow({ icon: "zap", title: sc.label || sc.name, sub: sc.name, onClick: () => { add({ type: "script", name: sc.name }); s.close(); } })))]
@@ -746,7 +755,7 @@ export function init(container, ctx) {
   }
   function pickUrl(add) {
     const input = el("input", { type: "url", inputmode: "url", autocapitalize: "off", autocorrect: "off", spellcheck: "false", maxlength: "2000", placeholder: "https://example.com", "aria-label": "Web address" });
-    ui.sheet({ title: "Open a web address", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Opens in the laptop's default browser. Only http and https work.")),
+    gsheet({ title: "Open a web address", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Opens in the laptop's default browser. Only http and https work.")),
       actions: [{ label: "Add step", icon: "plus", variant: "primary", onClick: () => {
         const v = input.value.trim();
         if (!/^https?:\/\/[^\s/]+/i.test(v)) { ctx.toast("Type an address starting with http:// or https://", { kind: "warn" }); return false; }
@@ -755,13 +764,13 @@ export function init(container, ctx) {
   }
   function pickWait(add) {
     const input = el("input", { type: "number", inputmode: "numeric", min: "0", max: "120", value: "5", "aria-label": "Seconds to wait" });
-    ui.sheet({ title: "Wait a little", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Useful after a VPN or an app, so it is ready before the next step. 0 to 120 seconds.")),
+    gsheet({ title: "Wait a little", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Useful after a VPN or an app, so it is ready before the next step. 0 to 120 seconds.")),
       actions: [{ label: "Add step", icon: "plus", variant: "primary", onClick: () => add({ type: "wait", seconds: Math.max(0, Math.min(120, parseInt(input.value, 10) || 0)) }) }] });
   }
   function pickApp(add) {
     const q = el("input", { type: "search", placeholder: "Search your apps", "aria-label": "Search apps", autocomplete: "off", maxlength: "100" });
     const out = el("div", { class: "ui-stack" }, ui.skeleton("list", 3));
-    const s = ui.sheet({ title: "Start an app", content: el("div", { class: "ui-stack" }, q, out) });
+    const s = gsheet({ title: "Start an app", content: el("div", { class: "ui-stack" }, q, out) });
     let timer = null, seq = 0;
     const run = async () => {
       const my = ++seq;
@@ -779,7 +788,7 @@ export function init(container, ctx) {
   async function pickPath(add, type) {
     const st = { root: "", path: "", roots: [] };
     const out = el("div", { class: "ui-stack" }, ui.skeleton("list", 3));
-    const s = ui.sheet({ title: type === "folder" ? "Open a folder" : "Open a file", content: out });
+    const s = gsheet({ title: type === "folder" ? "Open a folder" : "Open a file", content: out });
     const draw = async () => {
       try {
         const r = await api(`/api/files?root=${encodeURIComponent(st.root)}&path=${encodeURIComponent(st.path)}`);
@@ -822,7 +831,7 @@ export function init(container, ctx) {
         el("span", { class: "sc-prog__text" }, el("span", {}, state === "done" ? r.done : r.doing + (state === "run" ? "…" : "")), notes[i] ? el("span", { class: "sc-prog__note" }, notes[i]) : null));
     }));
     const foot = el("div", { class: "ui-stack" });
-    const sheet = ui.sheet({ title: w.name, content: el("div", { class: "ui-stack" }, list, foot), dismissible: false });
+    const sheet = gsheet({ title: w.name, content: el("div", { class: "ui-stack" }, list, foot), dismissible: false });
     draw(0);
     // The hub runs everything in one request; walk the pending row forward while it works so the list feels alive.
     let cur = 0, walking = true, walker = null;

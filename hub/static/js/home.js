@@ -191,7 +191,32 @@ export function init(container, ctx) {
     paint(); fridayCard.hidden = false; setInterval(paint, 60000);
   }).catch(() => { /* Friday is optional */ });
 
-  root.append(hero, fridayCard, jump, forYou,
+  // "Finish setting up" card: only while the essentials aren't green or under half the optional items are done.
+  const setupCard = el("section", { class: "hm-setup", hidden: true, "aria-label": "Finish setting up" });
+  let setupChecked = 0;
+  function checkSetup() {
+    let dismissed = false;
+    try { dismissed = localStorage.getItem("hub.setup.dismissed") === "1"; } catch (_) { /* private mode */ }
+    if (dismissed || Date.now() - setupChecked < 120000) return;
+    setupChecked = Date.now();
+    import("./setup.js").then((m) => m.runChecks(ctx, true).then((rows) => {
+      const s = m.summarize(rows);
+      if (!s.needs) { setupCard.hidden = true; return; }
+      setupCard.replaceChildren(
+        el("button", { type: "button", class: "hm-setup-go", onclick: () => ctx.open("setup") },
+          ui.ringProgress({ value: s.total ? s.ready / s.total : 0, size: 48, stroke: 5, tone: s.requiredOk ? "accent" : "warn", big: String(s.ready), label: "Setup progress" }),
+          el("span", { class: "hm-setup-text" }, el("span", { class: "hm-setup-title" }, "Finish setting up"),
+            el("span", { class: "hm-setup-sub" }, s.requiredOk ? `${s.ready} of ${s.total} ready. Connect mail, tasks and more.` : `${s.ready} of ${s.total} ready. A couple of essentials need attention.`)),
+          ui.icon("chevron-right")),
+        el("button", { type: "button", class: "ui-btn ui-btn--ghost ui-btn--sm", onclick: () => {
+          try { localStorage.setItem("hub.setup.dismissed", "1"); } catch (_) { /* ignore */ }
+          setupCard.hidden = true;
+        } }, "Later"));
+      setupCard.hidden = false;
+    })).catch(() => { /* optional card */ });
+  }
+
+  root.append(hero, setupCard, fridayCard, jump, forYou,
     el("section", { class: "hm-section", "aria-label": "Quick actions" }, el("div", { class: "ui-section-head" }, el("h2", { class: "ui-section-title" }, "Quick actions")), quick),
     todayCard.node,
     el("div", { class: "hm-pair" }, ringsCard.node, learnCard),
@@ -408,10 +433,11 @@ export function init(container, ctx) {
 
   paintClock();
   load(true);
+  checkSetup();
   const clockTimer = setInterval(paintClock, 60000);
 
   return {
-    show() { paintClock(); load(false); },
+    show() { paintClock(); load(false); checkSetup(); },
     refresh() { return load(true); },
     destroy() { clearInterval(clockTimer); },
   };

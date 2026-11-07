@@ -55,7 +55,41 @@ export function badge(text, tone) {
   return el("span", { class: "ui-badge" + (tone ? ` ui-badge--${tone}` : "") }, text);
 }
 
-// A rounded tinted square holding an icon. tone: accent|good|warn|bad|info|violet|pink|teal|orange|gray
+// ---- identity motifs (see "Identity" in docs/DESIGN.md) ---------------------------------------------
+// eyebrow("01", "Whoami") -> <p class="ui-eyebrow"><b>01</b>Whoami</p>, rendered "01 / WHOAMI"
+export function eyebrow(n, label, { rule = false, tag = "p" } = {}) {
+  return el(tag, { class: "ui-eyebrow" + (rule ? " ui-eyebrow--rule" : "") }, n != null && n !== "" ? el("b", {}, String(n)) : null, label);
+}
+// kv([["status", "online"], ["uptime", "4d 2h", "good"]]) -> YAML-style key: value rows. A third item is a tone.
+export function kv(rows, { ruled = false } = {}) {
+  return el("dl", { class: "ui-kv" + (ruled ? " ui-kv--ruled" : "") }, ...rows.filter(Boolean).map(([k, v, tone]) =>
+    el("div", { class: "ui-kv__row" }, el("dt", { class: "ui-kv__k" }, k),
+      el("dd", { class: "ui-kv__v", ...(tone ? { "data-tone": tone } : {}) }, v ?? ""))));
+}
+// led("good", {live: true, label: "Online"}) -> a status dot. tone: accent|good|warn|bad|info|off
+export function led(tone = "accent", { live = false, label } = {}) {
+  return el("span", { class: `ui-led ui-led--${tone}` + (live ? " ui-led--live" : ""),
+    ...(label ? { role: "img", "aria-label": label } : { "aria-hidden": "true" }) });
+}
+export function cursor() { return el("span", { class: "ui-cursor", "aria-hidden": "true" }); }
+// term({title: "~/laptop", meta: led("good"), lines: ["$ uptime", "4 days", {text: "# note", dim: true}], cursor: true})
+// A line that starts with "$ " gets an accent prompt. Text is set with textContent.
+export function term({ title, meta, lines = [], cursor: withCursor = false } = {}) {
+  const body = el("div", { class: "ui-term__body" });
+  lines.forEach((line, i) => {
+    const o = typeof line === "string" ? { text: line } : line;
+    const text = String(o.text ?? "");
+    const prompt = text.startsWith("$ ");
+    const node = el("span", { class: "ui-term__line" + (o.dim ? " ui-term__line--dim" : ""), ...(o.tone ? { "data-tone": o.tone } : {}) },
+      prompt ? el("span", { class: "ui-term__prompt", "aria-hidden": "true" }, "$") : null, prompt ? text.slice(2) : text);
+    if (withCursor && i === lines.length - 1) node.append(cursor());
+    body.append(node);
+  });
+  return el("div", { class: "ui-term" },
+    title || meta ? el("div", { class: "ui-term__bar" }, title ? el("span", {}, title) : null, meta || null) : null, body);
+}
+
+// A tinted square holding an icon. tone: accent|good|warn|bad|info|violet|pink|teal|orange|gray
 export function tile(name, tone = "accent", size) {
   return el("span", { class: "ui-tile" + (size ? ` ui-tile--${size}` : ""), "data-tone": tone }, icon(name));
 }
@@ -328,19 +362,19 @@ export function skeleton(kind = "list", count = 3) {
   for (let i = 0; i < count; i += 1) {
     if (kind === "list") {
       const circle = el("span", { class: "ui-skel" });
-      circle.style.cssText = "width:40px;height:40px;border-radius:12px;flex:none";
+      circle.style.cssText = "width:40px;height:40px;border-radius:6px;flex:none";
       group.append(el("div", { class: "ui-skel-row" }, circle, el("div", {}, line(`${60 + ((i * 17) % 30)}%`), line(`${35 + ((i * 23) % 25)}%`))));
     } else if (kind === "lines") {
       group.append(line(i === count - 1 ? "60%" : `${88 - ((i * 13) % 20)}%`));
       group.style.gap = "10px";
     } else if (kind === "card") {
       const c = el("span", { class: "ui-skel" });
-      c.style.cssText = "height:120px;border-radius:22px";
+      c.style.cssText = "height:120px;border-radius:10px";
       group.append(c);
     } else if (kind === "tiles") {
       group.style.cssText = "display:flex;gap:10px";
       const t = el("span", { class: "ui-skel" });
-      t.style.cssText = "width:76px;height:84px;border-radius:18px;flex:none";
+      t.style.cssText = "width:76px;height:84px;border-radius:8px;flex:none";
       group.append(t);
     }
   }
@@ -510,52 +544,73 @@ export function clockTime(value) {
 }
 
 // ---- themes and accents -------------------------------------------------------------------------
+// The theme is saved as redline | slate | paper | auto. <html data-theme> always holds a resolved theme
+// (auto becomes redline or paper), so CSS never needs an "auto" block. Old saved names still work.
 export const THEMES = [
-  { id: "midnight", label: "Midnight", icon: "moon" },
-  { id: "daylight", label: "Daylight", icon: "sun" },
-  { id: "aurora", label: "Aurora", icon: "sparkles" },
-  { id: "auto", label: "Auto", icon: "refresh" },
+  { id: "redline", label: "Redline", icon: "prompt", note: "default", accent: "crimson" },
+  { id: "slate", label: "Slate", icon: "terminal", note: "graphite", accent: "amber" },
+  { id: "paper", label: "Paper", icon: "sun", note: "light", accent: "crimson" },
+  { id: "auto", label: "Auto", icon: "refresh", note: "system" },
 ];
 export const ACCENTS = [
-  { id: "indigo", label: "Indigo", swatch: "oklch(66% .17 272)" },
-  { id: "blue", label: "Blue", swatch: "oklch(66% .16 245)" },
-  { id: "violet", label: "Violet", swatch: "oklch(66% .19 302)" },
-  { id: "teal", label: "Teal", swatch: "oklch(70% .13 182)" },
-  { id: "amber", label: "Amber", swatch: "oklch(76% .15 68)" },
-  { id: "rose", label: "Rose", swatch: "oklch(66% .19 12)" },
+  { id: "crimson", label: "Crimson", swatch: "#FF5368" },
+  { id: "amber", label: "Amber", swatch: "#FFB454" },
+  { id: "cyan", label: "Cyan", swatch: "#3DE0FF" },
+  { id: "green", label: "Green", swatch: "#3DFF8A" },
+  { id: "white", label: "White", swatch: "#F2F3F5" },
 ];
-const THEME_BG = { midnight: "#0a0b0f", daylight: "#f4f5f8", aurora: "#07060e" };
+const OLD_THEMES = { midnight: "redline", daylight: "paper", aurora: "slate" };
+const OLD_ACCENTS = { indigo: "crimson", violet: "crimson", rose: "crimson", blue: "cyan", teal: "cyan" };
+const THEME_BG = { redline: "#08090D", slate: "#0D0E10", paper: "#F3EEE6" };
 function read(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; } }
 function write(key, value) { try { localStorage.setItem(key, value); } catch (_) { /* private mode */ } }
 
-export function getTheme() { return read("hub.theme", "midnight"); }
-export function getAccent() { return read("hub.accent", "indigo"); }
+export function getTheme() {
+  const t = read("hub.theme", "redline");
+  const id = OLD_THEMES[t] || t;
+  return THEMES.some((x) => x.id === id) ? id : "redline";
+}
+export function getAccent() {
+  const a = read("hub.accent", "");
+  const id = OLD_ACCENTS[a] || a;
+  if (ACCENTS.some((x) => x.id === id)) return id;
+  return getTheme() === "slate" ? "amber" : "crimson";   // nothing saved: the theme's signature accent
+}
+// The theme actually on screen: redline | slate | paper.
 export function resolvedTheme() {
   const t = getTheme();
   if (t !== "auto") return t;
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "daylight" : "midnight";
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "paper" : "redline";
 }
-function syncThemeColor() {
+export function isLightTheme() { return resolvedTheme() === "paper"; }
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedTheme();
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", THEME_BG[resolvedTheme()] || THEME_BG.midnight);
+  if (meta) meta.setAttribute("content", THEME_BG[resolvedTheme()] || THEME_BG.redline);
 }
 export function setTheme(id) {
+  id = OLD_THEMES[id] || id;
   if (!THEMES.some((t) => t.id === id)) return;
   write("hub.theme", id);
-  document.documentElement.dataset.theme = id;
-  syncThemeColor();
+  applyTheme();
   window.dispatchEvent(new CustomEvent("hub:theme", { detail: { theme: id } }));
 }
 export function setAccent(id) {
+  id = OLD_ACCENTS[id] || id;
   if (!ACCENTS.some((a) => a.id === id)) return;
   write("hub.accent", id);
   document.documentElement.dataset.accent = id;
   window.dispatchEvent(new CustomEvent("hub:theme", { detail: { accent: id } }));
 }
-window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", syncThemeColor);
-syncThemeColor();
+window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", () => {
+  if (getTheme() !== "auto") return;
+  applyTheme();
+  window.dispatchEvent(new CustomEvent("hub:theme", { detail: { theme: "auto" } }));
+});
+applyTheme();
 
 // A ready-made Appearance block (theme cards + accent swatches) for the Settings screen.
+// Picking a theme also moves the accent to that theme's signature colour, unless you chose your own.
 export function appearancePanel() {
   const themeRow = el("div", { class: "ui-theme-grid", role: "radiogroup", "aria-label": "Theme" });
   const accentRow = el("div", { class: "ui-accent-row", role: "radiogroup", "aria-label": "Accent colour" });
@@ -563,20 +618,29 @@ export function appearancePanel() {
     for (const b of themeRow.children) b.setAttribute("aria-checked", String(b.dataset.value === getTheme()));
     for (const b of accentRow.children) b.setAttribute("aria-checked", String(b.dataset.value === getAccent()));
   };
+  const signature = (id) => THEMES.find((t) => t.id === id)?.accent || "crimson";
   for (const t of THEMES) {
+    const sample = t.id === "slate" ? "~/ok" : t.id === "paper" ? "~/doc" : t.id === "auto" ? "~/sys" : "~/run";
     themeRow.append(el("button", { type: "button", role: "radio", class: "ui-theme-card", "data-value": t.id,
-      onclick: () => { haptic("select"); setTheme(t.id); paint(); } },
-    el("span", { class: "ui-theme-card__preview", "data-preview": t.id }, el("i"), el("i"), el("i")),
-    el("span", { class: "ui-theme-card__label" }, icon(t.icon), t.label)));
+      onclick: () => {
+        haptic("select");
+        const before = getAccent();
+        const wasSignature = before === signature(resolvedTheme());
+        setTheme(t.id);
+        if (wasSignature) setAccent(signature(t.id === "auto" ? resolvedTheme() : t.id));
+        paint();
+      } },
+    el("span", { class: "ui-theme-card__preview", "data-preview": t.id, "aria-hidden": "true" },
+      el("span", {}, el("b", {}, "$ "), sample), el("i"), el("i")),
+    el("span", { class: "ui-theme-card__label" }, icon(t.icon), t.label, el("small", {}, t.note))));
   }
   for (const a of ACCENTS) {
     const sw = el("button", { type: "button", role: "radio", class: "ui-swatch", "data-value": a.id, "aria-label": a.label,
-      onclick: () => { haptic("select"); setAccent(a.id); paint(); } }, icon("check"));
-    sw.style.setProperty("--sw", a.swatch);
-    accentRow.append(sw);
+      onclick: () => { haptic("select"); setAccent(a.id); paint(); } }, icon("check"), el("span", { "aria-hidden": "true" }, a.label));
+    accentRow.append(sw);   // swatch colours live in design.css, per theme
   }
   paint();
   return el("div", { class: "ui-stack" },
-    el("p", { class: "ui-caps" }, "Theme"), themeRow,
-    el("p", { class: "ui-caps" }, "Accent"), accentRow);
+    el("p", { class: "ui-eyebrow" }, el("b", {}, "01"), "Theme"), themeRow,
+    el("p", { class: "ui-eyebrow" }, el("b", {}, "02"), "Accent"), accentRow);
 }

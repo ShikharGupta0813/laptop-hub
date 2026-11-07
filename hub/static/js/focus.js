@@ -41,6 +41,7 @@ export function init(container, ctx) {
       if (seq !== state.seq) return;
       state.offset = c.now_ts * 1000 - Date.now();
       state.current = c; state.error = ""; state.loaded = true;
+      if (!c.running) state.wraps = 0;
       if (c.just_finished && state.announced !== c.just_finished.id) { state.finished = c.just_finished; state.announced = c.just_finished.id; }
     } catch (e) { if (seq !== state.seq) return; state.error = e.message; state.loaded = true; }
     renderStage();
@@ -81,7 +82,9 @@ export function init(container, ctx) {
       clearInterval(state.tick); state.tick = null;
       bigNode.textContent = "00:00"; ring.set(1); smallNode.textContent = "wrapping up";
       ui.haptic("success");
-      setTimeout(async () => { await reload(); }, 1200);
+      // If the server still says "running" (clock skew), back off instead of hammering it every second.
+      state.wraps = (state.wraps || 0) + 1;
+      setTimeout(async () => { await reload(); }, Math.min(1200 * state.wraps ** 2, 15000));
       return;
     }
     bigNode.textContent = mmss(left);

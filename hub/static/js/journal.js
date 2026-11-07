@@ -3,6 +3,14 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => actions.map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+
+
 const MOODS = [
   { v: 1, emoji: "😣", label: "Awful", tone: "bad" },
   { v: 2, emoji: "🙁", label: "Low", tone: "orange" },
@@ -266,7 +274,7 @@ export function init(container, ctx) {
       } catch (e) { ctx.toast(e.message, { kind: "bad" }); return false; }
       return true;
     } });
-    ui.sheet({ title: editing ? "Edit entry" : "New entry", class: "jr-sheet", actions,
+    ui.sheet({ title: editing ? "Edit entry" : "New entry", class: "jr-sheet", actions: guard(actions),
       content: el("div", { class: "ui-stack jr-form" }, field("Mood", row), text, field("Date", date), field("Tags", tags)) });
   }
 

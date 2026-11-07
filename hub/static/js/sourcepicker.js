@@ -55,6 +55,21 @@ const DOC_EXT = new Set(["md", "markdown", "txt", "text", "pdf", "rst", "org", "
 const extOf = (name) => { const i = name.lastIndexOf("."); return i < 0 ? "" : name.slice(i + 1).toLowerCase(); };
 const baseName = (path) => String(path || "").split("/").filter(Boolean).pop() || String(path || "");
 const parentOf = (path) => { const parts = String(path || "").split("/").filter(Boolean); parts.pop(); return parts.join("/"); };
+// ui.sheet runs an action again on a double tap while the first is still running (two decks, two saves).
+// This opens a sheet whose action buttons ignore a second tap until the first finishes.
+export function guardedSheet(ui, opts) {
+  const actions = opts.actions && opts.actions.map((a) => {
+    if (!a.onClick) return a;
+    let running = false;
+    return { ...a, async onClick(...args) {
+      if (running) return false;
+      running = true;
+      try { return await a.onClick.apply(this, args); } finally { running = false; }
+    } };
+  });
+  return ui.sheet(actions ? { ...opts, actions } : opts);
+}
+
 export function clip(text, n) {
   const flat = String(text).replace(/\s+/g, " ").trim();
   return flat.length > n ? flat.slice(0, n - 1) + "…" : flat;

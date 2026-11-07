@@ -163,7 +163,7 @@ def make_router(ctx: Ctx, *, asana=None, today: Callable[[], dt.date] | None = N
             if exc.status == 401:
                 return {"configured": False, "user": None, "reason": exc.message}
             return {"configured": True, "user": None, "reason": exc.message}
-        return {"configured": True, "user": me.get("name") or None}
+        return {"configured": True, "user": me.get("name") or None, "gid": me.get("gid") or None}
 
     @router.get("/status")
     async def status():
@@ -209,6 +209,11 @@ def make_router(ctx: Ctx, *, asana=None, today: Callable[[], dt.date] | None = N
             if filter == "all" or filter == bucket:
                 shown.append(task)
         return {"tasks": sorted(shown, key=due_key), "counts": counts}
+
+    @router.get("/asana/followed")
+    async def followed():
+        """Open tasks I follow but am not assigned (read-only; empty where Asana has no search)."""
+        return {"tasks": sorted(await asana_call("followed_tasks"), key=due_key)}
 
     def valid_gid(gid: str) -> str:
         try:

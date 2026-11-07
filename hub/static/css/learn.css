@@ -188,5 +188,9 @@
 #view-learn .qz-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
 
 /* five sections on a phone: size columns to their labels */
-#view-learn .ln-seg { grid-auto-flow: column; grid-auto-columns: 1fr; }
-#view-learn .ln-seg button { padding-inline: var(--sp-2); font-size: var(--fs-sm); white-space: nowrap; }
+/* Five tabs in the mono face are wider than a phone: tighten them and let the strip scroll rather than overlap. */
+#view-learn .ln-seg { grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; scrollbar-width: none; }
+#view-learn .ln-seg::-webkit-scrollbar { display: none; }
+#view-learn .ln-seg .ui-seg__thumb { display: none; }   /* the thumb assumes equal columns; mark the active tab on the button instead */
+#view-learn .ln-seg button[aria-checked="true"] { background: var(--c-accent-soft); box-shadow: inset 0 0 0 1px var(--c-accent-line); }
+#view-learn .ln-seg button { padding-inline: var(--sp-2); font-size: var(--fs-xs); letter-spacing: 0; white-space: nowrap; }

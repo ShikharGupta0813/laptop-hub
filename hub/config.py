@@ -52,6 +52,7 @@ class Config:
     apps: dict[str, dict] = field(default_factory=dict)
     # Mixed into every session cookie's signature; POST /api/logout-all raises it to log every phone out.
     session_generation: int = 0
+    display_name: str = "Chief"             # what the hub and the assistant call you (set by `python -m hub setup`)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -101,6 +102,7 @@ def save(config: Config, path: Path) -> None:
         "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,
         "ntfy_server": config.ntfy_server, "ntfy_topic": config.ntfy_topic,
         "session_generation": int(config.session_generation or 0),
+        "display_name": config.display_name,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

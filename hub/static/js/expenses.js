@@ -6,6 +6,15 @@
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 
+// A sheet button that is still working ignores further taps (a double-tap must not send two requests).
+const guard = (actions) => (actions || []).map((a) => {
+  if (!a || !a.onClick) return a;
+  let working = false;
+  return { ...a, onClick: async (x) => { if (working) return false; working = true; try { return await a.onClick(x); } finally { working = false; } } };
+});
+const gsheet = (opts) => ui.sheet(opts.actions ? { ...opts, actions: guard(opts.actions) } : opts);
+
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // ---- small helpers -----------------------------------------------------------------------------------
@@ -304,7 +313,7 @@ export function init(container, ctx) {
       el("p", { class: "sp-sub" }, [item.app, item.raw_snippet].filter(Boolean).join(" · ")),
       field(`Amount (${cur})`, amount), field("Merchant", merchant), field("Note", note, "Shown in your list. Leave empty to use the merchant."),
       field("Category", catIn), err);
-    const sheet = ui.sheet({
+    const sheet = gsheet({
       title: "Edit payment", content: body,
       actions: [
         { label: "Dismiss", variant: "ghost", icon: "x", onClick: () => { dismissItem(item, card); } },
@@ -568,7 +577,7 @@ export function init(container, ctx) {
         return b;
       }));
     const body = el("div", { class: "ui-stack" }, field(`Amount (${x.currency})`, amount), field("Note", note), field("Date", date), field("Category", catIn), chips, err);
-    ui.sheet({
+    gsheet({
       title: "Edit expense", content: body,
       actions: [
         { label: "Delete", icon: "trash", variant: "danger-soft", onClick: async () => {
@@ -619,7 +628,7 @@ export function init(container, ctx) {
     const body = el("div", { class: "ui-stack" },
       el("p", { class: "sp-sub" }, `Set a monthly limit in ${cur} per category. Leave it empty for no limit. A category you add here is remembered once you use it.`),
       list, el("div", { class: "sp-addcat" }, newCat, addCat), err);
-    ui.sheet({
+    gsheet({
       title: "Budgets and categories", content: body,
       actions: [{ label: "Save budgets", variant: "primary", icon: "check", onClick: async () => {
         const calls = [];
@@ -659,7 +668,7 @@ export function init(container, ctx) {
 
   async function openCaptureSettings() {
     const content = el("div", { class: "ui-stack" }, ui.skeleton("lines", 4));
-    const sheet = ui.sheet({ title: "Automatic capture", content });
+    const sheet = gsheet({ title: "Automatic capture", content });
     if (!settings) { await loadSettings(); }
     if (!settings) { content.replaceChildren(ui.notice("Couldn't read the capture settings.", { tone: "bad" })); return; }
     const st = { enabled: settings.enabled !== false, after: Number(settings.auto_confirm_after) || 0, ignore: [...(settings.ignore_merchants || [])] };
@@ -694,7 +703,7 @@ export function init(container, ctx) {
         el("div", { class: "sp-addcat" }, ignoreIn, ui.button({ label: "Add", icon: "plus", variant: "tonal", onClick: addIgnore })),
         el("span", { class: "ui-hint" }, "Payments to them are dropped quietly. Matching works on the name, so “Swiggy” also covers swiggy@ybl.")),
       err);
-    sheet.setActions([{ label: "Save", icon: "check", variant: "primary", onClick: async () => {
+    sheet.setActions(guard([{ label: "Save", icon: "check", variant: "primary", onClick: async () => {
       addIgnore();
       const n = Number(after.value);
       if (!Number.isInteger(n) || n < 0 || n > 50) { err.textContent = "Use a whole number from 0 to 50."; return false; }
@@ -703,7 +712,7 @@ export function init(container, ctx) {
         ui.toast("Capture settings saved.", { kind: "good" });
         renderCaptureCard();
       } catch (e) { err.textContent = errText(e); return false; }
-    } }]);
+    } }]));
   }
 
   // ---- public hooks ----
