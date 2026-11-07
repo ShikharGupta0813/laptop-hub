@@ -57,7 +57,8 @@ export function init(container, ctx) {
   const stage = el("div", { class: "sc-stage", tabindex: "0", "aria-label": "Laptop screen. Pinch to zoom." }, canvas, overlay);
   const liveChip = el("span", { class: "sc-chip sc-chip--live" }, el("span", { class: "ui-dot ui-dot--live" }), el("span", { class: "sc-fps ui-num" }, "Live"));
   const armChip = el("span", { class: "sc-chip sc-chip--armed", hidden: true });
-  const hudLeft = el("div", { class: "sc-hud__side" }, liveChip);
+  const ctrlBtn = ui.button({ label: "Control", icon: "unlock", variant: "primary", size: "sm", class: "sc-hudctl", hidden: true, onClick: () => promptArm() });
+  const hudLeft = el("div", { class: "sc-hud__side" }, liveChip, ctrlBtn);
   const fullBtn = ui.button({ label: "Full screen", icon: "external", variant: "ghost", iconOnly: true, class: "sc-hudbtn" });
   const kbBtn = ui.button({ label: "Keyboard", icon: "command", variant: "ghost", iconOnly: true, class: "sc-hudbtn" });
   const hudRight = el("div", { class: "sc-hud__side" }, armChip, kbBtn, fullBtn);
@@ -440,6 +441,7 @@ export function init(container, ctx) {
     keyRow.hidden = !on;
     browserRow.hidden = !on;
     kbBtn.hidden = !on;
+    ctrlBtn.hidden = on || !S.status?.control_available;
     stage.classList.toggle("is-armed", on);
     if (!on) cursorDot.hidden = true;
     if (on) {
@@ -568,9 +570,32 @@ export function init(container, ctx) {
 
 
   // ---- workspaces -------------------------------------------------------------------------------
-  // One tap: run the owner's quick buttons (e.g. connect the VPN), open an address on the laptop, show the live view,
-  // then ask before turning control on. The hub never arms control by itself (docs/api/workspaces.md).
+  // A workspace is a list of typed steps (quick button, web address, app, folder, file, wait). One tap: confirm, run them on
+  // the laptop, show the live view, then ask before turning control on. The hub never arms control by itself (docs/api/workspaces.md).
   const W = { list: null, error: "", hidden: false, scripts: null };
+  const STEP_ICON = { script: "zap", url: "globe", app: "grid", folder: "folder", file: "file", wait: "timer" };
+  const STEP_KIND = { script: "Quick button", url: "Web address", app: "App", folder: "Folder", file: "File", wait: "Wait" };
+  const baseName = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || "";
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  function stepName(s, labels = {}) {
+    if (s.type === "script") return labels[s.name] || s.name;
+    if (s.type === "url") return hostOf(s.url) || s.url;
+    if (s.type === "app") return s.name || "app";
+    if (s.type === "folder") return baseName(s.path) || s.root;
+    if (s.type === "file") return baseName(s.path);
+    return plural(s.seconds || 0, "second");
+  }
+  function stepWords(s, labels) {
+    const n = stepName(s, labels);
+    switch (s.type) {
+      case "script": return { plan: `run "${n}"`, doing: `Running "${n}"`, done: `"${n}" finished` };
+      case "url": return { plan: `open ${n} in its browser`, doing: `Opening ${n}`, done: `Opened ${n}` };
+      case "app": return { plan: `start ${n}`, doing: `Starting ${n}`, done: `Started ${n}` };
+      case "folder": return { plan: `open the folder ${n}`, doing: `Opening folder ${n}`, done: `Opened folder ${n}` };
+      case "file": return { plan: `open the file ${n}`, doing: `Opening ${n}`, done: `Opened ${n}` };
+      default: return { plan: `wait ${n}`, doing: `Waiting ${n}`, done: `Waited ${n}` };
+    }
+  }
   async function loadWorkspaces() {
     try {
       W.list = (await api("/api/workspaces")).workspaces || [];
@@ -590,16 +615,23 @@ export function init(container, ctx) {
     let body;
     if (W.error) body = [ui.notice(W.error, { tone: "bad" }), ui.button({ label: "Try again", icon: "refresh", variant: "tonal", size: "sm", onClick: () => { W.error = ""; W.list = null; renderWorkspaces(); loadWorkspaces(); } })];
     else if (!W.list) body = [ui.skeleton("tiles", 3)];
-    else if (!W.list.length) body = [el("p", { class: "sc-hint" }, "Nothing here yet. Add the NiFi template to connect the company VPN and open NiFi in one tap."),
-      ui.button({ label: "Add NiFi template", icon: "sparkles", variant: "primary", size: "sm", onClick: addTemplate })];
-    else body = [el("div", { class: "sc-ws__row ui-hscroll", role: "list" }, W.list.map(wsTile)), el("p", { class: "sc-hint sc-ws__tip" }, "Press and hold a tile to edit it.")];
-    wsCard.replaceChildren(head, ...body);
+    else {
+      const custom = W.list.filter((w) => !w.builtin);
+      body = [el("div", { class: "sc-ws__row ui-hscroll", role: "list" }, W.list.map(wsTile)),
+        custom.length ? el("p", { class: "sc-hint sc-ws__tip" }, "Press and hold a tile to edit it.")
+          : el("p", { class: "sc-hint sc-ws__tip" }, "Tap New to build your own, or add the NiFi template to connect the company VPN and open NiFi in one tap."),
+        custom.length ? null : ui.button({ label: "Add NiFi template", icon: "sparkles", variant: "tonal", size: "sm", onClick: addTemplate })];
+    }
+    wsCard.replaceChildren(head, ...body.filter(Boolean));
   }
   function wsTile(w) {
-    const node = el("button", { type: "button", class: "sc-ws__tile", role: "listitem", "aria-label": `Open workspace ${w.name}` },
-      ui.tile(w.icon && /^[a-z0-9-]+$/.test(w.icon) ? w.icon : "globe", "accent", "lg"),
+    const n = (w.steps || []).length;
+    const sub = w.builtin ? "Just show it" : (hostOf(w.url) && n === 1 ? hostOf(w.url) : plural(n, "step"));
+    const node = el("button", { type: "button", class: "sc-ws__tile" + (w.builtin ? " sc-ws__tile--whole" : ""), role: "listitem", "aria-label": w.builtin ? "Open the whole laptop" : `Open workspace ${w.name}` },
+      ui.tile(w.icon && /^[a-z0-9-]+$/.test(w.icon) ? w.icon : "globe", w.builtin ? "violet" : "accent", "lg"),
       el("span", { class: "sc-ws__name" }, w.name),
-      el("span", { class: "sc-ws__sub" }, hostOf(w.url) || `${(w.pre_steps || []).length} step${(w.pre_steps || []).length === 1 ? "" : "s"}`));
+      el("span", { class: "sc-ws__sub" }, sub));
+    if (w.builtin) { node.addEventListener("click", () => wholeLaptop(w)); return node; }
     let timer = null, held = false;
     const cancel = () => { clearTimeout(timer); timer = null; };
     node.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; ui.haptic("medium"); workspaceSheet(w); }, 550); });
@@ -608,18 +640,29 @@ export function init(container, ctx) {
     node.addEventListener("click", () => { if (!held) launchWorkspace(w); held = false; });
     return node;
   }
+  // The built-in tile: launch nothing, just show the laptop and offer Enable control.
+  async function wholeLaptop(w) {
+    const ok = await ui.confirm({ title: "Open the whole laptop?", icon: "laptop",
+      message: "This shows your laptop screen here and then asks if you want to turn control on. Nothing is started on the laptop." , confirmLabel: "Show my laptop" });
+    if (!ok) return;
+    let r;
+    try { r = await api(`/api/workspaces/${w.id}/launch`, { method: "POST", json: { confirm: true } }); }
+    catch (error) { ctx.toast(error.message, { kind: "bad" }); return; }
+    ui.haptic("success");
+    await showLive(r);
+  }
   async function addTemplate() {
     try {
       const t = (await api("/api/workspaces/templates")).templates?.[0];
       if (!t) { ctx.toast("No template is available.", { kind: "warn" }); return false; }
       const missing = t.missing_scripts || [];
-      const body = { name: t.name, icon: t.icon, url: t.url, wait_seconds: t.wait_seconds, arm_minutes: t.arm_minutes,
-        pre_steps: (t.pre_steps || []).filter((x) => !missing.includes(x.name)) };
+      const body = { name: t.name, icon: t.icon, arm_minutes: t.arm_minutes,
+        steps: (t.steps || []).filter((x) => !(x.type === "script" && missing.includes(x.name))) };
       await api("/api/workspaces", { method: "POST", json: body });
       ui.haptic("success");
       if (missing.length) {
         ui.sheet({ title: "Template added without the VPN step", content: el("div", { class: "ui-stack" },
-          el("p", { class: "sc-hint" }, `The quick button "${missing[0]}" does not exist yet, so for now this only opens the address. To add it, run this once on the laptop, then edit the workspace and tick it:`),
+          el("p", { class: "sc-hint" }, `The quick button "${missing[0]}" does not exist yet, so for now this only opens the address. To add it, run this once on the laptop, then edit the workspace and add it as a step:`),
           el("code", { class: "sc-code" }, `python -m hub add-script ${missing[0]} --label "Connect Cloudflare" -- "C:\\Program Files\\Cloudflare\\Cloudflare WARP\\warp-cli.exe" connect`)) });
       } else ui.toast("NiFi added", { kind: "good" });
       await loadWorkspaces();
@@ -631,88 +674,182 @@ export function init(container, ctx) {
     try { W.scripts = await api("/api/scripts"); } catch (_) { W.scripts = []; }
     return W.scripts;
   }
+
+  // ---- the editor: build a workspace out of steps ---------------------------------------------
   async function workspaceSheet(existing) {
     const w = existing || {};
-    const name = el("input", { type: "text", maxlength: "60", value: w.name || "", placeholder: "For example NiFi", "aria-label": "Name", autocomplete: "off" });
-    const url = el("input", { type: "url", inputmode: "url", autocapitalize: "off", autocorrect: "off", spellcheck: "false", maxlength: "2000", value: w.url || "", placeholder: "https://nifi.onestack.in", "aria-label": "Web address" });
-    const wait = el("input", { type: "number", inputmode: "numeric", min: "0", max: "120", value: String(w.wait_seconds ?? 8), "aria-label": "Seconds to wait" });
-    const picked = new Set((w.pre_steps || []).map((x) => x.name));
-    const chips = el("div", { class: "sc-ws__chips" }, ui.skeleton("lines", 1));
+    const draft = { steps: (w.steps || []).map((s) => ({ ...s })) };
+    const labels = {};
+    const name = el("input", { type: "text", maxlength: "60", value: w.name || "", placeholder: "For example Morning setup", "aria-label": "Name", autocomplete: "off" });
+    const list = el("ol", { class: "sc-steps" });
     const field = (label, hint, input) => el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, label), input, hint ? el("span", { class: "ui-hint" }, hint) : null);
+    const move = (i, d) => { const j = i + d; if (j < 0 || j >= draft.steps.length) return; [draft.steps[i], draft.steps[j]] = [draft.steps[j], draft.steps[i]]; drawSteps(); };
+    function drawSteps() {
+      if (!draft.steps.length) { list.replaceChildren(el("li", { class: "sc-steps__empty" }, "No steps yet. Add the first one below.")); return; }
+      list.replaceChildren(...draft.steps.map((s, i) => {
+        const detail = s.type === "wait" ? null : el("span", { class: "sc-step__sub" }, STEP_KIND[s.type] + (s.type === "folder" || s.type === "file" ? ` · ${s.root}` : ""));
+        const secs = s.type === "wait" ? el("input", { type: "number", inputmode: "numeric", min: "0", max: "120", value: String(s.seconds ?? 5), class: "sc-step__num", "aria-label": "Seconds to wait" }) : null;
+        secs?.addEventListener("input", () => { s.seconds = Math.max(0, Math.min(120, parseInt(secs.value, 10) || 0)); });
+        return el("li", { class: "sc-step" },
+          el("span", { class: "sc-step__n ui-num" }, String(i + 1)),
+          ui.tile(STEP_ICON[s.type] || "zap", s.type === "wait" ? "gray" : "accent", "sm"),
+          el("span", { class: "sc-step__text" }, el("span", { class: "sc-step__name" }, s.type === "wait" ? "Wait (seconds)" : stepName(s, labels)), secs || detail),
+          el("span", { class: "sc-step__btns" },
+            ui.button({ label: "Move up", icon: "arrow-up", variant: "ghost", size: "sm", iconOnly: true, disabled: i === 0, onClick: () => move(i, -1) }),
+            ui.button({ label: "Move down", icon: "arrow-down", variant: "ghost", size: "sm", iconOnly: true, disabled: i === draft.steps.length - 1, onClick: () => move(i, 1) }),
+            ui.button({ label: "Remove step", icon: "trash", variant: "ghost", size: "sm", iconOnly: true, onClick: () => { draft.steps.splice(i, 1); drawSteps(); } })));
+      }));
+    }
+    const add = (step) => { draft.steps.push(step); drawSteps(); list.lastElementChild?.scrollIntoView({ block: "nearest" }); };
+    const addable = (type) => () => {
+      if (draft.steps.length >= 12) { ctx.toast("A workspace can have up to 12 steps.", { kind: "warn" }); return; }
+      ({ script: pickScript, url: pickUrl, app: pickApp, folder: pickPath, file: pickPath, wait: pickWait })[type](add, type);
+    };
+    const addRow = el("div", { class: "sc-ws__chips", role: "group", "aria-label": "Add a step" },
+      Object.keys(STEP_KIND).map((t) => ui.button({ label: STEP_KIND[t], icon: STEP_ICON[t], variant: "tonal", size: "sm", onClick: addable(t) })));
     const content = el("div", { class: "ui-stack" },
       existing ? null : ui.button({ label: "Add NiFi template", icon: "sparkles", variant: "tonal", block: true, onClick: async () => { if (await addTemplate()) sheet.close(); } }),
-      field("Name", "", name), field("Web address on the laptop", "Opens in the laptop's default browser. Leave empty to only run buttons.", url),
-      el("div", { class: "ui-field" }, el("span", { class: "ui-label" }, "Run first (your quick buttons)"), chips),
-      field("Then wait (seconds)", "Time for a VPN to connect before the page opens. 0 to 120.", wait));
-    const actions = [{ label: existing ? "Save" : "Add workspace", variant: "primary", icon: "check", onClick: async () => {
-      const body = { name: name.value.trim(), url: url.value.trim(), wait_seconds: Math.max(0, Math.min(120, parseInt(wait.value, 10) || 0)),
-        pre_steps: [...picked].map((n) => ({ type: "script", name: n })) };
-      if (!body.name) { ctx.toast("Give it a name.", { kind: "warn" }); return false; }
+      field("Name", "", name),
+      el("div", { class: "ui-field" }, el("span", { class: "ui-label" }, "Add a step"), addRow),
+      el("div", { class: "ui-field" }, el("span", { class: "ui-label" }, "Steps, in order"), list,
+        el("span", { class: "ui-hint" }, "They run one after the other. If one fails the rest wait for you.")));
+    async function save() {
+      const body = { name: name.value.trim(), steps: draft.steps };
+      if (!body.name) { ctx.toast("Give it a name.", { kind: "warn" }); return null; }
+      if (!body.steps.length) { ctx.toast("Add at least one step.", { kind: "warn" }); return null; }
       try {
-        await api(existing ? `/api/workspaces/${existing.id}` : "/api/workspaces", { method: existing ? "PUT" : "POST", json: body });
+        const saved = await api(existing ? `/api/workspaces/${existing.id}` : "/api/workspaces", { method: existing ? "PUT" : "POST", json: body });
         ui.haptic("success"); loadWorkspaces();
-      } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
-    } }];
+        return saved;
+      } catch (error) { ctx.toast(error.message, { kind: "bad" }); return null; }
+    }
+    const actions = [
+      { label: existing ? "Save" : "Add workspace", variant: "primary", icon: "check", onClick: async () => ((await save()) ? undefined : false) },
+      { label: "Test launch", variant: "tonal", icon: "play", onClick: async () => { const saved = await save(); if (!saved) return false; setTimeout(() => launchWorkspace(saved), 250); } },
+    ];
     if (existing) actions.push({ label: "Delete", variant: "danger-soft", icon: "trash", onClick: async () => {
       if (!(await ui.confirm({ title: `Delete ${existing.name}?`, message: "This only removes the shortcut. Nothing on the laptop changes.", confirmLabel: "Delete", danger: true }))) return false;
       try { await api(`/api/workspaces/${existing.id}`, { method: "DELETE" }); loadWorkspaces(); } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
     } });
     const sheet = ui.sheet({ title: existing ? "Edit workspace" : "New workspace", content, actions });
+    drawSteps();
+    (await loadScripts()).forEach((sc) => { labels[sc.name] = sc.label || sc.name; });
+    drawSteps();
+  }
+  async function pickScript(add) {
+    const body = el("div", { class: "ui-stack" }, ui.skeleton("list", 2));
+    const s = ui.sheet({ title: "Run a quick button", content: body });
     const scripts = await loadScripts();
-    chips.replaceChildren(...(scripts.length ? scripts.map((sc) => {
-      const chip = el("button", { type: "button", class: "ui-chip" + (picked.has(sc.name) ? " is-on" : ""), "aria-pressed": String(picked.has(sc.name)) }, sc.label || sc.name);
-      chip.addEventListener("click", () => { if (picked.has(sc.name)) picked.delete(sc.name); else picked.add(sc.name); chip.classList.toggle("is-on", picked.has(sc.name)); chip.setAttribute("aria-pressed", String(picked.has(sc.name))); });
-      return chip;
-    }) : [el("p", { class: "sc-hint" }, "No quick buttons yet. On the laptop, run:"), el("code", { class: "sc-code" }, 'python -m hub add-script NAME --label "Label" -- PROGRAM ARGS')]));
+    body.replaceChildren(...(scripts.length
+      ? [el("div", { class: "ui-list ui-list--inset" }, scripts.map((sc) => ui.listRow({ icon: "zap", title: sc.label || sc.name, sub: sc.name, onClick: () => { add({ type: "script", name: sc.name }); s.close(); } })))]
+      : [el("p", { class: "sc-hint" }, "No quick buttons yet. On the laptop, run:"), el("code", { class: "sc-code" }, 'python -m hub add-script NAME --label "Label" -- PROGRAM ARGS')]));
+  }
+  function pickUrl(add) {
+    const input = el("input", { type: "url", inputmode: "url", autocapitalize: "off", autocorrect: "off", spellcheck: "false", maxlength: "2000", placeholder: "https://example.com", "aria-label": "Web address" });
+    ui.sheet({ title: "Open a web address", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Opens in the laptop's default browser. Only http and https work.")),
+      actions: [{ label: "Add step", icon: "plus", variant: "primary", onClick: () => {
+        const v = input.value.trim();
+        if (!/^https?:\/\/[^\s/]+/i.test(v)) { ctx.toast("Type an address starting with http:// or https://", { kind: "warn" }); return false; }
+        add({ type: "url", url: v });
+      } }] });
+  }
+  function pickWait(add) {
+    const input = el("input", { type: "number", inputmode: "numeric", min: "0", max: "120", value: "5", "aria-label": "Seconds to wait" });
+    ui.sheet({ title: "Wait a little", content: el("div", { class: "ui-stack" }, input, el("p", { class: "sc-hint" }, "Useful after a VPN or an app, so it is ready before the next step. 0 to 120 seconds.")),
+      actions: [{ label: "Add step", icon: "plus", variant: "primary", onClick: () => add({ type: "wait", seconds: Math.max(0, Math.min(120, parseInt(input.value, 10) || 0)) }) }] });
+  }
+  function pickApp(add) {
+    const q = el("input", { type: "search", placeholder: "Search your apps", "aria-label": "Search apps", autocomplete: "off", maxlength: "100" });
+    const out = el("div", { class: "ui-stack" }, ui.skeleton("list", 3));
+    const s = ui.sheet({ title: "Start an app", content: el("div", { class: "ui-stack" }, q, out) });
+    let timer = null, seq = 0;
+    const run = async () => {
+      const my = ++seq;
+      try {
+        const r = await api(`/api/workspaces/apps?q=${encodeURIComponent(q.value.trim())}`);
+        if (my !== seq) return;
+        out.replaceChildren(...(r.apps?.length
+          ? [el("div", { class: "ui-list ui-list--inset" }, r.apps.slice(0, 60).map((a) => ui.listRow({ icon: "grid", title: a.name, sub: a.source === "hub.json" ? "From your list" : "Installed", onClick: () => { add({ type: "app", id: a.id, name: a.name }); s.close(); } })))]
+          : [ui.emptyState({ icon: "grid", title: q.value.trim() ? "No app matches" : (r.supported ? "No apps found" : "App list needs Windows"), body: r.supported ? "Try another name." : "Installed apps are read from the Start Menu of a Windows laptop. You can also list apps under 'apps' in hub.json.", compact: true })]));
+      } catch (error) { if (my === seq) out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
+    };
+    q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 220); });
+    run();
+  }
+  async function pickPath(add, type) {
+    const st = { root: "", path: "", roots: [] };
+    const out = el("div", { class: "ui-stack" }, ui.skeleton("list", 3));
+    const s = ui.sheet({ title: type === "folder" ? "Open a folder" : "Open a file", content: out });
+    const draw = async () => {
+      try {
+        const r = await api(`/api/files?root=${encodeURIComponent(st.root)}&path=${encodeURIComponent(st.path)}`);
+        const here = st.path ? st.path.split("/").filter(Boolean) : [];
+        const rows = (r.entries || []).filter((e) => type === "file" || e.is_dir).sort((a, b) => (b.is_dir - a.is_dir) || a.name.localeCompare(b.name)).slice(0, 200);
+        out.replaceChildren(
+          st.roots.length > 1 ? el("div", { class: "sc-ws__chips" }, st.roots.map((n) => el("button", { type: "button", class: "ui-chip" + (n === st.root ? " is-on" : ""), onclick: () => { st.root = n; st.path = ""; draw(); } }, n))) : el("span", { hidden: true }),
+          el("div", { class: "sc-crumb" }, here.length ? ui.button({ label: "Up", icon: "arrow-up", variant: "tonal", size: "sm", onClick: () => { st.path = here.slice(0, -1).join("/"); draw(); } }) : null,
+            el("span", { class: "sc-hint" }, `${st.root}${here.length ? " / " + here.join(" / ") : ""}`)),
+          type === "folder" ? ui.button({ label: "Use this folder", icon: "check", variant: "primary", block: true, onClick: () => { add({ type: "folder", root: st.root, path: st.path }); s.close(); } }) : el("span", { hidden: true }),
+          rows.length ? el("div", { class: "ui-list ui-list--inset" }, rows.map((e) => ui.listRow({ icon: e.is_dir ? "folder" : "file", title: e.name, chevron: e.is_dir,
+            onClick: () => { const p = [...here, e.name].join("/"); if (e.is_dir) { st.path = p; draw(); } else { add({ type: "file", root: st.root, path: p }); s.close(); } } })))
+            : ui.emptyState({ icon: "folder", title: type === "folder" ? "No folders in here" : "Nothing in here", compact: true }));
+      } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
+    };
+    try {
+      st.roots = ((await api("/api/roots")) || []).map((r) => r.name);
+      if (!st.roots.length) { out.replaceChildren(ui.emptyState({ icon: "folder", title: "No shared folders", body: "Add folders under 'roots' in hub.json.", compact: true })); return; }
+      st.root = st.roots[0];
+      draw();
+    } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
   }
 
+  // ---- launching ------------------------------------------------------------------------------
   async function launchWorkspace(w, { skipSteps = false } = {}) {
     const labels = {};
     (await loadScripts()).forEach((sc) => { labels[sc.name] = sc.label || sc.name; });
-    const steps = skipSteps ? [] : (w.pre_steps || []).map((x) => labels[x.name] || x.name);
-    const host = hostOf(w.url);
-    const plan = [...steps.map((l) => `run "${l}"`), ...(steps.length && w.wait_seconds && w.url ? [`wait ${w.wait_seconds} seconds`] : []), ...(w.url ? [`open ${w.url} in its browser`] : [])];
-    if (!plan.length) { ctx.toast("This workspace has nothing to do.", { kind: "warn" }); return; }
+    const todo = (w.steps || []).filter((s) => !(skipSteps && (s.type === "script" || s.type === "wait")));
+    if (!todo.length) { ctx.toast("This workspace has nothing to do.", { kind: "warn" }); return; }
     const ok = await ui.confirm({ title: `Open ${w.name}?`, icon: "laptop",
-      message: `On your laptop this will ${plan.join(", then ")}. Then the live view starts here, and you decide whether to turn control on.`, confirmLabel: "Open on laptop" });
+      message: `On your laptop this will ${todo.map((s) => stepWords(s, labels).plan).join(", then ")}. Then the live view starts here, and you decide whether to turn control on.`, confirmLabel: "Open on laptop" });
     if (!ok) return;
-    const rows = [];
-    steps.forEach((l) => rows.push({ text: `Running "${l}"`, done: `"${l}" finished` }));
-    if (w.url) rows.push({ text: `Opening ${host || "the page"}`, done: `Opened ${host || "the page"}` });
-    rows.push({ text: "Starting the live view", done: "Live view ready" });
+    const rows = todo.map((s) => stepWords(s, labels));
+    rows.push({ doing: "Starting the live view", done: "Live view ready" });
     const list = el("ol", { class: "sc-prog" });
     const draw = (cur, failedAt, notes = {}) => list.replaceChildren(...rows.map((r, i) => {
       const state = failedAt === i ? "bad" : i < cur ? "done" : i === cur ? "run" : "wait";
       return el("li", { class: `sc-prog__row is-${state}` },
         state === "run" ? el("span", { class: "ui-spinner" }) : ui.icon(state === "done" ? "check-circle" : state === "bad" ? "alert-circle" : "circle"),
-        el("span", { class: "sc-prog__text" }, el("span", {}, state === "done" ? r.done : r.text + (state === "run" ? "…" : "")), notes[i] ? el("span", { class: "sc-prog__note" }, notes[i]) : null));
+        el("span", { class: "sc-prog__text" }, el("span", {}, state === "done" ? r.done : r.doing + (state === "run" ? "…" : "")), notes[i] ? el("span", { class: "sc-prog__note" }, notes[i]) : null));
     }));
     const foot = el("div", { class: "ui-stack" });
     const sheet = ui.sheet({ title: w.name, content: el("div", { class: "ui-stack" }, list, foot), dismissible: false });
     draw(0);
     // The hub runs everything in one request; walk the pending row forward while it works so the list feels alive.
-    let cur = 0;
-    const walker = setInterval(() => { if (cur < steps.length + (w.url ? 1 : 0) - 1) { cur++; draw(cur); } }, Math.max(1500, ((w.wait_seconds || 0) * 1000) / Math.max(1, steps.length + 1)));
+    let cur = 0, walking = true, walker = null;
+    const stepMs = (i) => (todo[i]?.type === "wait" ? (todo[i].seconds || 0) * 1000 : 1500);
+    const advance = () => { if (!walking || cur >= todo.length - 1) return; walker = setTimeout(() => { cur++; draw(cur); advance(); }, stepMs(cur)); };
+    advance();
+    const stopWalk = () => { walking = false; clearTimeout(walker); };
     let r;
     try {
       r = await api(`/api/workspaces/${w.id}/launch`, { method: "POST", json: { confirm: true, skip_steps: skipSteps } });
     } catch (error) {
-      clearInterval(walker);
+      stopWalk();
       draw(cur, cur);
       foot.replaceChildren(ui.notice(error.message, { tone: "bad" }), ui.button({ label: "Close", variant: "secondary", block: true, onClick: () => sheet.close() }));
       return;
     }
-    clearInterval(walker);
+    stopWalk();
     const bad = (r.steps || []).findIndex((x) => !x.ok);
-    const notes = {};
-    (r.steps || []).forEach((x, i) => { if (!x.ok) notes[i] = x.message; });
-    if (bad >= 0 || (w.url && !r.opened)) {
-      const at = bad >= 0 ? bad : steps.length;
-      if (bad < 0 && r.open_message) notes[at] = r.open_message;
+    if (bad >= 0 || r.stopped) {
+      const at = bad >= 0 ? bad : Math.max(0, (r.steps || []).length - 1);
+      const notes = {};
+      if (r.steps?.[at]) notes[at] = r.steps[at].message;
       draw(at, at, notes);
+      const canSkip = todo[at] && (todo[at].type === "script" || todo[at].type === "wait") && todo.some((s) => ["url", "app", "folder", "file"].includes(s.type));
       foot.replaceChildren(
-        ui.notice(bad >= 0 ? "A step failed, so the page was not opened. If your company blocks this from the command line, open the app on the laptop once by hand, then use Open anyway." : "The page could not be opened on the laptop.", { tone: "bad" }),
-        bad >= 0 ? ui.button({ label: "Open anyway", icon: "external", variant: "primary", block: true, onClick: () => { sheet.close(); launchWorkspace(w, { skipSteps: true }); } }) : null,
+        ui.notice(canSkip ? "A step failed, so the rest did not run. If your company blocks this from the command line, open the app on the laptop once by hand, then use Open anyway." : "A step failed, so the rest did not run.", { tone: "bad" }),
+        canSkip ? ui.button({ label: "Open anyway", icon: "external", variant: "primary", block: true, onClick: () => { sheet.close(); launchWorkspace(w, { skipSteps: true }); } }) : null,
         ui.button({ label: "Close", variant: "secondary", block: true, onClick: () => sheet.close() }));
       return;
     }
@@ -729,7 +866,7 @@ export function init(container, ctx) {
     startView();
     viewer.scrollIntoView({ behavior: "smooth", block: "start" });
     if (S.status.control_available && !armed()) {
-      S.minutes = [1, 5, 10, 15].includes(r.arm_minutes) ? r.arm_minutes : S.minutes;
+      S.minutes = [1, 5, 10, 15].includes(r?.arm_minutes) ? r.arm_minutes : S.minutes;
       if (minutesSeg) minutesSeg.value = S.minutes;
       setTimeout(promptArm, 900);
     }
@@ -759,5 +896,10 @@ export function init(container, ctx) {
   renderStatus();
   renderWorkspaces();
 
-  return { show, hide, refresh: () => { S.status = null; renderStatus(); loadStatus(); } };
+  // Another screen (the Launcher, search) hands over: "live" shows the screen and offers Enable control; "workspaces" is just this card.
+  function openSection(name) {
+    if (name === "live") showLive({});
+    else if (name === "workspaces") wsCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  return { show, hide, openSection, openItem: () => wsCard.scrollIntoView({ behavior: "smooth", block: "start" }), refresh: () => { S.status = null; renderStatus(); loadStatus(); } };
 }

@@ -96,3 +96,23 @@ html.sc-noscroll, html.sc-noscroll body { overflow: hidden; }
 .sc-prog__row.is-bad .ui-icon { color: var(--c-bad); }
 .sc-prog__text { display: flex; flex-direction: column; min-width: 0; }
 .sc-prog__note { font-size: var(--fs-sm); color: var(--c-text-2); overflow-wrap: anywhere; font-weight: var(--fw-regular); }
+
+/* whole-laptop tile and the live view's Control button */
+#view-screen .sc-ws__tile--whole { background: var(--c-card-grad); border-color: transparent; color: white; }
+#view-screen .sc-ws__tile--whole .sc-ws__sub { color: white; opacity: .85; }
+#view-screen .sc-hudctl { box-shadow: var(--shadow-accent); }
+#view-screen .sc-hudctl[hidden] { display: none; }
+#view-screen .sc-ws__tile--whole .ui-tile { background: rgb(255 255 255 / .2); color: white; }
+
+/* workspace editor: ordered steps (rendered in a sheet, outside #view-screen) */
+.sc-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.sc-steps__empty { padding: var(--sp-4); border-radius: var(--r-md); border: 1px dashed var(--c-line-strong); color: var(--c-text-2); font-size: var(--fs-sm); text-align: center; }
+.sc-step { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: var(--sp-2) var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--c-line); background: var(--c-surface-2); }
+.sc-step__n { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: var(--r-full); background: var(--c-accent-soft); color: var(--c-accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-bold); }
+.sc-step__text { display: flex; flex-direction: column; min-width: 0; gap: var(--sp-1); }
+.sc-step__name { font-size: var(--fs-md); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+.sc-step__sub { font-size: var(--fs-xs); color: var(--c-text-2); }
+.sc-step__num { width: 96px; min-height: 40px; }
+.sc-step__btns { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--sp-1); margin-top: calc(var(--sp-1) * -1); }
+.sc-step__btns .ui-btn[disabled] { opacity: .35; }
+.sc-crumb { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap); }
