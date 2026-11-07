@@ -88,7 +88,7 @@ let openInstance = null;
 export function openSearch(ctx, initial = "") {
   if (openInstance) { openInstance.input.focus(); return; }
   const input = el("input", { type: "search", class: "ob-input", placeholder: "Search notes, tasks, files, screens…",
-    autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Search everything",
+    autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "200", "aria-label": "Search everything",
     "aria-controls": "ob-results" });
   const clear = ui.button({ label: "Clear", icon: "close", variant: "ghost", iconOnly: true, class: "ob-clear", hidden: true });
   const cancel = el("button", { type: "button", class: "ui-btn ui-btn--ghost ob-cancel" }, "Cancel");
