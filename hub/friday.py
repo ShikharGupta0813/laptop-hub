@@ -535,7 +535,7 @@ class Engine:
         out: dict[str, list[dict]] = {k: [] for k, _ in SECTIONS}
 
         def add(section, text, say, priority, source, link=None, sort=0.0):
-            item = {"text": clean(text, 200), "say": speakable(say, 160), "priority": max(0, min(3, priority)),
+            item = {"text": clean(text, 200), "say": speakable(say, 160).rstrip(".!?;:,"), "priority": max(0, min(3, priority)),
                     "source": source, "_sort": sort}
             if link:
                 item["link"] = link
@@ -579,7 +579,7 @@ class Engine:
             add("urgent" if p == 3 else "tasks", f"{label}: {title}", f"{label.lower()}: {title}", p, "todos",
                 {"view": "notes", "section": "todos", "id": tid} if tid else None, -p)
         if later:
-            add("other", f"{later} more open Asana tasks later", f"{plural(later, 'more Asana task')} later on", 0,
+            add("other", f"{later} more open Asana task{'' if later == 1 else 's'} later", f"{plural(later, 'more Asana task')} later on", 0,
                 "asana")
 
         for m in got.get("calendar") or []:
@@ -654,8 +654,9 @@ class Engine:
                 add("reminders", f"Reminder at {when:%H:%M}: {text}",
                     f"reminder at {say_time(when.hour, when.minute)}: {text}", 1, "reminders", link, when.timestamp())
 
+        order = {"calendar": 0, "watch": 1, "asana": 2, "todos": 3, "reminders": 4, "mail": 5}
         for key in out:
-            out[key].sort(key=lambda i: (-i["priority"], i["_sort"]))
+            out[key].sort(key=lambda i: (-i["priority"], order.get(i["source"], 9), i["_sort"]))
             out[key] = out[key][:SECTION_CAP]
         return out
 
@@ -678,13 +679,13 @@ class Engine:
                          f"{meetings[0]['say']}.")
         tasks = [i for i in sections["tasks"] if i["priority"] >= 2]
         if tasks:
-            parts.append(f"{plural(len(tasks), 'task')} to do today, starting with {tasks[0]['say']}.")
+            parts.append(f"{plural(len(tasks), 'task').capitalize()} to do today, starting with {tasks[0]['say']}.")
         rem = sections["reminders"]
         if rem:
-            parts.append(f"{plural(len(rem), 'reminder')} for today, first {rem[0]['say']}.")
+            parts.append(f"{plural(len(rem), 'reminder').capitalize()} for today, first {rem[0]['say']}.")
         mail = [i for i in sections["mail"] if i["priority"] >= 1]
         if mail:
-            parts.append(f"{plural(len(mail), 'email')} worth a look, the top one from {mail[0]['say']}.")
+            parts.append(f"{plural(len(mail), 'email').capitalize()} worth a look, the top one from {mail[0]['say']}.")
         chat = sections["chat"]
         if chat:
             parts.append(f"In chat, {chat[0]['say']}.")

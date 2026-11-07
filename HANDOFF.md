@@ -139,6 +139,16 @@ DONE since: second security review (8 findings fixed, tests in tests/test_securi
 `docs/API.md`; (3) rebuild the APK in GitHub Actions (first real compile of the Android capture code; fix any Java errors);
 (4) real-laptop run (item 1 below); (5) real-phone checks of the unverified list above.
 
+### 4a-2. Added after first real run (2026-11-07)
+First real run worked on the owner's laptop (Windows, D: drive) and phone: app loads over Tailscale, Terminal/Talk/Learn/Files screens render.
+Fixes made from that run: Local assistant speed (tool routing, small prompt, keep_alive, warm-up at startup), terminal touch scroll +
+copy output, Files open/download (Java DownloadListener in `mobile/.../HubWeb.java`, text preview for PDFs in the app).
+New: **Friday** (`hub/friday.py`, `hub/friday_tools.py`, `js/friday.js`, voice persona in `js/voicemode.js`): spoken daily brief from
+mail headers/Asana/calendar/reminders/alerts, plan the day, laptop-prep list approved by the owner before anything opens,
+proactive "you were tagged" alerts (off until enabled). Limits: always-listening "Hey Friday" is NOT built (needs a native
+foreground service + on-device wake word); "tagged" = comments by others on the owner's open tasks; Asana priority is not read.
+Owner has no Jarvis folder; calendar shows 503 until Jarvis/iCal is configured. Android build run #3 succeeded (capture code compiles).
+
 ### 4b. Older items
 
 1. **Run it on the real laptop** (nothing below was ever run on Windows or with real models): follow README.md,

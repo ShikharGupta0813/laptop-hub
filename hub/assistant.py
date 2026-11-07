@@ -153,6 +153,9 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                         r"terminal|script|write|save|create|delete|rename|move|copy|install|git|pip|"
                         r"battery|cpu|memory|ram|disk|storage|status|system|find|list|download|"
                         r"desktop|documents|pdf|txt|csv|json|py)\b|[~/\\]|\.\w{1,5}\b", re.I)),
+    "friday": ({"friday_brief", "friday_plan", "friday_apply_plan", "friday_laptop_prep", "friday_run_laptop_prep"},
+               re.compile(r"\bfriday\b|\bbrief(?:ing)?\b|\bupdate for today\b|\bplan (?:my|the) day\b|"
+                          r"\bwhat(?:'s| is) (?:up|on) (?:for )?today\b|\blaptop ready\b|\bget ready\b", re.I)),
     "notes": ({"search_notes", "read_note", "add_note"},
               re.compile(r"\bnotes?\b|\btags?\b|\bjot\b|\bwrite (?:this|that) down\b", re.I)),
     "reminders": ({"reminder_add", "reminders_list"},

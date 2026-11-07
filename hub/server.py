@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant_tools, assistant_tools_more, auth, files
+from . import assistant_tools, assistant_tools_more, auth, files, friday_tools
 from . import llm as llm_mod
 from .assistant import AssistantService
 from .common import Ctx
@@ -129,7 +129,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     # created just below, so it is looked up on first use.
     assistant = deps.assistant or AssistantService(
         config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p],
-        extra_tools=assistant_tools.build(lambda: app, config) + assistant_tools_more.build(lambda: app, config))
+        extra_tools=assistant_tools.build(lambda: app, config) + assistant_tools_more.build(lambda: app, config)
+        + friday_tools.build(lambda: app, config))
 
     modules: list = []   # feature modules that were found; filled in below
 

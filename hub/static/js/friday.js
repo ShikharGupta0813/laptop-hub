@@ -548,6 +548,7 @@ export function init(container, ctx) {
     const prep = FR.prep;
     if (!prep) { prepSlot.hidden = true; return; }
     prepSlot.hidden = false;
+    if (!prep.inited) { prep.inited = true; selected.clear(); prep.items.forEach((i) => selected.add(i.id)); }
     const head = el("div", { class: "ui-section-head" }, el("h2", { class: "ui-section-title" }, "For your laptop"));
     if (!prep.items.length) {
       prepSlot.replaceChildren(head, ui.emptyState({ icon: "laptop", title: "Nothing to open", body: "Your laptop can stay just as it is.", compact: true }));
@@ -694,7 +695,11 @@ export function init(container, ctx) {
     if (FR.prep) renderPrep();
     loadPendingStrip(); loadAlertsList();
   }
-  const unsub = subscribe((what) => { if (what === "settings") paintHero(); });
+  const unsub = subscribe((what) => {
+    if (what === "settings") paintHero();
+    else if (what === "prep" && !busy) renderPrep();
+    else if (what === "plan" && !busy) renderPlan();
+  });
   const onVis = () => { if (document.hidden) speaker.stop(); };
   document.addEventListener("visibilitychange", onVis);
   ui.pullToRefresh(container, async () => { await boot(true); });
