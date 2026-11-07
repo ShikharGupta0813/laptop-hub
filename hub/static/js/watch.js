@@ -2,6 +2,7 @@
 // Routes: docs/api/watch.md. Chat monitoring also asks the Android app (HubCapture.setWatch) to start forwarding.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -141,13 +142,12 @@ export function init(container, ctx) {
     const quiet = switchRow({ icon: "moon", tone: "violet", title: "Quiet hours", sub: "Saved quietly, no buzz", checked: !!q?.enabled,
       onChange: (on) => { times.hidden = !on; saveSettings({ quiet_hours: on ? { enabled: true, start: start.value, end: end.value } : null }); } });
 
-    const model = ui.segmented({ label: "Where urgency checks run", block: true, value: status.model || "local",
-      options: [{ value: "local", label: "On my laptop" }, { value: "claude", label: "Claude" }],
+    const model = providerSegmented({ label: "Where urgency checks run", block: true, value: status.model || "local", localLabel: "On my laptop",
       onChange: (v) => saveSettings({ model: v }) });
     return el("section", { class: "wt-section" }, el("h2", { class: "ui-caps wt-caps" }, "Monitoring"),
       el("div", { class: "ui-list ui-list--inset ui-list--icons" }, mail, chat, interval, quiet, times),
       el("div", { class: "wt-model" }, el("p", { class: "ui-hint" }, "The AI reads new mail to spot urgent ones. Where should it do that?"), model,
-        status.model === "claude" ? el("p", { class: "ui-hint wt-warnhint" }, "With Claude, clipped mail text leaves your laptop.") : null));
+        status.model && status.model !== "local" ? el("p", { class: "ui-hint wt-warnhint" }, "With a cloud AI, clipped mail text leaves your laptop.") : null));
   }
 
   function ruleCard(rule) {

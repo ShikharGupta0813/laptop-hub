@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .common import Ctx, JsonFile, ask_json, http_from
-from .llm import LLMError, ProviderName
+from .llm import PROVIDERS, LLMError, ProviderName
 from .speech import SpeechError
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024

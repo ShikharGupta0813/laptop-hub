@@ -8,6 +8,7 @@ hub itself stored as pending; it can never name a URL or path to open.
 """
 from __future__ import annotations
 
+from .llm import PROVIDERS
 import re
 from typing import Any, Callable
 

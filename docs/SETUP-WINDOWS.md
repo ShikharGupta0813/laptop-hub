@@ -12,15 +12,15 @@ python -m hub init
 python -m hub setup
 ```
 
-It sets up, in order: the Jarvis folder (clones it if missing), Gmail (App password: 2-Step Verification on, then myaccount.google.com/apppasswords), Asana token (app.asana.com/0/my-apps), calendar iCal link, Google Chat webhooks, Claude API key, phone push topic (ntfy), what to call you, the Cloudflare WARP button, and auto-start at logon.
+It sets up, in order: the Jarvis folder (clones it if missing), Gmail (App password: 2-Step Verification on, then myaccount.google.com/apppasswords), Asana token (app.asana.com/0/my-apps), calendar iCal link, Google Chat webhooks, AI (Gemini key, Claude login check, default AI), phone push topic (ntfy), what to call you, the Cloudflare WARP button, and auto-start at logon.
 
-- Secrets are typed hidden and saved only on this laptop: Gmail, calendar and Chat in the Windows keyring, Asana in `~\.claude\.asana_token` (locked to your user), the Claude key as your user environment variable. They are never printed or written to `hub.json`, and each is tested against its own service only.
+- Secrets are typed hidden and saved only on this laptop: Gmail, calendar and Chat in the Windows keyring, Asana in `~\.claude\.asana_token` (locked to your user), the Gemini key in the keyring (service `jarvis-gemini`). No Claude API key is asked for (see "AI without an API key" below). They are never printed or written to `hub.json`, and each is tested against its own service only.
 - Ctrl+C stops the whole setup cleanly and lists the steps already done. Prompts accept only y/yes/n/no/Enter.
 - Company Google Workspace accounts (like `@onestack.in`) often have App passwords or IMAP disabled by the admin; a personal Gmail works without admin help. Only one mailbox can be connected at a time (re-run with `--only gmail` for the other).
-- `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, claude, phone, name, warp, autostart).
+- `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, ai, gemini, phone, name, warp, autostart; `claude` still works as an alias of `ai`).
 - `python -m hub setup --check` changes nothing and just tests what is configured.
 - The Jarvis `.venv` is optional: the hub only loads Jarvis's helper files with its own Python.
-- Open a new terminal and restart the hub afterwards (a new Claude key shows up in new terminals only).
+- Open a new terminal and restart the hub afterwards (a new `GEMINI_API_KEY` variable would show up in new terminals only; keyring keys need no restart of the terminal).
 
 ### Google Chat
 
@@ -83,7 +83,24 @@ python -m hub doctor
 python -m hub serve
 ```
 
-Leave that window open for now. Optional Claude assistant: `$env:ANTHROPIC_API_KEY = "sk-ant-..."` before `serve`.
+Leave that window open for now. Optional cloud AI without an API key: see "AI without an API key" at the end of this step list.
+
+## AI without an API key
+
+You do not need an `ANTHROPIC_API_KEY` (API tokens are billed separately from a Claude subscription). The hub offers four AIs, shown in every "Model" picker only when they are ready:
+
+| Choice | What it is | Cost |
+|---|---|---|
+| Local model | Ollama on this laptop | free, private |
+| Gemini | Google's API with a **free key** | free tier, separate from your Claude limits |
+| Claude (my login) | the `claude` program (Claude Code) already logged in with your Claude subscription | uses your **subscription quota**, shared with your other Claude work; no API billing |
+| Claude (API key) | `ANTHROPIC_API_KEY` | API billing (optional, only if you want it) |
+
+1. **Claude login.** Install Claude Code (claude.com/claude-code), open a terminal, run `claude` once and sign in. Nothing else to configure: the hub runs `claude -p` with tools switched off and ignores any `ANTHROPIC_API_KEY`, so your login is what is used. Keep it for heavy tasks, because it shares your normal Claude limit.
+2. **Gemini.** Get a free key at https://aistudio.google.com/apikey and run `python -m hub setup --only gemini`. The key is typed hidden, tested, and stored in the Windows keyring (service `jarvis-gemini`); the `GEMINI_API_KEY` environment variable also works. It is never written to `hub.json`.
+3. **Pick the default.** `python -m hub setup --only ai` explains the options, checks `claude --version`, offers the Gemini step and saves `default_provider` in `hub.json`. `auto` (the default) picks the Claude API key if `ANTHROPIC_API_KEY` is set, otherwise Gemini if a key is saved, otherwise your Claude login if `claude` is installed, otherwise the local model. Routine jobs (Friday briefs, note titles and tags, quick questions) use the default; choose "Claude login" yourself for the big jobs to save your subscription quota.
+
+The assistant, Friday and voice mode work with all of them: Claude (API key) and the local model call tools natively, and Claude login and Gemini describe the tools in the prompt, with the same approvals. Settings: `default_provider`, `claude_cli_model` (default `sonnet`), `claude_cli_path` (only if `claude` is not on PATH), `gemini_model` (default `gemini-2.5-flash`). `python -m hub doctor` and Settings show which AIs are ready.
 
 ## 6. HTTPS with Tailscale (second PowerShell window)
 
@@ -108,7 +125,7 @@ Register-ScheduledTask -TaskName "LaptopHub" -Action $action -Trigger $trigger -
 Start-ScheduledTask -TaskName "LaptopHub"
 ```
 
-Set `ANTHROPIC_API_KEY` for your user once if you want Claude (the task cannot see a per-window variable): `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY","sk-ant-...","User")`, then log out and in.
+The Claude login and the Gemini keyring key need nothing extra for the task. Only an `ANTHROPIC_API_KEY` (optional) must be set for your user, because the task cannot see a per-window variable: `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY","sk-ant-...","User")`, then log out and in.
 Stop or remove it: `Stop-ScheduledTask LaptopHub` / `Unregister-ScheduledTask LaptopHub -Confirm:$false`. Tailscale's `serve --bg` setting persists by itself.
 
 ## 8. Keep the laptop reachable

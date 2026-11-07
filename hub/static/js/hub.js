@@ -146,8 +146,8 @@ export function init(container, ctx) {
         "Start the Ollama app on the laptop."),
       check(!!s.voice_ready, "Voice notes ready", s.voice_ready ? "Speech to text is available." : "",
         el("span", {}, "Run ", el("code", {}, "pip install -r requirements-voice.txt"), ".")),
-      check(!!s.claude_ready, "Claude assistant ready", s.claude_ready ? "An API key is set." : "",
-        el("span", {}, "Set ", el("code", {}, "ANTHROPIC_API_KEY"), " where the hub runs, or use the Local model.")),
+      check(!!s.claude_ready, "Cloud AI ready", s.claude_ready ? "Ready: " + Object.values(s.providers || {}).filter((p) => p.ready && p.label !== "Local model").map((p) => p.label).join(", ") : "",
+        el("span", {}, "Run ", el("code", {}, "python -m hub setup --only ai"), " to use Gemini or your Claude login, or use the Local model.")),
       check(shells.length > 0, "Terminal shells available", shells.length ? shells.join(", ") : "",
         "No shell was found. Check the \"shells\" setting in hub.json."),
     );

@@ -2,6 +2,7 @@
 // API: docs/api/productivity.md (Todos). openSection("new") focuses quick add; openItem(id) opens the detail sheet.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => actions.map((a) => {
@@ -345,9 +346,9 @@ export function init(container, ctx) {
     });
 
     // AI breakdown with accept list
-    const model = ui.segmented({ options: [{ value: "local", label: "Local model" }, { value: "claude", label: "Claude" }], value: "local", label: "Model" });
-    const modelHint = el("p", { class: "ui-hint", hidden: true }, "Claude sends this task's text to Anthropic.");
-    model.addEventListener("click", () => { modelHint.hidden = model.value !== "claude"; });
+    const model = providerSegmented({ value: "local", label: "Model", localLabel: "Local model" });
+    const modelHint = el("p", { class: "ui-hint", hidden: true }, "A cloud AI (Claude or Gemini) receives this task's text.");
+    model.addEventListener("click", () => { modelHint.hidden = model.value !== "local"; });
     const breakBtn = ui.button({ label: "Break it down", icon: "wand", variant: "tonal", block: true, onClick: async () => {
       try {
         const res = await ui.busy(breakBtn, api(`/api/todos/${task.id}/breakdown`, { method: "POST", json: { model: model.value } }));

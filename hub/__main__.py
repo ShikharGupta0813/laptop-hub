@@ -137,10 +137,14 @@ def cmd_doctor(args) -> int:
     except ImportError:
         ok = False
         line(False, "faster-whisper missing: pip install -r requirements-voice.txt (voice)")
-    import os
-    line(bool(os.environ.get("ANTHROPIC_API_KEY")) or None,
-         "ANTHROPIC_API_KEY set (assistant and 'Ask Claude')" if os.environ.get("ANTHROPIC_API_KEY")
-         else "ANTHROPIC_API_KEY not set: the assistant needs it, or choose the local model")
+    from . import providers as providers_mod
+    avail = providers_mod.availability(config)
+    ready = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
+    if ready:
+        line(True, "AI ready: Local model, " + ", ".join(ready)
+             + f" (default: {providers_mod.LABELS.get(providers_mod.resolve_default(config), 'local')})")
+    else:
+        line(None, "AI: only the local model. Optional: python -m hub setup --only ai (Gemini key or Claude login)")
     for name, argv in config.shell_table().items():
         found = shutil.which(argv[0]) is not None
         line(found or None, f"shell {name}: {argv[0]}" + ("" if found else " (not found)"))
@@ -173,7 +177,7 @@ def main(argv=None) -> int:
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
     setup = sub.add_parser("setup", help="interactive one-command setup: Jarvis, Gmail, Asana, calendar, push, auto-start")
-    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,claude,phone,name,warp,autostart "
+    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart "
                        "(e.g. --only gmail,calendar)")
     setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
     sub.add_parser("serve", help="start the hub")

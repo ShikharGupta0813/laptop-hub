@@ -74,7 +74,7 @@ class AskBody(BaseModel):
     mode: str = "explain"
     text: str = ""
     question: str = ""
-    provider: str = "local"
+    provider: str = "auto"
 
 
 class NoteBody(BaseModel):
@@ -120,7 +120,13 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     audit_file = audit_path or Path.home() / ".laptop-hub" / "audit.log"
 
     async def label(text: str):
-        return await (deps.label or (lambda t: label_note(llm, t)))(text)
+        if deps.label:
+            return await deps.label(text)
+        # routine job: the default provider (Gemini key, else local...) so Claude quota is kept
+        try:
+            return await label_note(model_for("auto"), text)
+        except LLMError:
+            return await label_note(llm, text)
 
     def audit(event: str, **fields) -> None:
         try:

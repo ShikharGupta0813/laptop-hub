@@ -350,7 +350,7 @@ class DiagnosticsTest(Base):
         self.assertTrue(names["Chat model"]["ok"])
         self.assertFalse(names["Search model"]["ok"])          # nomic-embed-text is not installed
         self.assertIn("ollama pull nomic-embed-text", names["Search model"]["fix"])
-        self.assertTrue(names["Claude key"]["ok"])
+        self.assertTrue(names["AI providers"]["ok"])
         self.assertTrue(names["Folder docs"]["ok"])
 
     def test_a_missing_folder_and_ollama_down_are_reported(self):

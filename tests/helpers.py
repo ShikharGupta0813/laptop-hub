@@ -18,6 +18,7 @@ def make_config(**overrides):
         roots={"docs": str(root / "docs"), "notes": str(root / "notes"), "inbox": str(root / "inbox")},
         notes_dir=str(root / "notes"), inbox_dir=str(root / "inbox"),
         scripts={"hello": {"label": "Say hello", "argv": ["echo", "hello from a button"]}},
-        shells={"sh": ["/bin/sh"]}, allowed_hosts=["testserver"])
+        shells={"sh": ["/bin/sh"]}, allowed_hosts=["testserver"],
+        default_provider="local")   # tests never reach a real cloud AI through "auto"
     base.update(overrides)
     return cfg.Config(**base), root

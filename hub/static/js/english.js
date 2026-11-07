@@ -3,6 +3,7 @@
 // Everything that comes from the transcriber or a model is put on the page with textContent only.
 import { api, sse, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 const MAX_SPEAK_SECONDS = 180;
 const MAX_ROLEPLAY_SECONDS = 90;
@@ -550,7 +551,7 @@ export function init(container, ctx) {
     document.head.append(el("link", { rel: "stylesheet", href: "/css/english.css", "data-eng-css": "1" }));
   }
 
-  let provider = store.get("hub.provider.english", "local") === "claude" ? "claude" : "local";
+  let provider = normalizeProvider(store.get("hub.provider.english", "local"));
 
   // ----- scenarios (shared by Speak and Role-play)
   let scenarioPromise = null;
@@ -613,8 +614,8 @@ export function init(container, ctx) {
   }
 
   // ----- top: model switch and section tabs
-  const providerSeg = ui.segmented({
-    options: [{ value: "local", label: "Local", icon: "laptop" }, { value: "claude", label: "Claude", icon: "sparkles" }],
+  const providerSeg = providerSegmented({
+    icons: true,
     value: provider, label: "Which model gives the feedback",
     onChange: (v) => { provider = v; store.set("hub.provider.english", v); },
   });

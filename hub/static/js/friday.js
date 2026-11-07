@@ -5,6 +5,7 @@
 // This file also exports the shared "brain" (state + actions + speech) that voicemode.js and home.js reuse.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 import { guardedSheet } from "./sourcepicker.js";
 
 // ------------------------------------------------------------------------------------------------ css
@@ -66,7 +67,7 @@ export function greetingText(d = new Date()) {
 }
 
 // ------------------------------------------------------------------------------------------------ actions (shared)
-const modelQuery = () => (S().brief_model === "claude" ? "claude" : "local");
+const modelQuery = () => (S().brief_model && S().brief_model !== "local" ? S().brief_model : "local");
 
 export async function loadBrief() {
   const b = await api(`/api/friday/brief?model=${encodeURIComponent(modelQuery())}`);
@@ -659,7 +660,7 @@ export function init(container, ctx) {
     const addr = el("input", { type: "text", value: cur.address_as, maxlength: 20, autocomplete: "off", id: "fr-set-addr", placeholder: "sir, boss, or your name" });
     const spoken = ui.switchControl({ checked: !!cur.spoken_alerts, label: "Speak alerts" });
     const proactive = ui.switchControl({ checked: !!cur.proactive, label: "Keep watch for me" });
-    const model = ui.segmented({ options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }], value: cur.brief_model === "claude" ? "claude" : "local", label: "Brain for briefs", block: true });
+    const model = providerSegmented({ value: cur.brief_model === "auto" ? defaultProvider() : normalizeProvider(cur.brief_model), label: "Brain for briefs", block: true });
     const row = (title, sub, ctl) => el("div", { class: "fr-set-row" }, el("div", { class: "grow" }, el("p", { class: "fr-set-title" }, title), el("p", { class: "fr-set-sub" }, sub)), ctl);
     const content = el("div", { class: "fr-set ui-stack" },
       el("div", { class: "ui-field" }, el("label", { class: "ui-label", for: "fr-set-name" }, "Her name"), name),
@@ -668,7 +669,7 @@ export function init(container, ctx) {
       row("Speak alerts out loud", "When something important arrives while the app is open, I will say it once, briefly. Quiet if the phone is muted or the app is in the background.", spoken),
       row("Keep watch for me", "While the hub is running, I look through your mail, chats and tasks now and then, and tell you when someone tags you or something turns urgent. I only read and tell you. I never reply, send or change anything on my own.", proactive),
       el("div", { class: "ui-field" }, el("span", { class: "ui-label" }, "Who thinks for me"), model,
-        el("p", { class: "ui-hint" }, "Local stays on your laptop. Claude writes a little more warmly but sends the text of your brief to Anthropic.")));
+        el("p", { class: "ui-hint" }, "Local stays on your laptop. A cloud AI (Gemini or Claude) writes a little more warmly but receives the text of your brief.")));
     const sheet = guardedSheet(ui, {
       title: "Friday settings", content,
       actions: [{ label: "Save", variant: "primary", icon: "check", async onClick(s) {

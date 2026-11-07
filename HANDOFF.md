@@ -156,8 +156,19 @@ Owner has no Jarvis folder; calendar shows 503 until Jarvis/iCal is configured. 
 - **Display name**: `config.display_name` (default "Chief"), set by the wizard or Settings; used by the Home greeting and as Friday's
   default way to address the owner.
 - **`python -m hub setup`** (hub/setup_wizard.py): interactive wizard for Jarvis folder clone, Gmail app password (keyring), Asana token,
-  calendar iCal URL, Google Chat webhooks, Claude key (user env var via winreg), ntfy topic, Cloudflare WARP script, auto-start task, power
+  calendar iCal URL, Google Chat webhooks, AI step (Gemini key in keyring, Claude login check, default provider; replaced the Claude key step), ntfy topic, Cloudflare WARP script, auto-start task, power
   settings. Secrets only via getpass into the existing stores; never printed or logged. Run `--only gmail,asana` or `--check`.
+- **AI providers without an API key (2026-11-07)**: `local | claude | claude-login | gemini`. `hub/llm.py` has `ClaudeCliClient` (runs `claude -p
+  --output-format text --tools "" --no-session-persistence`, prompt on stdin, temp cwd, ANTHROPIC_API_KEY/AUTH_TOKEN stripped so the subscription
+  login is used; retries once without optional flags on "unknown option") and `GeminiClient` (REST, `x-goog-api-key` header, SSE stream; key from
+  `GEMINI_API_KEY` or keyring `jarvis-gemini`/`api_key`). `hub/providers.py`: availability + `default_provider` ("auto" = API key > Gemini >
+  Claude login > local). `server.model_for` resolves "auto"; `/api/status` and `/api/settings` return `providers` and the default. Routine jobs
+  (Friday brief_model now "auto", note labels, quick Ask) use the default; claude-login is meant to be picked by hand for heavy work (shared
+  subscription quota). The assistant runs claude-login/gemini through `_text_turns` (tools described in the prompt, `<tool_call>{json}</tool_call>`
+  parsed back; same approvals). Front end: `js/providers.js` (`providerSegmented`, options shown only when ready; `ui.segmented().setOptions`).
+  Wizard: step `ai` (alias `claude`) and `gemini`; doctor and Setup checklist report "AI ready". `tests/helpers.make_config` sets
+  `default_provider="local"` so tests never reach a real AI. UNVERIFIED on a real laptop: the live `claude -p` flags/errors on Windows (`claude.cmd`),
+  real Gemini calls, tool-calling quality of the text protocol.
 - **Setup checklist** screen (`js/setup.js`) + Home card: live status of every integration with fix steps.
 - **Workspaces + Launcher** (`hub/workspaces.py`, `js/launcher.js`, Remote screen): typed multi-step workspaces (script/url/app/folder/file/wait),
   Start Menu app discovery, a "Whole laptop" tile, window switcher; `python -m hub add-script NAME --label L -- ARGV...` registers a

@@ -32,12 +32,14 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, StrictBool
 
 from . import config as cfg
+from . import providers
 from .common import Ctx
 
 # ---- what may be changed -------------------------------------------------------------------------------
 
-MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model")
-ALLOWED_KEYS = (*MODEL_KEYS, "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name")
+MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model",
+              "gemini_model", "claude_cli_model")
+ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation")
@@ -139,6 +141,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         value = body[key]
         if key in MODEL_KEYS:
             changes[key] = _clean_name(value, key)
+        elif key == "default_provider":
+            if value not in ("auto", "local", "claude", "claude-login", "gemini"):
+                raise HTTPException(400, "default_provider must be auto, local, claude, claude-login or gemini.")
+            changes[key] = value
         elif key in ("kb_roots", "writable_roots"):
             changes[key] = _clean_roots(value, key, config.roots)
         elif key == "display_name":
@@ -413,6 +419,10 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
             "shells": list(config.shell_table()), "apps": list(config.apps), "scripts": list(config.scripts),
             "has_claude_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "default_provider": config.default_provider, "gemini_model": config.gemini_model,
+            "claude_cli_model": config.claude_cli_model,
+            "providers": providers.availability(config),
+            "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),
             "platform": sys.platform, "locked": list(LOCKED_KEYS), "editable": list(ALLOWED_KEYS),
         }
@@ -589,9 +599,11 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             pass
         check("Voice notes (faster-whisper)", importlib.util.find_spec("faster_whisper") is not None,
               "faster-whisper installed.", "pip install -r requirements-voice.txt", required=False)
-        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        check("Claude key", has_key, "ANTHROPIC_API_KEY is set." if has_key else "ANTHROPIC_API_KEY is not set.",
-              "Set ANTHROPIC_API_KEY on the laptop, or choose the local model.", required=False)
+        avail = providers.availability(config)
+        cloud = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
+        check("AI providers", bool(cloud),
+              "Ready: " + ", ".join(["Local model", *cloud]) + "." if cloud else "Only the local model is set up.",
+              "Optional: run `python -m hub setup --only ai` to add Gemini or your Claude login.", required=False)
         for name, argv in config.shell_table().items():
             found = shutil.which(argv[0]) is not None
             check(f"Shell {name}", found, f"{argv[0]} found." if found else f"{argv[0]} not found.",

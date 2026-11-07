@@ -13,6 +13,9 @@ today's task notes, configured apps, recently changed files inside shared folder
 """
 from __future__ import annotations
 
+from .llm import PROVIDERS
+
+BRIEF_CHOICES = (*PROVIDERS, "auto")   # "auto" = the default provider (hub.json default_provider)
 import asyncio
 import datetime as dt
 import hashlib
@@ -58,7 +61,7 @@ SECTIONS = [("urgent", "Needs you now"), ("tagged", "You were tagged"), ("tasks"
 SOURCES = ("asana", "todos", "calendar", "mail", "alerts", "reminders", "asana_comments")
 
 DEFAULTS = {"name": "Friday", "address_as": "sir", "spoken_alerts": True, "quiet_hours": None,
-            "brief_model": "local", "proactive": False, "work_start": "09:00", "work_end": "18:30",
+            "brief_model": "auto", "proactive": False, "work_start": "09:00", "work_end": "18:30",
             "prep_apps": [], "prep_roots": []}
 
 PLAN_END_QUESTION = "Want me to plan the day?"
@@ -814,7 +817,7 @@ class Engine:
         nonce = secrets.token_hex(8)
         user = f"===== BEGIN FRIDAY DATA {nonce} =====\n{data}\n===== END FRIDAY DATA {nonce} ====="
         try:
-            model = self.ctx.model_for(choice if choice in PROVIDERS else "local")
+            model = self.ctx.model_for(choice if choice in BRIEF_CHOICES else "local")
             reply = await asyncio.wait_for(model.complete(system, user), timeout=90)
         except Exception as exc:  # noqa: BLE001  any model trouble falls back to the template
             log.info("friday model failed: %s", type(exc).__name__)
@@ -1301,8 +1304,8 @@ def validate_settings(raw: Any, base: dict, config) -> dict:
                 raise Bad(f"{key.replace('_', ' ').capitalize()} must be true or false.")
             out[key] = raw[key]
     if "brief_model" in raw:
-        if raw["brief_model"] not in PROVIDERS:
-            raise Bad("The model must be local, claude, claude-login or gemini.")
+        if raw["brief_model"] not in BRIEF_CHOICES:
+            raise Bad("The model must be auto, local, claude, claude-login or gemini.")
         out["brief_model"] = raw["brief_model"]
     for key in ("work_start", "work_end"):
         if key in raw:
@@ -1354,8 +1357,8 @@ def engine_for(ctx: Ctx, **kwargs) -> Engine:
 def _model_param(value: Any) -> str | None:
     if value in (None, ""):
         return None
-    if value not in PROVIDERS:
-        raise HTTPException(400, "The model must be local, claude, claude-login or gemini.")
+    if value not in BRIEF_CHOICES:
+        raise HTTPException(400, "The model must be auto, local, claude, claude-login or gemini.")
     return value
 
 

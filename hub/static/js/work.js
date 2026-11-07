@@ -2,6 +2,7 @@
 // Everything from the API is rendered with el()/textContent, never innerHTML.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // ui.busy does not stop a second tap while the first is running, so a double tap sent two requests.
 const busy = (btn, fn) => (btn.getAttribute("aria-busy") === "true" ? Promise.resolve() : ui.busy(btn, fn));
@@ -506,13 +507,13 @@ export function init(container, ctx) {
   function buildEmail(body) {
     let contactsLoaded = false;
     let contacts = [];
-    let provider = store("hub.work.provider") === "claude" ? "claude" : "local";
+    let provider = normalizeProvider(store("hub.work.provider"));
     let reviewing = null;   // {draft_id, to, subject, body, typed}
 
     // (a) Write with AI: a glass card
     const instruction = el("textarea", { rows: "3", maxlength: "2000", placeholder: "e.g. write a mail to Rahul about the demo on Thursday",
       "aria-label": "Instruction for the AI" });
-    const providerSeg = ui.segmented({ label: "AI provider", options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }],
+    const providerSeg = providerSegmented({ label: "AI provider",
       value: provider, onChange: (v) => { provider = v; store("hub.work.provider", v); } });
     providerSeg.classList.add("wk-provider");
     const aiMsg = inlineMsg("bad");

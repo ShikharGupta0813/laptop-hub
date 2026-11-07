@@ -2,6 +2,7 @@
 // Opened by assistant.js, which passes a `host` (see openVoiceMode). Nothing is ever approved automatically:
 // a tool approval shows big Approve / Deny buttons here and the loop simply waits for the tap.
 import { el, ApiError } from "./api.js";
+import { providerLabel } from "./providers.js";
 
 const SILENCE_MS_DEFAULT = 1200;   // quiet this long after speech ends the recording
 const MAX_UTTERANCE_MS = 30000;    // a single spoken message is cut at this length
@@ -122,7 +123,7 @@ export function openVoiceMode(host) {
   const captions = el("div", { class: "vm-captions" }, userCap, aiCap, sub);
   const soundBtn = ui.button({ variant: "ghost", iconOnly: true, icon: "volume", class: "vm-sound", "aria-label": "Spoken replies", onClick: () => setTts(!ttsOn) });
   const closeBtn = ui.button({ variant: "ghost", iconOnly: true, icon: "x", class: "vm-close", "aria-label": "Close voice mode", onClick: () => close() });
-  const badge = el("span", { class: "vm-provider ui-badge ui-badge--accent" }, host.provider() === "local" ? "Local" : "Claude");
+  const badge = el("span", { class: "vm-provider ui-badge ui-badge--accent" }, providerLabel(host.provider()));
   const top = el("div", { class: "vm-top" }, soundBtn, el("div", { class: "vm-top__mid" }, "Voice mode ", badge), closeBtn);
 
   const approvalBody = el("div", { class: "vm-approval__body" });

@@ -48,15 +48,18 @@ const CHECKS = [
       if (m?.configured?.chat_model && !m.configured.chat_model.installed) return R("bad", `${name} isn't downloaded yet.`, { fix: ollamaFix(name) });
       return R("ok", `${name} is ready.`, { fix: ollamaFix(name, true) });
     } },
-  { id: "claude", title: "Claude key", icon: "bot", tone: "orange", optional: true,
-    unlocks: "Lets you pick Claude for harder questions and longer drafts.",
+  { id: "claude", title: "Cloud AI (Gemini or Claude login)", icon: "bot", tone: "orange", optional: true,
+    unlocks: "Lets you pick Gemini or your Claude login for harder questions and longer drafts. No API key needed.",
     async run() {
       try {
         const s = await get("/api/settings");
-        return s?.has_claude_key ? R("ok", "A key is saved on the laptop.")
-          : R("warn", "No key yet. Optional; the local model works without it.", { fix: { steps: ["On the laptop, set the key before starting the hub. The key is never shown in the app."],
-            cmds: [cmd("setx ANTHROPIC_API_KEY \"sk-ant-...\"", "Windows, then restart the hub")] } });
-      } catch (e) { return FAIL(e, "the Claude key"); }
+        const p = s?.providers || {};
+        const ready = [p.claude?.ready && "Claude (API key)", p.claude_login?.ready && "Claude (my login)", p.gemini?.ready && "Gemini"].filter(Boolean);
+        if (!p.claude && s?.has_claude_key) ready.push("Claude (API key)");
+        return ready.length ? R("ok", `Ready: ${ready.join(", ")}.`)
+          : R("warn", "Not set up yet. Optional; the local model works without it.", { fix: { steps: ["On the laptop, either install Claude Code and run `claude` once to log in (uses your Claude subscription), or save a free Gemini key from aistudio.google.com/apikey."],
+            cmds: [cmd("python -m hub setup --only ai", "Walks you through both")] } });
+      } catch (e) { return FAIL(e, "cloud AI"); }
     } },
   { id: "embed", title: "Search by meaning", icon: "layers", tone: "teal", optional: true,
     unlocks: "Ask my files finds notes by meaning, not just exact words.",

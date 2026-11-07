@@ -146,7 +146,7 @@ class AuthAndSettings(FridayCase):
     def test_defaults_and_validation(self):
         s = self.client.get("/api/friday/settings").json()
         self.assertEqual((s["name"], s["address_as"], s["spoken_alerts"], s["brief_model"], s["proactive"]),
-                         ("Friday", "sir", True, "local", False))
+                         ("Friday", "sir", True, "auto", False))
         r = self.client.post("/api/friday/settings", json={"name": "Karen", "address_as": "boss",
                                                           "quiet_hours": {"start": "22:00", "end": "07:00"}})
         self.assertEqual(r.status_code, 200, r.text)

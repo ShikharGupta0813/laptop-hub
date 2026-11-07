@@ -1,9 +1,9 @@
 """`python -m hub setup`: one interactive command that sets everything up on THIS laptop.
 
-Secrets (Gmail app password, Asana token, calendar link, Google Chat webhooks, Claude key) are read with
+Secrets (Gmail app password, Asana token, calendar link, Google Chat webhooks, Gemini key) are read with
 getpass and saved only where the existing code already looks for them: the OS keyring (services
-jarvis-gmail / jarvis-calendar / jarvis-gchat), ~/.claude/.asana_token, and the user environment variable
-ANTHROPIC_API_KEY. They are never printed, never written to hub.json, and never sent anywhere except to the
+jarvis-gmail / jarvis-calendar / jarvis-gchat / jarvis-gemini) and ~/.claude/.asana_token. No Claude API key is
+asked for: the Claude login of the `claude` program is used instead. They are never printed, never written to hub.json, and never sent anywhere except to the
 service they belong to when testing the login. Every question goes through ask()/ask_secret()/confirm() and every
 effect on the machine through a `System` object, so tests never touch the real laptop.
 """
@@ -28,6 +28,8 @@ from . import config as cfg
 
 GMAIL_SERVICE = "jarvis-gmail"        # mailer.py and hub/inbox.py
 CALENDAR_SERVICE = "jarvis-calendar"  # agenda.py (key "ics_url")
+GEMINI_SERVICE = "jarvis-gemini"      # hub/llm.py gemini_key() (key "api_key")
+GEMINI_CHECK_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1"
 CHAT_SERVICE = "jarvis-gchat"         # gchat.py (key "_spaces" plus one entry per space)
 ASANA_TOKEN_FILE = ".claude/.asana_token"   # first file hub/work/asana.py reads
 CLONE_URL = "https://github.com/ShikharGupta0813/jarvis-voice-assistant"
@@ -35,11 +37,14 @@ WEBHOOK_PREFIX = "https://chat.googleapis.com/v1/spaces/"
 WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 TASK_NAME = "LaptopHub"
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
-STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "claude", "phone", "name", "warp", "autostart")
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "phone", "name", "warp", "autostart")
+# `gemini` is part of `ai`; it can also be run alone: python -m hub setup --only gemini
+ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "phone", "name", "warp", "autostart")
 ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
-           "claude-key": "claude", "key": "claude", "startup": "autostart", "auto-start": "autostart"}
+           "claude": "ai", "claude-key": "ai", "key": "ai", "claude-login": "ai", "startup": "autostart",
+           "auto-start": "autostart"}
 TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
-          "chat": "Google Chat", "claude": "Claude key", "phone": "Phone push", "name": "Your name",
+          "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "phone": "Phone push", "name": "Your name",
           "warp": "Cloudflare WARP", "autostart": "Auto-start"}
 
 TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
@@ -711,31 +716,109 @@ def step_chat(w: Wizard) -> Result:
     return Result("ok", f"{added} added; spaces: {', '.join(_chat_spaces(w))}")
 
 
-def check_claude(w: Wizard) -> Result:
-    key = w.system.env("ANTHROPIC_API_KEY")
-    if not key:
-        return Result("warn", "ANTHROPIC_API_KEY isn't set in this shell (the assistant needs it, or use the local model)")
-    w.known_secrets.append(key)
-    return Result("ok", "ANTHROPIC_API_KEY is set")
+def _claude_cli(w: Wizard) -> tuple[str | None, str]:
+    """(path, version text) of the `claude` program, or (None, "")."""
+    path = w.system.which("claude") or w.system.which("claude.cmd")
+    if not path:
+        return None, ""
+    rc, out = w.system.run([path, "--version"], timeout=30)
+    if rc != 0:
+        return None, ""
+    lines = (out or "").strip().splitlines()
+    return path, (lines[0][:60] if lines else "")
 
 
-def step_claude(w: Wizard) -> Result:
-    if w.system.env("ANTHROPIC_API_KEY") and not w.confirm("A Claude key is already set. Replace it?", False):
-        return check_claude(w)
-    w.say("Optional: a Claude API key (console.anthropic.com) for the assistant and 'Ask Claude'. Saved as your "
-          "user environment variable on this laptop only.")
-    key = w.secret("Claude API key")
-    if not key:
-        return Result("skip", "skipped (the local model still works)")
-    if not key.startswith("sk-ant-"):
-        w.say(w.tone("warn", "that doesn't start with sk-ant-; saving anyway"))
+def _gemini_saved(w: Wizard) -> bool:
+    if w.system.env("GEMINI_API_KEY"):
+        return True
     try:
-        stored = w.system.set_user_env("ANTHROPIC_API_KEY", key)
+        return bool(w.system.keyring_get(GEMINI_SERVICE, "api_key"))
     except Exception:  # noqa: BLE001
-        return Result("fail", "couldn't save the user environment variable")
-    if not stored:
-        return Result("warn", "not saved: this isn't Windows. Add ANTHROPIC_API_KEY to your shell profile yourself")
-    return Result("ok", "saved as ANTHROPIC_API_KEY for your user; it appears in NEW terminals only, so restart the hub from one")
+        return False
+
+
+def check_ai(w: Wizard) -> Result:
+    cli, _ = _claude_cli(w)
+    ready = ["local model"]
+    if w.system.env("ANTHROPIC_API_KEY"):
+        ready.append("Claude API key")
+    if cli:
+        ready.append("Claude login (claude program found)")
+    if _gemini_saved(w):
+        ready.append("Gemini key")
+    config = w.load_config(False)
+    default = config.default_provider if config else "auto"
+    status = "ok" if len(ready) > 1 else "warn"
+    return Result(status, "ready: " + ", ".join(ready) + f"; default: {default}")
+
+
+def check_gemini(w: Wizard) -> Result:
+    if not _gemini_saved(w):
+        return Result("warn", "no Gemini key saved (free one: aistudio.google.com/apikey)")
+    return Result("ok", "a Gemini key is saved")
+
+
+def step_gemini(w: Wizard) -> Result:
+    if _gemini_saved(w) and not w.confirm("A Gemini key is already saved. Replace it?", False):
+        return check_gemini(w)
+    w.say("Gemini has a free tier, separate from your Claude limits. Get a key at https://aistudio.google.com/apikey "
+          "(sign in with Google, press Create API key). It is stored in your Windows keyring, never in hub.json.")
+    key = w.secret("Gemini API key")
+    if not key:
+        return Result("skip", "skipped")
+    try:
+        code, _ = w.system.http_get(GEMINI_CHECK_URL, headers={"x-goog-api-key": key})
+    except CheckFailed:
+        if not w.confirm("Couldn't reach Google to test the key. Save it anyway?", True):
+            return Result("skip", "not saved")
+        code = 200
+    if code in (400, 401, 403):
+        return Result("warn", "Google rejected that key, so it was not saved. Make a new one and run: python -m hub setup --only gemini")
+    if code >= 400:
+        w.say(w.tone("warn", f"Google answered {code} when testing the key; saving it anyway"))
+    try:
+        w.system.keyring_set(GEMINI_SERVICE, "api_key", key)
+        if w.system.keyring_get(GEMINI_SERVICE, "api_key") != key:
+            raise RuntimeError
+    except Exception:  # noqa: BLE001
+        return Result("warn", "couldn't save to the keyring (pip install keyring); set GEMINI_API_KEY instead")
+    return Result("ok", "key works and is saved in the keyring" if code < 400 else "key saved in the keyring")
+
+
+def step_ai(w: Wizard) -> Result:
+    w.say("The hub can use these AIs. None needs an Anthropic API key (that is billed per use):")
+    w.say("  - Local model (Ollama): free, private, runs on this laptop.")
+    w.say("  - Gemini: a free key from aistudio.google.com/apikey. Recommended for everyday jobs; its free tier is")
+    w.say("    separate from your Claude limits.")
+    w.say("  - Claude (my login): the `claude` program (Claude Code) logged in with your Claude subscription.")
+    w.say("    It shares your normal Claude usage limit, so keep it for heavy tasks.")
+    cli, version = _claude_cli(w)
+    if cli:
+        w.say(w.tone("ok", "Claude Code found" + (f" ({version})" if version else "")
+                     + ". If you have never signed in, open a terminal, run `claude` once and log in."))
+    else:
+        w.say(w.tone("warn", "Claude Code not found. To use your Claude login: install it from claude.com/claude-code, "
+                             "run `claude` once and sign in. Then re-run: python -m hub setup --only ai"))
+    notes = []
+    if _gemini_saved(w):
+        notes.append("Gemini key present")
+    elif w.confirm("Add a free Gemini key now?", True):
+        r = step_gemini(w)
+        w.say(w.tone(r.status, f"Gemini key: {r.message}"))
+        if r.status == "ok":
+            notes.append("Gemini key saved")
+    ready = ["local"] + (["claude"] if w.system.env("ANTHROPIC_API_KEY") else []) \
+        + (["claude-login"] if cli else []) + (["gemini"] if _gemini_saved(w) or "Gemini key saved" in notes else [])
+    config = w.load_config(True)
+    options = ["auto", *ready]
+    w.say("Default AI for everyday jobs: auto picks Claude API key if set, else Gemini, else your Claude login, else local.")
+    choice = w.ask(f"Default AI ({'/'.join(options)})", config.default_provider if config.default_provider in options else "auto").lower()
+    if choice not in options:
+        w.say(w.tone("warn", f"'{choice[:20]}' isn't one of {', '.join(options)}; keeping auto"))
+        choice = "auto"
+    config.default_provider = choice
+    w.save_config()
+    return Result("ok", f"default AI: {choice}; ready: {', '.join(ready)}" + (f" ({'; '.join(notes)})" if notes else ""))
 
 
 def check_phone(w: Wizard) -> Result:
@@ -851,7 +934,8 @@ def step_autostart(w: Wizard) -> Result:
 
 STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] = {
     "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
-    "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "claude": (step_claude, check_claude),
+    "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "ai": (step_ai, check_ai),
+    "gemini": (step_gemini, check_gemini),
     "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
     "autostart": (step_autostart, check_autostart),
 }
@@ -864,10 +948,10 @@ def parse_only(text: str | None) -> list[str]:
     for raw in text.split(","):
         key = ALIASES.get(raw.strip().lower(), raw.strip().lower())
         if key not in STEPS:
-            raise ValueError(f"Unknown step '{raw.strip()[:30]}'. Steps: {', '.join(STEP_IDS)}")
+            raise ValueError(f"Unknown step '{raw.strip()[:30]}'. Steps: {', '.join(ONLY_ORDER)}")
         if key not in chosen:
             chosen.append(key)
-    return [s for s in STEP_IDS if s in chosen]
+    return [s for s in ONLY_ORDER if s in chosen]
 
 
 def run_wizard(w: Wizard, only: str | None = None, check: bool = False, run_doctor: Callable[[], None] | None = None) -> int:

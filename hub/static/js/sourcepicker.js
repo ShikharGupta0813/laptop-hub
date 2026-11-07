@@ -4,6 +4,7 @@
 // Everything that comes from notes, files, the web or the model is put on screen with textContent, never innerHTML.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // Load a stylesheet once (index.html already links learn.css; new screens link their own).
 export function ensureCss(href) {
@@ -30,9 +31,9 @@ export const store = {
 // The Local / Claude switch (a ui segmented control), remembered under hub.provider.learn and shared by Learn.
 export function createProviderSwitch(container, labelText = "Model") {
   const KEY = "hub.provider.learn";
-  const read = () => (store.get("localStorage", KEY, "local") === "claude" ? "claude" : "local");
+  const read = () => normalizeProvider(store.get("localStorage", KEY, "local"));
   let value = read();
-  const seg = ui.segmented({ options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }],
+  const seg = providerSegmented({
     value, label: labelText, onChange(v) { value = v; store.set("localStorage", KEY, v); } });
   seg.classList.add("ln-provider");
   container.append(seg);

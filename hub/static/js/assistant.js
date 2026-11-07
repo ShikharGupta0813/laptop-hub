@@ -3,6 +3,7 @@
 // through renderMarkdown (sanitised). innerHTML is never fed raw text.
 import { sse, renderMarkdown, el, ApiError } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, loadProviders } from "./providers.js";
 
 const SUGGESTIONS = [
   "What's using my disk space?",
@@ -115,7 +116,7 @@ export function init(container, ctx) {
   store.set("sessionStorage", "hub.assistant.session", sessionId);
 
   const prefs = {
-    provider: store.get("localStorage", "hub.assistant.provider", "claude") === "local" ? "local" : "claude",
+    provider: normalizeProvider(store.get("localStorage", "hub.assistant.provider", "") || defaultProvider()),
     speak: store.get("localStorage", "hub.assistant.speak", "0") === "1",
     autoSend: store.get("localStorage", "hub.assistant.autosend", "1") !== "0",
     // Per browser session only (sessionStorage), never localStorage: off again after a restart.
@@ -130,8 +131,7 @@ export function init(container, ctx) {
   let voice = null; // the open voice-mode controller, if any
 
   // ---------------------------------------------------------------- toolbar (no header chrome: the top bar is the header)
-  const providerSeg = ui.segmented({
-    options: [{ value: "claude", label: "Claude" }, { value: "local", label: "Local" }],
+  const providerSeg = providerSegmented({
     value: prefs.provider, label: "Which assistant answers", onChange: (v) => setProvider(v),
   });
   const optionsButton = ui.button({
@@ -221,6 +221,10 @@ export function init(container, ctx) {
   const root = el("div", { class: "as-root" }, toolbar, optionsPanel, autoBanner, listWrap, composer);
   container.replaceChildren(root);
   list.append(empty);
+  // No saved choice: use the hub's default AI (Claude key, Gemini, Claude login or local) once it is known.
+  if (!store.get("localStorage", "hub.assistant.provider", "")) {
+    loadProviders().then(() => { prefs.provider = normalizeProvider(defaultProvider()); providerSeg.value = prefs.provider; });
+  }
 
   // ---------------------------------------------------------------- prefs / controls
   function syncControls() {

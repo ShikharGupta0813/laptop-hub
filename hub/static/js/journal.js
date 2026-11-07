@@ -2,6 +2,7 @@
 // mood trend and an AI weekly reflection. API: docs/api/productivity.md (Journal).
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => actions.map((a) => {
@@ -188,9 +189,9 @@ export function init(container, ctx) {
 
   function reflectCard() {
     const card = el("section", { class: "ui-card jr-reflect" });
-    const model = ui.segmented({ options: [{ value: "local", label: "Local model" }, { value: "claude", label: "Claude" }], value: "local", label: "Model" });
-    const hint = el("p", { class: "ui-hint", hidden: true }, "Claude sends your journal text to Anthropic.");
-    model.addEventListener("click", () => { hint.hidden = model.value !== "claude"; });
+    const model = providerSegmented({ value: "local", label: "Model", localLabel: "Local model" });
+    const hint = el("p", { class: "ui-hint", hidden: true }, "A cloud AI (Claude or Gemini) receives your journal text.");
+    model.addEventListener("click", () => { hint.hidden = model.value !== "local"; });
     const out = el("div", { class: "jr-reflect__out" });
     const btn = ui.button({ label: state.reflection ? "Reflect again" : "Reflect on my week", icon: "sparkles", variant: "primary", block: true, onClick: async () => {
       out.replaceChildren(ui.skeleton("lines", 4));

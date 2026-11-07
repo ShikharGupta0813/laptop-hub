@@ -464,23 +464,27 @@ export function progressBar(value = 0, label = "Progress") {
 export function segmented({ options = [], value, onChange, label = "Options", block = false } = {}) {
   const thumb = el("span", { class: "ui-seg__thumb", "aria-hidden": "true" });
   const node = el("div", { class: "ui-seg" + (block ? " ui-seg--block" : ""), role: "radiogroup", "aria-label": label }, thumb);
-  node.style.setProperty("--n", String(Math.max(1, options.length)));
   let current = value ?? options[0]?.value;
-  const buttons = options.map((opt, i) => {
-    const b = el("button", { type: "button", role: "radio", "data-value": String(opt.value) },
-      opt.icon ? icon(opt.icon) : null, opt.label);
-    b.addEventListener("click", () => select(opt.value, true));
-    b.addEventListener("keydown", (e) => {
-      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (!d) return;
-      e.preventDefault();
-      const next = options[(i + d + options.length) % options.length];
-      select(next.value, true);
-      buttons[options.indexOf(next)].focus();
+  let buttons = [];
+  function build() {
+    buttons.forEach((b) => b.remove());
+    node.style.setProperty("--n", String(Math.max(1, options.length)));
+    buttons = options.map((opt, i) => {
+      const b = el("button", { type: "button", role: "radio", "data-value": String(opt.value) },
+        opt.icon ? icon(opt.icon) : null, opt.label);
+      b.addEventListener("click", () => select(opt.value, true));
+      b.addEventListener("keydown", (e) => {
+        const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        const next = options[(i + d + options.length) % options.length];
+        select(next.value, true);
+        buttons[options.indexOf(next)].focus();
+      });
+      node.append(b);
+      return b;
     });
-    node.append(b);
-    return b;
-  });
+  }
   function select(v, user) {
     const i = Math.max(0, options.findIndex((o) => o.value === v));
     current = options[i]?.value;
@@ -488,8 +492,11 @@ export function segmented({ options = [], value, onChange, label = "Options", bl
     node.style.setProperty("--i", String(i));
     if (user) { haptic("select"); onChange?.(current); }
   }
+  build();
   select(current, false);
   Object.defineProperty(node, "value", { get: () => current, set: (v) => select(v, false) });
+  // Replace the choices (the provider list arrives after the first paint). The selection is kept if it still exists.
+  node.setOptions = (next) => { options = next; build(); select(options.some((o) => o.value === current) ? current : options[0]?.value, false); };
   return node;
 }
 

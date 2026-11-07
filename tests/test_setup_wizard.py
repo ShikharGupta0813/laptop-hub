@@ -16,7 +16,8 @@ ASANA = "1/1200000000000000:ASANASECRETVALUE0123456789abcdef"
 ICS = "https://calendar.google.com/calendar/ical/me%40gmail.com/private-SECRETSECRET/basic.ics"
 HOOK = sw.WEBHOOK_PREFIX + "AAAA/messages?key=SECRETKEY&token=SECRETTOKEN"
 CLAUDE = "sk-ant-api03-SECRETCLAUDEKEY"
-SECRETS = (PASSWORD, ASANA, ICS, HOOK, CLAUDE)
+GEMINI = "AIzaSECRETGEMINIKEY1234567890"
+SECRETS = (PASSWORD, ASANA, ICS, HOOK, CLAUDE, GEMINI)
 
 
 class FakeSystem:
@@ -201,12 +202,48 @@ class TestOtherSteps(Base):
         sw.step_chat(w)
         self.assertEqual(self.sys.keyring, {})
 
-    def test_claude_key_goes_to_user_env_only(self):
-        result = sw.step_claude(self.wizard(Script(secrets_=[CLAUDE])))
+    def test_ai_step_detects_cli_saves_gemini_key_and_default(self):
+        self.sys.which = lambda n: "C:/bin/claude.cmd" if n == "claude" else None
+        self.sys.http[sw.GEMINI_CHECK_URL] = (200, b"{}")
+        result = sw.step_ai(self.wizard(Script(asks=["gemini"], secrets_=[GEMINI], confirms=[True])))
         self.assertEqual(result.status, "ok")
-        self.assertEqual(self.sys.user_env["ANTHROPIC_API_KEY"], CLAUDE)
-        self.assertEqual(self.sys.ran, [])   # never on a command line
+        self.assertIn(["C:/bin/claude.cmd", "--version"], self.sys.ran)
+        self.assertEqual(self.sys.keyring[("jarvis-gemini", "api_key")], GEMINI)
+        self.assertEqual(self.sys.user_env, {})   # no Anthropic key is asked for or stored
+        self.assertEqual(cfg.load(self.path).default_provider, "gemini")
+        self.assertIn("claude", self.output())
         self.assertNoSecrets()
+
+    def test_ai_step_without_cli_tells_how_to_log_in_and_skips_gemini(self):
+        result = sw.step_ai(self.wizard(Script(confirms=[False])))
+        self.assertEqual(result.status, "ok")
+        self.assertIn("run `claude` once", self.output())
+        self.assertEqual(self.sys.keyring, {})
+        self.assertEqual(cfg.load(self.path).default_provider, "auto")
+
+    def test_gemini_bad_key_is_a_warning_and_saves_nothing(self):
+        self.sys.http[sw.GEMINI_CHECK_URL] = (400, b"")
+        result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI])))
+        self.assertEqual(result.status, "warn")
+        self.assertEqual(self.sys.keyring, {})
+        self.assertNoSecrets()
+
+    def test_gemini_network_down_can_still_save(self):
+        self.sys.http_error = "network"
+        result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI], confirms=[True])))
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(self.sys.keyring[("jarvis-gemini", "api_key")], GEMINI)
+
+    def test_claude_is_an_alias_of_ai_and_gemini_runs_alone(self):
+        self.assertEqual(sw.parse_only("claude"), ["ai"])
+        self.assertEqual(sw.parse_only("gemini"), ["gemini"])
+        self.assertNotIn("gemini", sw.parse_only(None))
+
+    def test_ai_check_reports_ready_providers(self):
+        self.sys.keyring[("jarvis-gemini", "api_key")] = GEMINI
+        result = sw.check_ai(self.wizard(Script()))
+        self.assertEqual(result.status, "ok")
+        self.assertIn("Gemini key", result.message)
 
     def test_phone_topic_stable_and_name(self):
         w = self.wizard(Script(asks=["Shikhar"]))
@@ -299,12 +336,12 @@ class TestRun(Base):
     def test_full_run_leaks_nothing_anywhere(self):
         self.sys.http["https://app.asana.com/api/1.0/users/me"] = (200, b'{"data":{"name":"Me"}}')
         self.sys.http[ICS] = (200, b"x")
-        script = Script(asks=["jv_not_used"], secrets_=[PASSWORD, ASANA, ICS, CLAUDE, HOOK],
+        script = Script(asks=["jv_not_used"], secrets_=[PASSWORD, ASANA, ICS, GEMINI, HOOK],
                         confirms=[True, True, True, True, True])
-        script.asks = ["me@gmail.com", "Chief"]   # gmail address, display name
+        script.asks = ["me@gmail.com", "auto", "Chief"]   # gmail address, display name
         old_out, old_err = io.StringIO(), io.StringIO()
         with redirect_stdout(old_out), redirect_stderr(old_err):
-            code, w = self.run_all("gmail,asana,calendar,claude,phone,name", script=script)
+            code, w = self.run_all("gmail,asana,calendar,ai,phone,name", script=script)
         captured = old_out.getvalue() + old_err.getvalue()
         for secret in SECRETS:
             self.assertNotIn(secret, captured)

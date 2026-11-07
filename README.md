@@ -94,11 +94,14 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
    python -m hub doctor
    ```
 
-6. **Optional: the Claude assistant.** Skip this to use only the local model. Otherwise set your key in the same window before starting the hub:
+6. **Optional: a cloud AI, no API key needed.** Skip this to use only the local model. Otherwise: install Claude Code, run `claude` once and log in (the hub then offers **Claude (my login)**, which uses your Claude subscription quota, not API billing), and/or save a free Gemini key from aistudio.google.com/apikey:
 
    ```powershell
-   $env:ANTHROPIC_API_KEY = "sk-ant-..."
+   python -m hub setup --only ai        # explains the options, checks the claude login, saves the default AI
+   python -m hub setup --only gemini    # just the Gemini key (stored in the Windows keyring)
    ```
+
+   Details in `docs/SETUP-WINDOWS.md` ("AI without an API key"). `ANTHROPIC_API_KEY` still works if you want it.
 
 7. **Start it** (leave this window open):
 
@@ -150,9 +153,9 @@ Install the app from `mobile/` (see `mobile/README.md`), then:
 | Feature | Needs |
 |---|---|
 | Notes, Files, To-do, Habits, Journal, Focus, Reminders, Tools, Routines | Nothing extra |
-| Explain, Quiz, Learn chat, note tags | Ollama and `qwen3:4b` (or a Claude key) |
+| Explain, Quiz, Learn chat, note tags | Ollama and `qwen3:4b` (or Gemini, Claude login or a Claude key) |
 | Voice notes, hands-free voice, English speaking | `requirements-voice.txt` (Whisper) |
-| Assistant with Claude, "Ask Claude" | `ANTHROPIC_API_KEY` |
+| Assistant with a cloud AI, "Ask Claude" | Claude login (`claude` installed and logged in), a free Gemini key, or `ANTHROPIC_API_KEY`. Screen "Ask about my screen" needs the API key (screenshots) |
 | Ask my files | Ollama; `nomic-embed-text` for meaning search (keywords work without it) |
 | Work: Asana | `ASANA_TOKEN` or `~\.claude\.asana_token` |
 | Work: calendar, email, chat posting; Jarvis screen | `--jarvis-dir` and `requirements-work.txt` |

@@ -82,7 +82,8 @@ export function init(container, ctx) {
     const chips = [];
     const chip = (icon, text, tone) => el("span", { class: "ui-chip ui-chip--static st-chip" + (tone ? ` st-chip--${tone}` : "") }, ui.icon(icon), text);
     chips.push(S.ollama?.reachable ? chip("check-circle", "Local models running", "good") : chip("alert", "Local models offline", "warn"));
-    chips.push(S.has_claude_key ? chip("key", "Claude connected", "good") : chip("key", "No Claude key"));
+    const cloud = Object.values(S.providers || {}).filter((p) => p.ready && p.label !== "Local model");
+    chips.push(cloud.length || S.has_claude_key ? chip("key", cloud.map((p) => p.label).join(", ") || "Claude connected", "good") : chip("key", "No cloud AI"));
     if (notify) chips.push(notify.ntfy_enabled ? chip("bell", "Phone push on", "good") : chip("bell", "Phone push off"));
     return el("div", { class: "ui-card st-hero" },
       el("div", { class: "st-hero__top" }, ui.tile("laptop", "accent", "lg"),
@@ -190,9 +191,11 @@ export function init(container, ctx) {
           meta: isInstalled === false ? ui.badge("Not installed", "warn") : null,
           onClick: () => pickModel(slot, installed, m.reachable, s) });
       });
-      const claude = S.has_claude_key
-        ? ui.notice("A Claude key is set on your laptop. It is never shown here.", { tone: "good", icon: "key" })
-        : ui.notice("No Claude key found. Claude stays off until you add one on the laptop (never typed here).", { icon: "key" });
+      const P = S.providers || {};
+      const names = [P.claude?.ready && "Claude (API key)", P.claude_login?.ready && "Claude (my login)", P.gemini?.ready && "Gemini"].filter(Boolean);
+      const claude = names.length || S.has_claude_key
+        ? ui.notice(`Cloud AI ready: ${names.join(", ") || "Claude"}. Default for everyday jobs: ${S.resolved_provider || "local"}. Keys are never shown here.`, { tone: "good", icon: "key" })
+        : ui.notice("No cloud AI yet. On the laptop, run python -m hub setup --only ai to use Gemini (free key) or your Claude login.", { icon: "key" });
       const status = m.reachable ? null : ui.notice(m.error || "The local model server isn't running. Start Ollama on the laptop.", { tone: "warn" });
       return el("div", { class: "ui-stack ui-stack--lg" }, status, claude, group("Which model does what", rows),
         pullCard(s), installedList(installed));

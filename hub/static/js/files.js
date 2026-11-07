@@ -2,6 +2,7 @@
 // folders) create, edit, rename, move, copy, delete, upload and download through /api/fileops.
 import { api, sse, fileUrl, renderMarkdown, el } from "./api.js";
 import * as ui from "./ui.js";
+import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 import { openEditor } from "./fileeditor.js";
 
 const MAX_INLINE = 2 * 1024 * 1024; // bigger files are offered as a download instead
@@ -257,7 +258,7 @@ export function init(container, ctx) {
   let answerEl = null;
   let sheetStatus = null;
   let sheetError = null;
-  let provider = store.get(KEY_PROVIDER) === "claude" ? "claude" : "local";
+  let provider = normalizeProvider(store.get(KEY_PROVIDER));
 
   const writable = (r) => !!roots.find((x) => x.name === r)?.writable;
   const writableRoots = () => roots.filter((r) => r.writable);
@@ -301,8 +302,7 @@ export function init(container, ctx) {
 
   const scopeLabel = el("span", { class: "fl-scope", "aria-live": "polite" }, "Whole page");
   const clearSel = ui.button({ label: "Use the whole page instead of the selection", icon: "close", variant: "ghost", size: "sm", iconOnly: true, hidden: true, class: "fl-clearsel" });
-  const provSeg = ui.segmented({
-    options: [{ value: "local", label: "Local" }, { value: "claude", label: "Claude" }],
+  const provSeg = providerSegmented({
     value: provider, label: "Model",
     onChange: (v) => { provider = v; store.set(KEY_PROVIDER, provider); updateBar(); },
   });
@@ -1826,7 +1826,7 @@ export function init(container, ctx) {
     openAnswerSheet(question ? "Your question" : TITLES[mode]);
     answerEl.replaceChildren();
     sheetError.hidden = true;
-    sheetStatus.textContent = `${scope} · ${provider === "claude" ? "Claude" : "Local model"}`;
+    sheetStatus.textContent = `${scope} · ${provider === "local" ? "Local model" : providerLabel(provider, true)}`;
     setRunning(true);
     let got = false;
     try {

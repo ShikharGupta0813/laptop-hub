@@ -2,8 +2,8 @@
 
 Providers: "local" (Ollama), "claude" (Anthropic API key), "claude-login" (the `claude` program logged in
 with a Claude subscription) and "gemini" (Google API key). `default_provider` in hub.json is "auto" or one
-of those names; "auto" picks claude if ANTHROPIC_API_KEY is set, else claude-login if the `claude` program
-is installed, else gemini if a key is saved, else local.
+of those names; "auto" picks claude if ANTHROPIC_API_KEY is set, else gemini if a key is saved, else claude-login if the
+`claude` program is installed, else local. Heavy jobs can pick claude-login explicitly.
 """
 from __future__ import annotations
 
@@ -49,10 +49,10 @@ def resolve_default(config) -> str:
         return choice
     if os.environ.get("ANTHROPIC_API_KEY"):
         return "claude"
+    if gemini_key():
+        return "gemini"       # free key: routine jobs go here so the Claude subscription quota is kept
     if _claude_login_cli(config):
         return "claude-login"
-    if gemini_key():
-        return "gemini"
     return "local"
 
 

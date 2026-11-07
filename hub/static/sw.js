@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v10-redline-final-2026.11";
+const VERSION = "v11-ai-providers-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
@@ -13,7 +13,7 @@ const SHELL = [
   "/js/cards.js", "/js/english.js", "/js/expenses.js", "/js/fileeditor.js", "/js/files.js", "/js/focus.js",
   "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js", "/js/jarvis.js", "/js/journal.js",
   "/js/kb.js", "/js/laptop.js", "/js/learn.js", "/js/main.js", "/css/setup.css", "/js/setup.js", "/vendor/fonts/jetbrains-mono-var-latin.woff2", "/css/launcher.css", "/js/launcher.js", "/css/friday.css", "/js/friday.js", "/js/notes.js", "/js/notifications.js",
-  "/js/omnibox.js", "/js/quiz.js", "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js",
+  "/js/omnibox.js", "/js/providers.js", "/js/quiz.js", "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js",
   "/js/studychat.js", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js", "/js/voicemode.js",
   "/js/watch.js", "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js",
   "/vendor/xterm.css", "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg",
