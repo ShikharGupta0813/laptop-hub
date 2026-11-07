@@ -42,6 +42,7 @@ export function init(container, ctx) {
   async function add(url) {
     const value = (url || urlInput.value).trim();
     if (!value) { setErr("Paste a link first."); urlInput.focus(); return; }
+    if (/\s/.test(value)) { setErr("That doesn't look like a web address. Paste just the link."); urlInput.focus(); return; }
     setErr("");
     try {
       const b = await ui.busy(addBtn, api("/api/bookmarks", { method: "POST", json: { url: /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}` } }));
@@ -55,12 +56,16 @@ export function init(container, ctx) {
     }
   }
 
+  const toggling = new Set();   // a double-tap must not mark a link read and then unread again
   async function toggleRead(b) {
+    if (toggling.has(b.id)) return;
+    toggling.add(b.id);
     try {
       const r = await api(`/api/bookmarks/${b.id}/read`, { method: "POST" });
       ui.toast(r.read ? "Marked as read" : "Marked as unread", { kind: "good" });
       load();
     } catch (e) { ctx.toast(errText(e), { kind: "bad" }); }
+    finally { setTimeout(() => toggling.delete(b.id), 600); }
   }
 
   async function remove(b) {

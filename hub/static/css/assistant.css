@@ -150,5 +150,6 @@
 
 /* Friday entry chip above the composer */
 #view-assistant .as-friday-row { display: flex; padding: 0 0 var(--sp-1) var(--sp-1); }
-#view-assistant .as-friday { min-height: 32px; padding: 0 12px; gap: 6px; font-size: var(--fs-sm); color: var(--c-accent-text); }
+#view-assistant .as-friday { position: relative; min-height: 32px; padding: 0 12px; gap: 6px; font-size: var(--fs-sm); color: var(--c-accent-text); }
+#view-assistant .as-friday::after { content: ""; position: absolute; inset: -6px 0; } /* 44px hit area */
 #view-assistant .as-friday .ui-icon { width: 16px; height: 16px; }
