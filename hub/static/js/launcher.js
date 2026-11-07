@@ -40,10 +40,10 @@ export function init(container, ctx) {
 
   async function runQuick(step, label, verb) {
     if (S.busy) return;
+    S.busy = true;   // held from the first tap, so a double-tap cannot stack two confirms or two launches
     const ok = await ui.confirm({ title: `${verb} ${label}?`, icon: "laptop",
       message: `This will ${verb.toLowerCase()} ${label} on your laptop. Then you will see the laptop screen here, with a Control button.`, confirmLabel: verb });
-    if (!ok) return;
-    S.busy = true;
+    if (!ok) { S.busy = false; return; }
     ui.toast(`${verb.replace(/e$/, "")}ing ${label}…`, { kind: "info" });
     try {
       const r = await api("/api/workspaces/quick", { method: "POST", json: { ...step, confirm: true } });
@@ -63,14 +63,17 @@ export function init(container, ctx) {
       ui.button({ label: "Show my laptop", icon: "cast", variant: "primary", size: "lg", block: true, onClick: wholeLaptop }));
   }
   async function wholeLaptop() {
-    const ok = await ui.confirm({ title: "Open the whole laptop?", icon: "laptop",
-      message: "This shows your laptop screen here and then asks if you want to turn control on. Nothing is started on the laptop.", confirmLabel: "Show my laptop" });
-    if (!ok) return;
+    if (S.busy) return;
+    S.busy = true;
     try {
+      const ok = await ui.confirm({ title: "Open the whole laptop?", icon: "laptop",
+        message: "This shows your laptop screen here and then asks if you want to turn control on. Nothing is started on the laptop.", confirmLabel: "Show my laptop" });
+      if (!ok) return;
       await api("/api/workspaces/whole-laptop/launch", { method: "POST", json: { confirm: true } });
       ui.haptic("success");
       goLive();
     } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
+    finally { S.busy = false; }
   }
 
   // ---- quick launch --------------------------------------------------------------------------
@@ -204,7 +207,13 @@ export function init(container, ctx) {
     try { await api("/api/screen/arm", { method: "POST", json: { confirm: true, minutes } }); return true; }
     catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
   }
+  let focusing = false;   // a double-tap must not stack two "Enable control?" dialogs
   async function focusWindow(w) {
+    if (focusing) return;
+    focusing = true;
+    try { await focusWindowNow(w); } finally { focusing = false; }
+  }
+  async function focusWindowNow(w) {
     if (!(await ensureArmed())) return;
     try {
       await api("/api/screen/windows/focus", { method: "POST", json: { id: w.id } });

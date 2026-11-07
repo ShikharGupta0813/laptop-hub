@@ -102,8 +102,9 @@ export function init(container, ctx) {
     if (!name) return;
     const info = state.lists.find((l) => l.name === name);
     listHead.append(el("h2", { class: "td-listhead__title" }, name),
-      info && !info.default ? ui.button({ label: "Rename", icon: "edit", variant: "ghost", size: "sm", onClick: () => renameList(name) }) : null,
-      info && !info.default ? ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: () => deleteList(name) }) : null);
+      ...(info && !info.default ? [
+        ui.button({ label: "Rename", icon: "edit", variant: "ghost", size: "sm", onClick: () => renameList(name) }),
+        ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: () => deleteList(name) })] : []));
   }
 
   async function addList() {

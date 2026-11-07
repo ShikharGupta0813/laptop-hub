@@ -544,7 +544,7 @@ export function init(container, ctx) {
     try {
       S.windows = (await api("/api/screen/windows")).windows || [];
       body.replaceChildren(...(S.windows.length ? [
-        armed() ? null : ui.notice("Enable control to bring a window to the front.", { tone: "warn" }),
+        ...(armed() ? [] : [ui.notice("Enable control to bring a window to the front.", { tone: "warn" })]),
         el("div", { class: "ui-list ui-list--inset" }, S.windows.map((w) => ui.listRow({ icon: "layers", title: w.title || "(untitled)", meta: "Focus", onClick: async () => {
           if (!armed()) { promptArm(); return; }
           try { await api("/api/screen/windows/focus", { method: "POST", json: { id: w.id } }); ui.toast("Brought to front", { kind: "good" }); }
@@ -651,6 +651,11 @@ export function init(container, ctx) {
   }
   // The built-in tile: launch nothing, just show the laptop and offer Enable control.
   async function wholeLaptop(w) {
+    if (launchBusy) return;
+    launchBusy = true;
+    try { await wholeLaptopNow(w); } finally { launchBusy = false; }
+  }
+  async function wholeLaptopNow(w) {
     const ok = await ui.confirm({ title: "Open the whole laptop?", icon: "laptop",
       message: "This shows your laptop screen here and then asks if you want to turn control on. Nothing is started on the laptop." , confirmLabel: "Show my laptop" });
     if (!ok) return;
@@ -813,7 +818,13 @@ export function init(container, ctx) {
   }
 
   // ---- launching ------------------------------------------------------------------------------
-  async function launchWorkspace(w, { skipSteps = false } = {}) {
+  let launchBusy = false;   // two quick taps on a tile must not stack two confirm dialogs or two launches
+  async function launchWorkspace(w, opts) {
+    if (launchBusy) return;
+    launchBusy = true;
+    try { await launchWorkspaceNow(w, opts); } finally { launchBusy = false; }
+  }
+  async function launchWorkspaceNow(w, { skipSteps = false } = {}) {
     const labels = {};
     (await loadScripts()).forEach((sc) => { labels[sc.name] = sc.label || sc.name; });
     const todo = (w.steps || []).filter((s) => !(skipSteps && (s.type === "script" || s.type === "wait")));

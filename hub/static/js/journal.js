@@ -231,7 +231,7 @@ export function init(container, ctx) {
   function render() {
     pane.replaceChildren();
     if (state.tab === "journal") {
-      pane.append(moodPrompt(), onThisDayCard(), calendar(), ...entriesSection());
+      pane.append(...[moodPrompt(), onThisDayCard(), calendar(), ...entriesSection()].filter(Boolean));
       return;
     }
     if (state.statsError) { pane.append(ui.notice(state.statsError, { tone: "bad" }), ui.button({ label: "Try again", icon: "refresh", variant: "tonal", onClick: loadStats })); pane.append(reflectCard()); return; }
