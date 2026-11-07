@@ -309,7 +309,7 @@ function sectionIcon(sec) {
   if (/chat|message|slack|teams|mention|tag/.test(k)) return "talk";
   if (/calendar|meeting|event|schedule/.test(k)) return "calendar";
   if (/remind/.test(k)) return "alarm";
-  return "sparkles";
+  return "prompt";
 }
 function clockOf(v) {
   if (v == null) return "";
@@ -345,16 +345,21 @@ export function init(container, ctx) {
   let alerts = null, alertsError = null, pending = null, speakAsk = true;
 
   // ---------- hero
-  const orb = el("div", { class: "fr-orb", "aria-hidden": "true" }, el("span", { class: "fr-orb__ring" }), el("span", { class: "fr-orb__core" }));
+  // her "voice": a five-bar level meter that idles flat and moves while she reads or thinks
+  const orb = el("div", { class: "fr-orb", "aria-hidden": "true" }, ...[0, 1, 2, 3, 4].map((i) => el("i", { style: `--k:${i}` })));
   const heroName = el("p", { class: "fr-name" });
   const heroHello = el("h1", { class: "fr-hello" });
   const heroSub = el("p", { class: "fr-sub", "aria-live": "polite" });
   const settingsBtn = ui.button({ variant: "ghost", iconOnly: true, icon: "sliders", "aria-label": "Friday settings", onClick: () => openSettings() });
   const helpBtn = ui.button({ variant: "ghost", iconOnly: true, icon: "help", "aria-label": "How Friday works", onClick: () => openHelp() });
-  const hero = el("header", { class: "fr-hero" },
-    el("div", { class: "fr-hero__tools" }, helpBtn, settingsBtn), orb, heroName, heroHello, heroSub);
+  const hero = el("header", { class: "ui-window ui-window--accent fr-hero" },
+    el("div", { class: "ui-window__bar" }, el("span", { class: "ui-window__dots", "aria-hidden": "true" }),
+      el("span", { class: "ui-window__title", "aria-hidden": "true" }, "~/friday — brief"), el("div", { class: "fr-hero__tools" }, helpBtn, settingsBtn)),
+    el("div", { class: "ui-window__body fr-hero__body" },
+      el("div", { class: "fr-hero__top" }, el("p", { class: "ui-prompt fr-cmd", "aria-hidden": "true" }, "friday --status"), orb),
+      heroName, heroHello, heroSub));
 
-  const briefBtn = ui.button({ variant: "primary", size: "lg", icon: "sparkles", label: "Brief me", class: "fr-brief-btn", onClick: () => runBrief() });
+  const briefBtn = ui.button({ variant: "primary", size: "lg", icon: "prompt", label: "Brief me", class: "fr-brief-btn", onClick: () => runBrief() });
   const micBtn = ui.button({ variant: "secondary", size: "lg", iconOnly: true, icon: "mic", class: "fr-mic-btn", "aria-label": "Talk to Friday", onClick: () => ctx.open("assistant", "friday") });
   const actions = el("div", { class: "fr-actions" }, briefBtn, micBtn);
 
@@ -402,7 +407,7 @@ export function init(container, ctx) {
   function notInstalled() {
     missing = true;
     stage.replaceChildren(ui.emptyState({
-      icon: "sparkles", title: `${personaName()} is almost here`,
+      icon: "prompt", title: `${personaName()} is almost here`,
       body: "Friday is not set up on your laptop yet. Update the hub on the laptop and she will be ready. Everything else keeps working.",
       action: { label: "Try again", icon: "refresh", onClick: () => { missing = false; boot(true); } },
     }));

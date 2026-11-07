@@ -17,7 +17,7 @@ const CSS = "/css/settings.css";
 const SECTION_ALIAS = { notifications: "push", ntfy: "push", backups: "backup", log: "audit", activity: "audit", phone: "capture" };
 const MODEL_SLOTS = [
   { key: "chat_model", label: "Chat", sub: "Everyday answers, Learn and Notes", icon: "talk", tone: "accent", source: "ollama" },
-  { key: "assistant_model", label: "Assistant", sub: "Talk, tools and actions", icon: "sparkles", tone: "violet", source: "ollama" },
+  { key: "assistant_model", label: "Assistant", sub: "Talk, tools and actions", icon: "prompt", tone: "info", source: "ollama" },
   { key: "claude_model", label: "Claude", sub: "Used only when you pick Claude", icon: "bot", tone: "orange", source: "text" },
   { key: "embed_model", label: "Search and memory", sub: "Lets the hub find things by meaning", icon: "layers", tone: "teal", source: "ollama" },
   { key: "whisper_model", label: "Speech to text", sub: "Voice notes and dictation", icon: "mic", tone: "pink", source: "whisper" },
@@ -96,7 +96,7 @@ export function init(container, ctx) {
     if (!S) return rows;
     const chatName = S.chat_model || "Not set";
     rows.push(group("Intelligence",
-      ui.listRow({ icon: "sparkles", tone: "violet", title: "Models", sub: `Chat: ${chatName}`, chevron: true, onClick: () => openSection("models"),
+      ui.listRow({ icon: "cpu", tone: "info", title: "Models", sub: `Chat: ${chatName}`, chevron: true, onClick: () => openSection("models"),
         meta: S.ollama?.reachable ? null : ui.badge("Offline", "warn") }),
       ui.listRow({ icon: "folder", tone: "orange", title: "Folders", sub: `${S.kb_roots?.length || 0} searchable, ${S.writable_roots?.length || 0} editable`, chevron: true, onClick: () => openSection("folders") })));
     rows.push(group("Alerts",
@@ -342,7 +342,7 @@ export function init(container, ctx) {
       const topic = el("input", { type: "text", maxlength: "64", placeholder: notify.ntfy_enabled ? (notify.ntfy_topic_hint || "Topic is set") : "A long random name", autocapitalize: "off", autocomplete: "off", spellcheck: "false", "aria-label": "ntfy topic" });
       topic.value = freshTopic;
       const server = el("input", { type: "url", value: notify.ntfy_server || (S && S.ntfy_server) || "", placeholder: "https://ntfy.sh", autocapitalize: "off", autocomplete: "off", spellcheck: "false", "aria-label": "ntfy server" });
-      const dice = ui.button({ label: "Make a random topic", icon: "sparkles", variant: "tonal", size: "sm" });
+      const dice = ui.button({ label: "Make a random topic", icon: "crosshair", variant: "tonal", size: "sm" });
       dice.addEventListener("click", () => { topic.value = randomTopic(); ui.haptic("select"); });
       const saveTopic = ui.button({ label: "Save topic", icon: "check", variant: "primary", size: "sm" });
       const steps = el("div", { class: "ui-card st-steps-card" });

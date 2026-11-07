@@ -35,7 +35,7 @@ const CHECKS = [
           : R("ok", [s?.hostname || s?.name, "Connected"].filter(Boolean).join(" · "));
       } catch (e) { return R("bad", unreachable(e) ? "Can't reach your laptop. Is it awake and the hub running?" : e.message, { fix: laptopFix }); }
     } },
-  { id: "model", title: "Local AI model", icon: "sparkles", tone: "violet", required: true,
+  { id: "model", title: "Local AI model", icon: "cpu", tone: "info", required: true,
     unlocks: "Chat, quizzes, notes tags and the assistant, privately on your laptop.",
     async run() {
       let m;
@@ -158,7 +158,7 @@ const CHECKS = [
           : R("warn", "Optional. No workspace runs a script yet.", { fix: { steps: ["Make a workspace that runs your connect script, then your sites and apps in one tap."], open: ["launcher", null, "Open Launcher"] } });
       } catch (e) { return missing(e) ? R("na", "Launcher isn't on this laptop.") : FAIL(e, "workspaces"); }
     } },
-  { id: "friday", title: "Friday", icon: "sparkles", tone: "accent", optional: true,
+  { id: "friday", title: "Friday", icon: "prompt", tone: "accent", optional: true,
     unlocks: "Your morning brief and, when switched on, alerts that speak up for you.",
     async run() {
       try {
