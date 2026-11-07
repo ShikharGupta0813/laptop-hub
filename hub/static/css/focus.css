@@ -7,9 +7,9 @@
 #view-focus .fc-stage { display: grid; justify-items: center; gap: var(--sp-4); padding: var(--sp-6) var(--sp-4) var(--sp-5); text-align: center; position: relative; overflow: hidden; }
 #view-focus .fc-stage::before {
   content: ""; position: absolute; inset: -40% -20% auto; height: 80%; pointer-events: none; opacity: .5;
-  background: radial-gradient(closest-side, var(--c-accent-soft), transparent);
+  background: none;
 }
-#view-focus .fc-stage.is-break::before, #view-focus .fc-stage.is-done::before { background: radial-gradient(closest-side, var(--c-good-soft), transparent); }
+#view-focus .fc-stage.is-break::before, #view-focus .fc-stage.is-done::before { background: none; }
 #view-focus .fc-stage > * { position: relative; max-width: 100%; }
 #view-focus .fc-ring { max-width: 100%; }
 #view-focus .fc-ring svg { max-width: 100%; height: auto; }
