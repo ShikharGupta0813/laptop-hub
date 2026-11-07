@@ -15,10 +15,19 @@ python -m hub setup
 It sets up, in order: the Jarvis folder (clones it if missing), Gmail (App password: 2-Step Verification on, then myaccount.google.com/apppasswords), Asana token (app.asana.com/0/my-apps), calendar iCal link, Google Chat webhooks, Claude API key, phone push topic (ntfy), what to call you, the Cloudflare WARP button, and auto-start at logon.
 
 - Secrets are typed hidden and saved only on this laptop: Gmail, calendar and Chat in the Windows keyring, Asana in `~\.claude\.asana_token` (locked to your user), the Claude key as your user environment variable. They are never printed or written to `hub.json`, and each is tested against its own service only.
+- Ctrl+C stops the whole setup cleanly and lists the steps already done. Prompts accept only y/yes/n/no/Enter.
+- Company Google Workspace accounts (like `@onestack.in`) often have App passwords or IMAP disabled by the admin; a personal Gmail works without admin help. Only one mailbox can be connected at a time (re-run with `--only gmail` for the other).
 - `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, claude, phone, name, warp, autostart).
 - `python -m hub setup --check` changes nothing and just tests what is configured.
 - The Jarvis `.venv` is optional: the hub only loads Jarvis's helper files with its own Python.
 - Open a new terminal and restart the hub afterwards (a new Claude key shows up in new terminals only).
+
+### Google Chat
+
+1. Open the space in chat.google.com, click the space name, then Apps & integrations, Webhooks, Add webhook.
+2. Name it, then copy the URL and paste it into the setup step (hidden).
+
+Limits: a webhook can only post into a **Space**, never a 1:1 chat (no DMs). Your Workspace admin may have turned webhooks off; if "Apps & integrations" or "Webhooks" is missing in the space menu, ask them or skip. Webhooks cannot read Chat. To read messages, use the Android app's notification capture instead (Settings > Phone capture > Watch chat).
 
 The sections below are the manual steps, in case you prefer them.
 

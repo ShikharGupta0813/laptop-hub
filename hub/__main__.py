@@ -123,15 +123,14 @@ def cmd_doctor(args) -> int:
         ok &= good
         line(good, f"folder {name}: {folder}")
     try:
-        with urllib.request.urlopen(config.ollama_host + "/api/tags", timeout=3) as resp:
+        with urllib.request.urlopen(config.ollama_host + "/api/tags", timeout=2) as resp:
             models = [m["model"] for m in json.load(resp)["models"]]
         line(True, f"Ollama running, models: {', '.join(models) or 'none'}")
         if config.chat_model not in models:
             ok = False
             line(False, f"chat model '{config.chat_model}' missing: ollama pull {config.chat_model}")
-    except (urllib.error.URLError, OSError, ValueError, KeyError):
-        ok = False
-        line(False, "Ollama not reachable (start the Ollama app). Needed for Explain/Ask and tags.")
+    except Exception:  # noqa: BLE001 - slow, down, or garbage answer: never crash the doctor
+        line(None, "Ollama not reachable (start the Ollama app). Needed for Explain/Ask and tags.")
     try:
         import faster_whisper  # noqa: F401
         line(True, "faster-whisper installed (voice notes)")
@@ -174,7 +173,8 @@ def main(argv=None) -> int:
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
     setup = sub.add_parser("setup", help="interactive one-command setup: Jarvis, Gmail, Asana, calendar, push, auto-start")
-    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,claude,phone,name,warp,autostart")
+    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,claude,phone,name,warp,autostart "
+                       "(e.g. --only gmail,calendar)")
     setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")

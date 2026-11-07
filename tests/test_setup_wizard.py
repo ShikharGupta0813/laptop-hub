@@ -300,8 +300,8 @@ class TestRun(Base):
         self.sys.http["https://app.asana.com/api/1.0/users/me"] = (200, b'{"data":{"name":"Me"}}')
         self.sys.http[ICS] = (200, b"x")
         script = Script(asks=["jv_not_used"], secrets_=[PASSWORD, ASANA, ICS, CLAUDE, HOOK],
-                        confirms=[False, True, True, True, False, False, True, True, True, False, False])
-        script.asks = ["me@gmail.com", "", "Chief"]   # gmail address, chat names end, display name
+                        confirms=[True, True, True, True, True])
+        script.asks = ["me@gmail.com", "Chief"]   # gmail address, display name
         old_out, old_err = io.StringIO(), io.StringIO()
         with redirect_stdout(old_out), redirect_stderr(old_err):
             code, w = self.run_all("gmail,asana,calendar,claude,phone,name", script=script)
@@ -320,6 +320,154 @@ class TestRun(Base):
         w.secret("x")
         w.say("oops " + PASSWORD)
         self.assertNotIn(PASSWORD, self.output())
+
+
+class Boom(Script):
+    """Raises KeyboardInterrupt (or EOFError) at the n-th ask."""
+    def __init__(self, exc=KeyboardInterrupt, **kw):
+        super().__init__(**kw)
+        self.exc = exc
+
+    def ask(self, prompt, default=""):
+        if not self.asks:
+            raise self.exc()
+        return self.asks.pop(0)
+
+
+class TestUx(Base):
+    def test_confirm_reasks_then_accepts(self):
+        said, answers = [], iter(["Shikhar", "maybe", "YES"])
+        self.assertTrue(sw._real_confirm("Go?", True, reader=lambda p: next(answers), say=said.append))
+        self.assertEqual(said, ["Please answer y or n (Enter = yes)"] * 2)
+
+    def test_confirm_enter_uses_default_and_three_bad_means_no(self):
+        self.assertFalse(sw._real_confirm("Go?", False, reader=lambda p: "", say=lambda t: None))
+        said = []
+        self.assertFalse(sw._real_confirm("Go?", True, reader=lambda p: "C:\\x", say=said.append))
+        self.assertIn("treating that as no", said[-1])
+
+    def test_path_rejects_lone_y_and_cleans_quotes(self):
+        target = str(self.home / "jv")
+        w = self.wizard(Script(asks=["y", f'  "{target}" '], confirms=[True]))
+        self.assertEqual(sw.step_jarvis(w).status, "ok")
+        self.assertIn("That looks like an answer, not a folder", self.output())
+        self.assertIn(f"Folder: {target}", self.output())
+        self.assertEqual(self.sys.ran[0][3], target)
+
+    def test_path_three_bad_answers_skips(self):
+        w = self.wizard(Script(asks=["y", "n", "yes"]))
+        self.assertEqual(sw.step_jarvis(w).status, "skip")
+        self.assertEqual(self.sys.ran, [])
+
+    def test_name_is_asked_directly_and_sanitized(self):
+        w = self.wizard(Script(asks=['  <b>Shikhar</b> "the great and mighty"  ']))
+        sw.step_name(w)
+        saved = cfg.load(self.path).display_name
+        self.assertLessEqual(len(saved), 20)
+        self.assertTrue(saved.startswith("bShikhar"))
+        code, w2 = TestRun.run_all(self, "name", script=Script(asks=["Shikhar"], confirms=[False]))
+        self.assertEqual(cfg.load(self.path).display_name, "Shikhar")
+        self.assertNotIn("Set up Your name?", self.output())
+
+    def test_email_list_numbered_and_picked(self):
+        w = self.wizard(Script(asks=["a@onestack.in , b@gmail.com", "2"], secrets_=[PASSWORD]))
+        self.assertEqual(sw.step_gmail(w).status, "ok")
+        self.assertEqual(self.sys.keyring[(sw.GMAIL_SERVICE, "address")], "b@gmail.com")
+        out = self.output()
+        self.assertIn("1. a@onestack.in", out)
+        self.assertIn("ONE mailbox", out)
+        self.assertIn("--only gmail", out)
+        self.assertIn("App passwords or IMAP turned off", out)
+
+    def test_email_bad_pick_skips_on_enter(self):
+        w = self.wizard(Script(asks=["a@x.com; b@y.com", "9", ""]))
+        self.assertEqual(sw.step_gmail(w).status, "skip")
+        self.assertEqual(self.sys.keyring, {})
+
+    def test_auth_failure_prints_workspace_explanation(self):
+        self.sys.imap_error = "auth"
+        w = self.wizard(Script(asks=["me@onestack.in"], secrets_=[PASSWORD]))
+        self.assertEqual(sw.step_gmail(w).status, "fail")
+        self.assertIn("Why this can happen", self.output())
+
+    def test_calendar_404_explained_without_url(self):
+        w = self.wizard(Script(secrets_=[ICS]))
+        result = sw.step_calendar(w)
+        self.assertEqual(result.status, "fail")
+        self.assertIn("Google answered 404", result.message)
+        self.assertIn("Friday still works", result.message)
+        self.assertNoSecrets()
+        self.assertNotIn(ICS, result.message)
+
+    def test_chat_explains_limits_and_names_app_capture(self):
+        sw.step_chat(self.wizard(Script()))
+        out = self.output()
+        self.assertIn("not into 1:1 chats", out)
+        self.assertIn("Workspace admin", out)
+        self.assertIn("Watch chat", out)
+
+    def test_new_topic_option(self):
+        w = self.wizard(Script())
+        sw.step_phone(w)
+        old = w.config.ntfy_topic
+        w = self.wizard(Script(confirms=[True]))
+        sw.step_phone(w)
+        self.assertNotEqual(cfg.load(self.path).ntfy_topic, old)
+
+    def test_ctrl_c_stops_whole_wizard_cleanly(self):
+        script = Boom(asks=[], confirms=[True, False, True])   # jarvis yes -> ask raises
+        w = self.wizard(script)
+        calls = []
+        code = sw.run_wizard(w, "jarvis,gmail,asana", run_doctor=lambda: calls.append(1))
+        out = self.output()
+        self.assertEqual(code, 130)
+        self.assertIn("Stopped. Nothing after this point was changed.", out)
+        self.assertNotIn("interrupted", out)
+        self.assertEqual(w.results, [])
+        self.assertEqual(calls, [])
+        self.assertIn("[1/3] Jarvis folder", out)
+        self.assertNotIn("[2/3]", out)
+
+    def test_ctrl_c_keeps_completed_steps_in_summary(self):
+        script = Boom(asks=[], confirms=[False, True])   # jarvis skipped, gmail starts -> ask raises
+        w = self.wizard(script)
+        sw.run_wizard(w, "jarvis,gmail,asana")
+        self.assertEqual([s for s, _ in w.results], ["jarvis"])
+        self.assertIn("Jarvis folder", self.output().split("== Summary")[1])
+
+    def test_eof_is_like_ctrl_c(self):
+        w = self.wizard(Boom(exc=EOFError, confirms=[True]))
+        self.assertEqual(sw.run_wizard(w, "jarvis,gmail"), 130)
+
+    def test_doctor_crash_does_not_crash_wizard(self):
+        def boom():
+            raise KeyboardInterrupt
+        w = self.wizard(Script(confirms=[False]))
+        self.assertEqual(sw.run_wizard(w, "asana", run_doctor=boom), 0)
+        self.assertIn("Doctor skipped", self.output())
+
+    def test_header_and_help_line(self):
+        w = self.wizard(Script(confirms=[False]))
+        sw.run_wizard(w, "asana")
+        out = self.output()
+        self.assertIn("REDLINE setup", out)
+        self.assertIn("Re-run any time: python -m hub setup --only gmail,calendar", out)
+        self.assertIn("[1/1] Asana", out)
+        self.assertNotIn("Laptop Hub", out)
+
+
+class TestDoctor(unittest.TestCase):
+    def test_ollama_exception_prints_not_reachable(self):
+        from unittest import mock
+        from hub import __main__ as m
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "hub.json"
+            c, _ = cfg.make()
+            cfg.save(c, p)
+            buf = io.StringIO()
+            with mock.patch.object(m.urllib.request, "urlopen", side_effect=RuntimeError("slow")), redirect_stdout(buf):
+                m.cmd_doctor(SimpleNamespace(config=str(p)))
+        self.assertIn("[--] Ollama not reachable", buf.getvalue())
 
 
 if __name__ == "__main__":

@@ -264,6 +264,18 @@ class Wizard:
     def confirm(self, prompt: str, default: bool = True) -> bool:
         return bool(self._confirm(prompt, default))
 
+    def ask_path(self, prompt: str, default: str) -> str | None:
+        """Ask for a folder. Rejects a lone y/n (an answer typed at the wrong question); None after 3 bad tries."""
+        for _ in range(3):
+            raw = self.ask(prompt, default)
+            cleaned = clean_path(raw)
+            if cleaned.lower() in YES_NO_WORDS:
+                self.say(f"That looks like an answer, not a folder. Type a folder path or press Enter for {default}")
+                continue
+            return cleaned or default
+        self.say("No usable folder after 3 tries; skipping this step.")
+        return None
+
     def tone(self, status: str, text: str) -> str:
         label = {"ok": "OK ", "warn": "!! ", "fail": "XX ", "skip": "-- "}[status]
         if not self.color:
@@ -312,6 +324,26 @@ def scrub_known(text: str, known: list[str]) -> str:
     return text
 
 
+YES_NO_WORDS = {"y", "yes", "n", "no"}
+
+
+def clean_path(text: str) -> str:
+    """Trim spaces and one pair of matching quotes (Windows 'Copy as path' adds them)."""
+    text = (text or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    return text
+
+
+def parse_yes_no(answer: str) -> bool | None:
+    answer = (answer or "").strip().lower()
+    if answer in ("y", "yes"):
+        return True
+    if answer in ("n", "no"):
+        return False
+    return None
+
+
 def _real_ask(prompt: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
     return input(f"{prompt}{suffix}: ")
@@ -322,9 +354,19 @@ def _real_ask_secret(prompt: str) -> str:
     return getpass.getpass(f"{prompt} (hidden, Enter to skip): ")
 
 
-def _real_confirm(prompt: str, default: bool = True) -> bool:
-    answer = input(f"{prompt} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
-    return default if not answer else answer in ("y", "yes")
+def _real_confirm(prompt: str, default: bool = True, reader: Callable[[str], str] = input,
+                  say: Callable[[str], None] = print) -> bool:
+    """y/yes/n/no/Enter only. Anything else is re-asked; after 3 bad answers it counts as no."""
+    for _ in range(3):
+        answer = reader(f"{prompt} [{'Y/n' if default else 'y/N'}]: ").strip()
+        if not answer:
+            return default
+        value = parse_yes_no(answer)
+        if value is not None:
+            return value
+        say("Please answer y or n (Enter = yes)" if default else "Please answer y or n (Enter = no)")
+    say("No clear answer after 3 tries; treating that as no.")
+    return False
 
 
 def _fail_text(kind: str, what: str) -> str:
@@ -355,8 +397,11 @@ def check_jarvis(w: Wizard) -> Result:
 def step_jarvis(w: Wizard) -> Result:
     config = w.load_config(True)
     assert config is not None
-    folder = w.ask("Where is (or should I put) your Jarvis folder?", config.jarvis_dir or default_jarvis_dir(w))
-    path = Path(folder).expanduser()
+    folder = w.ask_path("Where is (or should I put) your Jarvis folder?", config.jarvis_dir or default_jarvis_dir(w))
+    if folder is None:
+        return Result("skip", "no Jarvis folder chosen; email, calendar and chat stay off")
+    path = Path(os.path.abspath(os.path.expanduser(folder)))
+    w.say(f"Folder: {path}")
     s = w.system
     if s.isdir(path) and s.listdir(path):
         if not s.isfile(path / "jarvis.py"):
@@ -416,6 +461,23 @@ def test_gmail(w: Wizard, address: str, password: str, saved: bool = False) -> R
     return Result("ok", f"{address}: reading and sending logins work" + ("" if saved else " and the password is saved"))
 
 
+WORKSPACE_NOTE = (
+    "Company Google Workspace accounts (like @onestack.in) often have App passwords or IMAP turned off by the admin.",
+    "If that is the case here, the login test below will be rejected and only your admin can change it.",
+    "A personal Gmail account works without any admin help.",
+)
+
+
+def split_emails(text: str) -> list[str]:
+    """Addresses separated by commas, semicolons or spaces; order kept, duplicates dropped."""
+    found: list[str] = []
+    for part in re.split(r"[,;\s]+", text or ""):
+        part = part.strip().strip("<>\"'")
+        if part and part.lower() not in [f.lower() for f in found]:
+            found.append(part)
+    return found
+
+
 def step_gmail(w: Wizard) -> Result:
     s = w.system
     try:
@@ -424,11 +486,34 @@ def step_gmail(w: Wizard) -> Result:
         return Result("fail", "the OS keyring isn't available. Run: pip install -r requirements-work.txt")
     if current and not w.confirm(f"Gmail is already saved for {current}. Replace it?", False):
         return check_gmail(w)
-    address = w.ask("Your Gmail / Google Workspace address (Enter to skip)")
-    if not address:
+    for line in WORKSPACE_NOTE:
+        w.say(line)
+    entered = w.ask("Your Gmail / Google Workspace address (Enter to skip)")
+    if not entered:
         return Result("skip", "skipped")
-    if not EMAIL_RE.match(address):
-        return Result("fail", "that doesn't look like an email address; nothing saved")
+    candidates = split_emails(entered)
+    bad = [c for c in candidates if not EMAIL_RE.match(c)]
+    if bad or not candidates:
+        return Result("fail", "that doesn't look like an email address (one per entry, like name@gmail.com); nothing saved")
+    address = candidates[0]
+    if len(candidates) > 1:
+        w.say("I found these addresses:")
+        for i, c in enumerate(candidates, 1):
+            w.say(f"  {i}. {c}")
+        w.say("Only ONE mailbox can be connected at a time. To connect the other one later, run: "
+              "python -m hub setup --only gmail")
+        address = ""
+        for _ in range(3):
+            pick = w.ask("Which one should REDLINE read? (number)")
+            if pick.isdigit() and 1 <= int(pick) <= len(candidates):
+                address = candidates[int(pick) - 1]
+                break
+            if not pick:
+                return Result("skip", "skipped")
+            w.say(f"Type a number from 1 to {len(candidates)}, or press Enter to skip.")
+        if not address:
+            return Result("skip", "no mailbox chosen")
+        w.say(f"Using {address}")
     w.say("Gmail needs an App password, not your normal password:")
     w.say("  1. Turn on 2-Step Verification for the Google account.")
     w.say("  2. Open https://myaccount.google.com/apppasswords and create one named Jarvis.")
@@ -440,6 +525,9 @@ def step_gmail(w: Wizard) -> Result:
         return Result("fail", f"received {len(password)} characters; app passwords are exactly 16 letters. Nothing saved")
     result = test_gmail(w, address, password)
     if result.status == "fail" and "rejected" in result.message:
+        w.say("Why this can happen:")
+        for line in WORKSPACE_NOTE:
+            w.say("  " + line)
         return result
     if result.status == "fail" and not w.confirm("The test failed (probably the network). Save it anyway?", False):
         return result
@@ -514,6 +602,10 @@ def _calendar_check(w: Wizard, url: str) -> Result:
         return Result("fail", "the calendar link must start with https:// (or webcal://)")
     try:
         status, body = w.system.http_get(url)
+        if status in (403, 404):
+            return Result("fail", f"Google answered {status}. The secret address may be mistyped (copy the whole link "
+                          "ending in .ics), reset, or your company admin has disabled it for @onestack.in. A personal "
+                          "calendar link works without admin help; or skip - Friday still works without a calendar.")
         if status != 200:
             return Result("fail", f"the calendar link answered with status {status}")
         count = w.system.count_events_today(body)
@@ -549,7 +641,7 @@ def step_calendar(w: Wizard) -> Result:
         url = "https://" + url[9:]
     result = _calendar_check(w, url)
     if result.status == "fail":
-        return Result("fail", result.message + "; nothing saved")
+        return Result("fail", result.message.rstrip(".") + ". Nothing saved.")
     try:
         w.system.keyring_set(CALENDAR_SERVICE, "ics_url", url)
         if w.system.keyring_get(CALENDAR_SERVICE, "ics_url") != url:
@@ -571,6 +663,16 @@ def check_chat(w: Wizard) -> Result:
     return Result("ok", f"{len(names)} space{'s' if len(names) != 1 else ''}: {', '.join(names)}") if names else Result("warn", "no spaces added")
 
 
+CHAT_NOTE = (
+    "Google Chat webhooks can only POST messages into a Space, not into 1:1 chats.",
+    "They must be allowed by your Workspace admin. If 'Apps & integrations' or 'Webhooks' is missing in the space "
+    "menu, the admin has turned them off: ask them, or skip.",
+    "REDLINE cannot read Chat through webhooks. Reading messages works through the Android app's notification "
+    "capture instead (Settings > Phone capture > Watch chat).",
+    "To make one: open the space, click its name, Apps & integrations, Webhooks, add one, copy the URL.",
+)
+
+
 def step_chat(w: Wizard) -> Result:
     try:
         names = _chat_spaces(w)
@@ -578,7 +680,8 @@ def step_chat(w: Wizard) -> Result:
         return Result("fail", "the OS keyring isn't available. Run: pip install -r requirements-work.txt")
     if names:
         w.say(f"Spaces already saved: {', '.join(names)}")
-    w.say("In a Google Chat space: space name menu, Apps & integrations, Webhooks, create one, copy its URL.")
+    for line in CHAT_NOTE:
+        w.say(line)
     added = 0
     while True:
         name = w.ask("Space name to add (Enter to finish)").lower()
@@ -645,6 +748,8 @@ def check_phone(w: Wizard) -> Result:
 def step_phone(w: Wizard) -> Result:
     config = w.load_config(True)
     assert config is not None
+    if config.ntfy_topic and w.confirm("A push topic already exists. Make a new random topic? (the old one stops working)", False):
+        config.ntfy_topic = ""
     if not config.ntfy_topic:
         config.ntfy_topic = secrets.token_urlsafe(18)   # 24 characters
     if not config.ntfy_server:
@@ -660,12 +765,17 @@ def check_name(w: Wizard) -> Result:
     return Result("ok", f"I call you {config.display_name}") if config else Result("warn", "no hub.json yet")
 
 
+def clean_name(text: str) -> str:
+    """1-20 printable characters; control characters, angle brackets and quotes dropped, spaces collapsed."""
+    text = "".join(ch for ch in (text or "") if ch.isprintable() and ch not in "<>\"'`")
+    return " ".join(text.split())[:20]
+
+
 def step_name(w: Wizard) -> Result:
     config = w.load_config(True)
     assert config is not None
-    name = w.ask("What should I call you?", config.display_name or "Chief")
-    if len(name) > 40 or not name.isprintable():
-        return Result("fail", "use up to 40 ordinary characters")
+    current = config.display_name or "Chief"
+    name = clean_name(w.ask(f'What should I call you? (Enter keeps "{current}")', current)) or current
     config.display_name = name
     w.save_config()
     return Result("ok", f"I'll call you {name}")
@@ -766,33 +876,46 @@ def run_wizard(w: Wizard, only: str | None = None, check: bool = False, run_doct
     except ValueError as exc:
         w.say(str(exc))
         return 2
-    w.say("Laptop Hub setup. " + ("Checking what is configured (nothing is changed)." if check else
-          "Press Enter to skip any step. Secrets are typed hidden and stay on this laptop."))
-    for step in chosen:
+    w.say("REDLINE setup. " + ("Checking what is configured (nothing is changed)." if check else
+          "Secrets are typed hidden and stay on this laptop."))
+    w.say("Press Enter to skip any step, Ctrl+C to stop. Re-run any time: python -m hub setup --only gmail,calendar")
+    w.say("Steps: " + ", ".join(STEP_IDS))
+    stopped = False
+    total = len(chosen)
+    for number, step in enumerate(chosen, 1):
         w.say("")
-        w.say(f"== {TITLES[step]}")
+        w.say(f"[{number}/{total}] {TITLES[step]}")
         act, test = STEPS[step]
         try:
             if check:
                 result = test(w)
-            elif w.confirm(f"Set up {TITLES[step]}?", True):
+            elif step == "name" or w.confirm(f"Set up {TITLES[step]}?", True):
                 result = act(w)
             else:
                 result = Result("skip", "skipped")
         except (KeyboardInterrupt, EOFError):
             w.say("")
-            result = Result("skip", "interrupted")
+            w.say("Stopped. Nothing after this point was changed.")
+            stopped = True
+            break
         except Exception as exc:  # noqa: BLE001 - a step must never stop the others, and must not leak
             result = Result("fail", "unexpected problem: " + scrub(type(exc).__name__))
         w.report(step, result)
     w.say("")
-    w.say("== Summary")
+    w.say("== Summary" + (" (steps completed before you stopped)" if stopped else ""))
     for step, result in w.results:
         w.say(w.tone(result.status, f"{TITLES[step]:<16} {result.message}"))
+    if stopped:
+        return 130
     if run_doctor and not check:
         w.say("")
         w.say("== Hub doctor")
-        run_doctor()
+        try:
+            run_doctor()
+        except KeyboardInterrupt:
+            w.say("Doctor skipped. Run it later: python -m hub doctor")
+        except Exception:  # noqa: BLE001
+            w.say("Doctor couldn't finish. Run it later: python -m hub doctor")
     if not check:
         w.say("")
         w.say("Restart the hub so it picks everything up:  python -m hub serve  (or log out and in if auto-start is on).")
