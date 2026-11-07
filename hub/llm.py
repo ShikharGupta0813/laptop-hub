@@ -520,6 +520,37 @@ class GeminiClient:
     def _url(self, method: str) -> str:
         return f"{GEMINI_BASE}/models/{self.model}:{method}"
 
+    async def _resolve_model(self, client: "httpx.AsyncClient", key: str) -> bool:
+        """The configured model is gone (404): ask Google which models exist and pick a current Flash one."""
+        try:
+            resp = await client.get(f"{GEMINI_BASE}/models", params={"pageSize": 200},
+                                    headers={"x-goog-api-key": key})
+            if resp.status_code >= 400:
+                return False
+            models = resp.json().get("models") or []
+        except (httpx.HTTPError, ValueError):
+            return False
+        best, best_rank = None, None
+        for m in models:
+            name = str(m.get("name", "")).removeprefix("models/")
+            low = name.lower()
+            if "generateContent" not in (m.get("supportedGenerationMethods") or []):
+                continue
+            if not low.startswith("gemini-") or "flash" not in low:
+                continue
+            if any(bad in low for bad in ("image", "tts", "live", "audio", "lite", "embedding", "robotics", "computer")):
+                continue
+            ver = re.search(r"gemini-(\d+(?:\.\d+)?)", low)
+            rank = (0 if any(t in low for t in ("preview", "exp")) else 1,
+                    float(ver.group(1)) if ver else 0.0, -len(name))
+            if best_rank is None or rank > best_rank:
+                best, best_rank = name, rank
+        if not best or best == self.model:
+            return False
+        self.model = best
+        return True
+
+
     @staticmethod
     def _problem(status: int, detail: str) -> LLMError:
         low = detail.lower()
@@ -559,9 +590,14 @@ class GeminiClient:
         timeout = httpx.Timeout(10.0, read=120.0)
         try:
             async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
-                async with client.stream("POST", self._url("streamGenerateContent"), params={"alt": "sse"},
+                for attempt in (0, 1):
+                  async with client.stream("POST", self._url("streamGenerateContent"), params={"alt": "sse"},
                                          headers={"x-goog-api-key": key},
                                          json=self._body(system, user, False)) as resp:
+                    if resp.status_code == 404 and attempt == 0:
+                        await resp.aread()
+                        if await self._resolve_model(client, key):
+                            continue
                     if resp.status_code >= 400:
                         raise self._problem(resp.status_code, (await resp.aread()).decode("utf-8", "replace"))
                     async for line in resp.aiter_lines():
@@ -577,6 +613,7 @@ class GeminiClient:
                         text = self._texts(data)
                         if text:
                             yield text
+                    return
         except LLMError:
             raise
         except httpx.HTTPError as exc:
@@ -589,6 +626,9 @@ class GeminiClient:
                                          transport=self._transport) as client:
                 resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key},
                                          json=self._body(system, user, json_mode))
+                if resp.status_code == 404 and await self._resolve_model(client, key):
+                    resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key},
+                                             json=self._body(system, user, json_mode))
         except httpx.HTTPError as exc:
             raise self._network(exc) from None
         if resp.status_code >= 400:

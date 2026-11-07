@@ -220,6 +220,26 @@ class GeminiTest(unittest.IsolatedAsyncioTestCase):
         llm.forget_gemini_key_cache()
 
 
+    async def test_a_retired_model_falls_back_to_a_current_flash_model(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request.url.path)
+            if request.url.path.endswith("/models") and request.method == "GET":
+                return httpx.Response(200, json={"models": [
+                    {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-3-flash", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-3-flash-lite", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-3-pro", "supportedGenerationMethods": ["generateContent"]}]})
+            if "gemini-3-flash:" in request.url.path:
+                return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "hi"}]}}]})
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+
+        client = self.client(handler, "KEY")
+        self.assertEqual(await client.complete("s", "u"), "hi")
+        self.assertEqual(client.model, "gemini-3-flash")
+
+
 async def _drain(gen):
     return [p async for p in gen]
 
