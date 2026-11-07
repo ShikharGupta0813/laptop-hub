@@ -147,3 +147,8 @@
 #view-assistant .as-recdot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--c-bad); animation: as-bounce 1s infinite; }
 
 .as-copybuf { position: fixed; left: -9999px; top: 0; opacity: 0; }
+
+/* Friday entry chip above the composer */
+#view-assistant .as-friday-row { display: flex; padding: 0 0 var(--sp-1) var(--sp-1); }
+#view-assistant .as-friday { min-height: 32px; padding: 0 12px; gap: 6px; font-size: var(--fs-sm); color: var(--c-accent-text); }
+#view-assistant .as-friday .ui-icon { width: 16px; height: 16px; }

@@ -107,3 +107,21 @@ html.vm-open .sh-nav { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .vm-orb__core, .vm-orb__glow { transition: none; }
 }
+
+/* ---- Friday: laptop-prep readout (the exact items, in full) ---- */
+.vm-fr { flex: none; max-width: var(--content-max); width: 100%; margin: 0 auto var(--sp-3); display: grid; gap: var(--sp-2); }
+.vm-fr[hidden] { display: none; }
+.vm-fr__head { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-lg); }
+.vm-fr__head .ui-icon { color: var(--c-accent-text); }
+.vm-fr__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); max-height: 28dvh; overflow-y: auto; }
+.vm-fr__kind { display: block; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--c-text-2); margin-bottom: 2px; }
+.vm-fr__target {
+  display: block; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--c-bg); border: 1px solid var(--c-line);
+  font-family: var(--font-mono); font-size: var(--fs-sm); overflow-wrap: anywhere; word-break: break-all;
+}
+.vm-fr__msg { margin: 0; min-height: 1.2em; font-size: var(--fs-sm); color: var(--c-text-2); }
+.vm-fr__btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: var(--sp-2); }
+.vm-fr__btns .ui-btn { min-height: 56px; }
+.vm.has-fr .vm-orb { --size: min(30vw, 120px); }
+.vm.has-fr .vm-cap--ai { max-height: 4.5em; }
+.vm.has-fr .vm-foot { display: none; }

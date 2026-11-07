@@ -517,7 +517,7 @@ class Local(Base):
 
     async def test_text_streams_and_think_is_off(self):
         svc = self.service(local=self.local([ollama_text("Hi ", "<think>hmm</think>there")]))
-        events = await collect(svc.run("s", "hello", "local", False))
+        events = await collect(svc.run("s", "list the files in my folder", "local", False))   # a greeting sends no tools
         self.assertEqual("".join(e["t"] for e in of(events, "text")), "Hi there")
         body = self.ollama.bodies[0]
         self.assertIs(body["think"], False)

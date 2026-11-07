@@ -172,7 +172,26 @@ export function init(container, ctx) {
   notifCard.node.hidden = true;
   const notesCard = card("Recent notes", { icon: "note", tone: "orange", action: { label: "See all", onClick: () => ctx.open("notes") } });
 
-  root.append(hero, jump, forYou,
+  // Friday hero card: only shown when her module exists on the laptop (settings answer 404 otherwise).
+  const fridayCard = el("section", { class: "hm-friday", hidden: true, "aria-label": "Friday" },
+    el("div", { class: "hm-friday-orb", "aria-hidden": "true" }, el("span", {})),
+    el("div", { class: "hm-friday-text" }, el("p", { class: "hm-friday-hello" }), el("p", { class: "hm-friday-sub" }, "Your day in one minute. I will keep it short.")),
+    el("div", { class: "hm-friday-btns" },
+      ui.button({ variant: "primary", icon: "sparkles", label: "Brief me", onClick: () => ctx.open("friday", "brief") }),
+      ui.button({ variant: "secondary", iconOnly: true, icon: "mic", "aria-label": "Talk to Friday", onClick: () => ctx.open("assistant", "friday") })));
+  import("./friday.js").then(async (m) => {
+    try { await m.loadSettings(ctx); } catch (_) { return; }
+    m.startAlerts(ctx);
+    if (m.FR.available !== true) return;
+    const f = fridayCard.querySelector(".hm-friday-hello");
+    const paint = () => {
+      const p = m.daypart(), who = userName || m.addressAs();
+      f.textContent = (p === "night" ? "Still up" : `Good ${p}`) + (who ? `, ${who}` : "");
+    };
+    paint(); fridayCard.hidden = false; setInterval(paint, 60000);
+  }).catch(() => { /* Friday is optional */ });
+
+  root.append(hero, fridayCard, jump, forYou,
     el("section", { class: "hm-section", "aria-label": "Quick actions" }, el("div", { class: "ui-section-head" }, el("h2", { class: "ui-section-title" }, "Quick actions")), quick),
     todayCard.node,
     el("div", { class: "hm-pair" }, ringsCard.node, learnCard),

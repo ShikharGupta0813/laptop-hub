@@ -110,3 +110,18 @@
 #view-home .hm-foryou-head .ui-icon { width: 15px; height: 15px; }
 #view-home .hm-foryou-item { margin: 0; font-size: var(--fs-sm); color: var(--c-text); padding-left: 21px; position: relative; }
 #view-home .hm-foryou-item::before { content: ""; position: absolute; left: 6px; top: .6em; width: 5px; height: 5px; border-radius: 50%; background: var(--c-accent); }
+
+/* Friday hero card */
+#view-home .hm-friday {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3) var(--sp-3); align-items: center; padding: var(--sp-4);
+  border-radius: var(--r-xl); border: 1px solid var(--c-line); box-shadow: var(--shadow-1);
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--c-accent) 22%, var(--c-surface-1)), var(--c-surface-1) 72%);
+}
+#view-home .hm-friday[hidden] { display: none; }
+#view-home .hm-friday-orb { width: 52px; height: 52px; display: grid; place-items: center; }
+#view-home .hm-friday-orb span { width: 40px; height: 40px; border-radius: var(--r-full); background: var(--c-accent-grad); box-shadow: var(--shadow-accent), inset 0 2px 0 rgb(255 255 255 / .3); animation: hm-friday-breathe 5s var(--ease-in-out) infinite; }
+@keyframes hm-friday-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.06); } }
+#view-home .hm-friday-hello { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); overflow-wrap: anywhere; }
+#view-home .hm-friday-sub { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--c-text-2); }
+#view-home .hm-friday-btns { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2); }
+@media (prefers-reduced-motion: reduce) { #view-home .hm-friday-orb span { animation: none; } }

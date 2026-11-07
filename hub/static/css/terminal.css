@@ -41,7 +41,10 @@
   padding: 4px 0 0 6px;
 }
 #view-terminal .term-host { position: absolute; inset: 4px 0 0 6px; }
+#view-terminal .term-host, #view-terminal .term-host .xterm, #view-terminal .term-host canvas { touch-action: none; }
 #view-terminal .term-host .xterm { height: 100%; }
+#view-terminal .term-bottom { position: absolute; right: var(--sp-3); bottom: var(--sp-3); z-index: 5; width: 44px; height: 44px; min-height: 44px; border-radius: var(--r-full); box-shadow: var(--shadow-2, 0 4px 14px rgb(0 0 0 / .35)); }
+#view-terminal .term-bottom[hidden] { display: none; }
 #view-terminal .term-host .xterm-viewport { background-color: transparent !important; overscroll-behavior: contain; }
 #view-terminal .term-host .xterm-helper-textarea { font-size: 16px; } /* stops Android zooming on focus */
 #view-terminal .term-fatal { padding: var(--sp-3); color: var(--c-bad); }

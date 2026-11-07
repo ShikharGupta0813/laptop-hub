@@ -157,3 +157,5 @@
 .fl-answersheet .fl-status { font-size: var(--fs-sm); color: var(--c-text-2); }
 .fl-answersheet .fl-answer > :first-child { margin-top: 0; }
 .fl-answersheet .fl-sheet-error { margin: 0; }
+
+#view-files .fl-pdftext { margin: var(--sp-3) 0 0; padding: var(--sp-3); background: var(--c-surface-1); border-radius: var(--r-md); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

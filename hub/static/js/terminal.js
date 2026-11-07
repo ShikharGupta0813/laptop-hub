@@ -7,6 +7,7 @@ const FONT_MIN = 10;
 const FONT_MAX = 22;
 const FONT_DEFAULT = 14;
 const CONNECT_TIMEOUT_MS = 10000;
+const COPY_LINES = 300;
 const KEYBOARD_THRESHOLD = 120; // px the visual viewport must shrink before we call it "keyboard open"
 
 const store = {
@@ -108,6 +109,8 @@ export function init(container, ctx) {
     el("p", { class: "muted term-paste-note" }, "This browser would not let the page read the clipboard. Paste here instead."),
     pasteBox, el("div", { class: "row" }, pasteSend, pasteCancel));
 
+  const toBottom = el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--icon term-bottom", "aria-label": "Scroll to bottom", hidden: true }, icon("arrow-down", 20));
+  screen.append(toBottom);
   const keybar = el("div", { class: "term-keys", role: "toolbar", "aria-label": "Extra keys" });
   container.append(toolbar, statusLine, screen, pastePanel, keybar);
 
@@ -380,6 +383,35 @@ export function init(container, ctx) {
     tell(whole ? "Nothing was selected, so the visible screen was copied." : "Copied the selection.");
   }
 
+  // Copy the selection, or the last COPY_LINES lines of output (scrollback included).
+  async function doCopyOutput() {
+    let text = term.getSelection();
+    if (!text) {
+      const buf = term.buffer.active;
+      const start = Math.max(0, buf.length - COPY_LINES);
+      const lines = [];
+      for (let i = start; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      text = lines.join("\n").replace(/\s+$/, "");
+    }
+    if (!text) { tell("Nothing to copy."); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const area = el("textarea", { "aria-hidden": "true", readonly: true, class: "term-copy-scratch" });
+      area.value = text;
+      document.body.append(area);
+      area.select();
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (__) { ok = false; }
+      area.remove();
+      if (!ok) { tell("The browser blocked copying."); return; }
+    }
+    tell(`Copied ${text.split("\n").length} lines of output.`);
+  }
+
   function makeKey(label, aria, onPress, opts = {}) {
     const attrs = { type: "button", class: "ui-btn ui-btn--secondary term-key" + (opts.cls ? " " + opts.cls : ""), "aria-label": aria };
     if (opts.toggle) attrs["aria-pressed"] = "false";
@@ -431,6 +463,7 @@ export function init(container, ctx) {
         () => sendInput(ch), { cls: "sym" }));
     }
     add("paste", makeKey(el("span", { class: "term-key-ico" }, icon("clipboard", 18), "Paste"), "Paste from clipboard", doPaste, { cls: "wide", noFocus: true }));
+    add("output", makeKey(el("span", { class: "term-key-ico" }, icon("copy", 18), "Output"), "Copy output", doCopyOutput, { cls: "wide", noFocus: true }));
     add("copy", makeKey(el("span", { class: "term-key-ico" }, icon("copy", 18), "Copy"), "Copy selection", doCopy, { cls: "wide" }));
   }
   buildKeys();
@@ -461,9 +494,15 @@ export function init(container, ctx) {
     if (send({ type: "resize", rows, cols })) lastSent = { rows, cols };
   }
 
+  function isAtBottom() { const b = term.buffer.active; return b.viewportY >= b.baseY; }
+
   function scheduleResize() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { layoutKeyboard(); sendResize(); }, 100);
+    resizeTimer = setTimeout(() => {
+      const atBottom = !term || isAtBottom();
+      layoutKeyboard(); sendResize();
+      if (term && atBottom) term.scrollToBottom();
+    }, 100);
   }
 
   // The phone keyboard shrinks only the visual viewport. When it does, pin this view to the
@@ -488,7 +527,12 @@ export function init(container, ctx) {
   window.addEventListener("resize", scheduleResize);
   window.addEventListener("orientationchange", scheduleResize);
   if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", scheduleResize);
+    window.visualViewport.addEventListener("resize", () => {
+      const atBottom = !term || isAtBottom();
+      layoutKeyboard();
+      if (fitNow() && atBottom) term.scrollToBottom();
+      scheduleResize();
+    });
     window.visualViewport.addEventListener("scroll", () => { if (container.classList.contains("kb-open")) layoutKeyboard(); });
   }
   if (typeof ResizeObserver === "function") new ResizeObserver(scheduleResize).observe(host);
@@ -572,6 +616,57 @@ export function init(container, ctx) {
     buildShellSeg();
   }
 
+  // ---------- touch scrolling ----------
+  // xterm's canvas swallows touch drags, so turn vertical finger drags into scrollLines, with momentum.
+  // A tap (no movement) still reaches the click handler; a long press is left to the system.
+  function setupTouchScroll() {
+    let t = null; // { y, lastY, lastT, v, scrolling, rem }
+    let raf = 0;
+    const lineH = () => Math.max(8, host.clientHeight / Math.max(1, term.rows));
+    const stop = () => { cancelAnimationFrame(raf); raf = 0; };
+    host.addEventListener("touchstart", (e) => {
+      stop();
+      if (e.touches.length !== 1) { t = null; return; }
+      const y = e.touches[0].clientY;
+      t = { x: e.touches[0].clientX, y, lastY: y, lastT: performance.now(), v: 0, scrolling: false, rem: 0 };
+    }, { passive: true, capture: true });
+    host.addEventListener("touchmove", (e) => {
+      if (!t || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      if (!t.scrolling) {
+        if (Math.abs(y - t.y) < 8 || Math.abs(y - t.y) < Math.abs(e.touches[0].clientX - t.x)) return;
+        t.scrolling = true;
+      }
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      const now = performance.now();
+      const dy = t.lastY - y; // finger up = content moves up = scroll toward newer lines
+      t.rem += dy / lineH();
+      const whole = Math.trunc(t.rem);
+      if (whole) { term.scrollLines(whole); t.rem -= whole; }
+      const dt = Math.max(1, now - t.lastT);
+      t.v = 0.8 * t.v + 0.2 * (dy / dt); // px per ms
+      t.lastY = y; t.lastT = now;
+    }, { passive: false, capture: true });
+    const end = () => {
+      if (!t) return;
+      const cur = t; t = null;
+      if (!cur.scrolling || performance.now() - cur.lastT > 120) return;
+      let v = cur.v * 16; // px per frame
+      let rem = 0;
+      const step = () => {
+        v *= 0.95;
+        rem += v / lineH();
+        const whole = Math.trunc(rem);
+        if (whole) { term.scrollLines(whole); rem -= whole; }
+        if (Math.abs(v) > 0.5) raf = requestAnimationFrame(step); else raf = 0;
+      };
+      raf = requestAnimationFrame(step);
+    };
+    host.addEventListener("touchend", end, { passive: true, capture: true });
+    host.addEventListener("touchcancel", () => { t = null; }, { passive: true, capture: true });
+  }
+
   // ---------- terminal creation ----------
   function createTerminal() {
     if (!window.Terminal || !window.FitAddon) {
@@ -598,6 +693,11 @@ export function init(container, ctx) {
     }
     term.onData((data) => sendInput(data));
     host.addEventListener("click", () => term.focus());
+    setupTouchScroll();
+    const syncBottom = () => { toBottom.hidden = isAtBottom(); };
+    term.onScroll(syncBottom);
+    term.onWriteParsed?.(syncBottom);
+    toBottom.addEventListener("click", () => { term.scrollToBottom(); toBottom.hidden = true; term.focus(); });
     const retheme = () => { term.options.theme = buildTheme(); };
     window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", retheme);
     window.addEventListener("hub:theme", () => setTimeout(retheme, 30));

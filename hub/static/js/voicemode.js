@@ -75,7 +75,7 @@ function commandFor(text) {
 
 let active = null;
 
-// host: {ctx, ui, provider(), isBusy(), ask(text, hooks) -> Promise<{text, stopped, hadError, error}>,
+// host: {ctx, ui, friday (bool: greet in the Friday persona), provider(), isBusy(), ask(text, hooks) -> Promise<{text, stopped, hadError, error}>,
 //        stopTurn(), newChat(), approvalParts(input), onClose()}
 export function openVoiceMode(host) {
   if (active) return active;
@@ -133,11 +133,20 @@ export function openVoiceMode(host) {
     el("div", { class: "vm-approval__head" }, ui.icon("shield"), el("strong", {}, "Approve this?")),
     approvalBody, approvalMsg, el("div", { class: "vm-approval__btns" }, denyBtn, approveBtn));
 
+  // Friday: the laptop-prep list, shown in full while it is being read out. A tap on "Open on laptop" is a clear approval.
+  const frList = el("ul", { class: "vm-fr__list" });
+  const frMsg = el("p", { class: "vm-fr__msg", role: "status" });
+  const frOpenBtn = ui.button({ variant: "primary", size: "lg", icon: "laptop", label: "Open on laptop", class: "vm-fr__open" });
+  const frNoBtn = ui.button({ variant: "secondary", size: "lg", label: "Not now", class: "vm-fr__no" });
+  const frPanel = el("div", { class: "vm-fr ui-card ui-card--elevated", hidden: true, role: "group", "aria-label": "Waiting for your OK" },
+    el("div", { class: "vm-fr__head" }, ui.icon("laptop"), el("strong", {}, "Ready to open on your laptop")),
+    frList, frMsg, el("div", { class: "vm-fr__btns" }, frNoBtn, frOpenBtn));
+
   const errBox = el("div", { class: "vm-error", hidden: true, role: "alert" });
   const foot = el("p", { class: "vm-foot" }, "Say “stop”, “cancel” or “new chat”. Tap the orb to interrupt.");
 
   const root = el("div", { class: "vm", id: "vm-overlay", role: "dialog", "aria-modal": "true", "aria-labelledby": "vm-title", "data-state": "listening" },
-    top, el("div", { class: "vm-stage" }, orb, title, hint, captions, errBox), approval, foot);
+    top, el("div", { class: "vm-stage" }, orb, title, hint, captions, errBox), frPanel, approval, foot);
   document.body.append(root);
   document.documentElement.classList.add("vm-open");
   release = ui.pushLayer(() => close(true));
@@ -390,6 +399,100 @@ export function openVoiceMode(host) {
     await card.respond?.(ok);
   }
 
+  // ------------------------------------------------------------------ Friday persona + intent shortcuts
+  // Handled here, before the phrase would go to the assistant. Never approves an assistant tool call: only the
+  // laptop-prep list, and only after the exact items are read back and the owner says a clear yes or taps.
+  let fr = null, frOn = false, confirming = false;
+  const prepShown = () => !!(frOn && fr.FR.prep && fr.FR.prep.items.length && !fr.FR.prep.done);
+
+  async function say(text, { raw = false } = {}) {
+    const plain = raw ? String(text) : fr.cleanSpeech(text);
+    aiCap.dataset.raw = "";
+    aiCap.textContent = plain;
+    fr.FR.lastSpoken = text;
+    if (plain && ttsOn) { setState("speaking"); await speak(plain); }
+    else if (plain) await new Promise((r) => setTimeout(r, 800));
+  }
+  function renderPanel() {
+    const prep = fr && fr.FR.prep;
+    const show = prepShown();
+    frPanel.hidden = !show;
+    root.classList.toggle("has-fr", show);
+    if (!show) return;
+    frList.replaceChildren(...prep.items.map((i) => el("li", {},
+      el("span", { class: "vm-fr__kind" }, fr.kindOf(i.kind).label), el("code", { class: "vm-fr__target" }, i.target))));
+    frMsg.textContent = "";
+    frOpenBtn.disabled = frNoBtn.disabled = false;
+    frOpenBtn.onclick = () => { confirming = false; runLaptopPrep(); };
+    frNoBtn.onclick = () => { confirming = false; frPanel.hidden = true; root.classList.remove("has-fr"); sub.textContent = "Okay. Nothing was opened."; };
+  }
+  function readout(items, intro) {
+    return `${intro} ${items.map((i, n) => `${n + 1}. ${fr.kindOf(i.kind).label}, ${i.target}.`).join(" ")}`;
+  }
+  async function runLaptopPrep() {
+    const prep = fr.FR.prep;
+    if (!prep || !prep.items.length) return;
+    frOpenBtn.disabled = frNoBtn.disabled = true;
+    frMsg.textContent = "Opening on your laptop…";
+    setState("thinking");
+    try {
+      const results = await fr.runPrep(prep.items.map((i) => i.id));
+      const bad = results.filter((r) => !r.ok).length;
+      renderPanel();
+      await say(bad ? `Done, mostly. ${results.length - bad} opened, and ${bad} did not. You can see which in Friday.` : `Done. Everything is open on your laptop.`);
+    } catch (error) {
+      frOpenBtn.disabled = frNoBtn.disabled = false;
+      frMsg.textContent = `That did not reach the laptop: ${error.message}`;
+      await say("I could not reach your laptop just now. Nothing was opened.");
+    }
+  }
+  async function fridayHandle(text) {
+    const intent = fr.matchIntent(text, { prepShown: prepShown(), confirming });
+    if (intent !== "yes" && intent !== "repeat") confirming = false;
+    if (!intent) { if (prepShown()) renderPanel(); return false; }
+    userCap.textContent = `“${text}”`;
+    sub.textContent = "";
+    const fail = async (error) => {
+      if (fr.isMissing(error)) await say("I am not set up on your laptop yet. Update the hub there and I will be ready.");
+      else await say("I could not get that just now. Ask me again in a moment.");
+    };
+    try {
+      if (intent === "brief") {
+        setState("thinking", "Looking through your mail, chats and tasks…");
+        const b = await fr.loadBrief();
+        aiCap.dataset.raw = "";
+        await say(`${b.spoken || fr.toneLine(b)} Shall I plan your day, or get your laptop ready?`);
+      } else if (intent === "plan") {
+        setState("thinking", "Finding a calm shape for your day…");
+        const p = await fr.loadPlan();
+        await say(`${p.spoken || "Here is a gentle plan."} You can add it to your to-dos on the Friday screen.`);
+      } else if (intent === "prep") {
+        setState("thinking", "Picking what you will want open…");
+        const prep = await fr.loadPrep();
+        renderPanel();
+        if (!prep.items.length) await say("I could not find anything worth opening right now.");
+        else await say(readout(prep.items, `I would open ${prep.items.length} ${prep.items.length === 1 ? "thing" : "things"} on your laptop. Nothing opens until you say so.`) + " Say approve when you are happy, or no to leave it.", { raw: true });
+      } else if (intent === "approve") {
+        const items = fr.FR.prep.items;
+        confirming = true;
+        renderPanel();
+        await say(readout(items, "To be clear, I will open exactly this on your laptop:") + " Say yes to open them, or no to cancel. You can also tap Open on laptop.", { raw: true });
+      } else if (intent === "yes") {
+        confirming = false;
+        await runLaptopPrep();
+      } else if (intent === "no") {
+        frPanel.hidden = true; root.classList.remove("has-fr");
+        await say("Okay. I will not open anything.");
+      } else if (intent === "repeat") {
+        const last = fr.FR.lastSpoken;
+        if (last) await say(last, { raw: /laptop/i.test(last) && prepShown() }); else await say("I have not said anything yet. Ask me for the update.");
+      }
+    } catch (error) {
+      if (alive) await fail(error);
+    }
+    return true;
+  }
+
   // ------------------------------------------------------------------ orb tap
   async function onOrbTap() {
     ui.haptic("light");
@@ -418,6 +521,23 @@ export function openVoiceMode(host) {
 
   async function loop() {
     let failures = 0;
+    if (!fr) {
+      try {
+        fr = await import("./friday.js");
+        await fr.loadSettings(ctx);
+        frOn = fr.FR.available === true;
+      } catch (_) { frOn = false; }
+    }
+    if (!alive) return;
+    if (frOn) {
+      top.querySelector(".vm-top__mid").firstChild.textContent = `${fr.personaName()} `;
+      renderPanel();
+      if (host.friday) {
+        const line = `${fr.greetingText()} Ready when you are.`;
+        await say(line);
+        if (!alive) return;
+      }
+    }
     while (alive) {
       // A chat turn started from the keyboard may still be running: wait for it, never talk over it.
       if (host.isBusy()) {
@@ -458,8 +578,10 @@ export function openVoiceMode(host) {
       if (!text) { sub.textContent = "I did not catch that."; continue; }
       sub.textContent = "";
 
+      if (frOn && await fridayHandle(text)) continue;
+      if (!alive) break;
       const cmd = commandFor(text);
-      if (cmd === "stop") { userCap.textContent = `“${text}”`; aiCap.textContent = ""; aiCap.dataset.raw = ""; sub.textContent = "Stopped."; await host.stopTurn(); continue; }
+      if (cmd === "stop") { confirming = false; userCap.textContent = `“${text}”`; aiCap.textContent = ""; aiCap.dataset.raw = ""; sub.textContent = "Stopped."; await host.stopTurn(); continue; }
       if (cmd === "new") {
         userCap.textContent = `“${text}”`; aiCap.textContent = ""; aiCap.dataset.raw = "";
         await host.newChat();

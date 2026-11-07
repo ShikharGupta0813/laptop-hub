@@ -212,8 +212,11 @@ export function init(container, ctx) {
   const stopButton = ui.button({
     variant: "danger", iconOnly: true, icon: "stop", class: "as-stop", "aria-label": "Stop the assistant", hidden: true, onClick: () => stop(),
   });
+  // Friday entry point: opens her screen (brief, plan, laptop prep).
+  const fridayChip = el("button", { type: "button", class: "ui-chip as-friday", onclick: () => ctx.open("friday") },
+    ui.icon("sparkles"), "Friday");
   const pill = el("div", { class: "as-pill" }, micButton, input, voiceButton, sendButton, stopButton);
-  const composer = el("div", { class: "as-composer" }, notice, recBar, pill);
+  const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip), pill);
 
   const root = el("div", { class: "as-root" }, toolbar, optionsPanel, autoBanner, listWrap, composer);
   container.replaceChildren(root);
@@ -700,14 +703,14 @@ export function init(container, ctx) {
 
   // ---------------------------------------------------------------- hands-free voice mode (js/voicemode.js)
   let voiceLoading = false;
-  async function openVoice() {
+  async function openVoice(opts = {}) {
     if (voice || voiceLoading) return;
     voiceLoading = true;
     try {
       if (micState === "recording") cancelRecording(true);
       const mod = await import("./voicemode.js");
       voice = mod.openVoiceMode({
-        ctx, ui,
+        ctx, ui, friday: !!opts.friday,
         provider: () => prefs.provider,
         isBusy: () => streaming,
         ask: (text, hooks) => send(text, hooks),
@@ -891,6 +894,7 @@ export function init(container, ctx) {
     },
     openSection(name) {
       if (name === "voice") openVoice();
+      else if (name === "friday") openVoice({ friday: true }); // the Friday screen's mic: greets in her voice
     },
   };
 }

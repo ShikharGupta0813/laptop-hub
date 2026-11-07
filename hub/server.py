@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import assistant_tools, assistant_tools_more, auth, files
+from . import llm as llm_mod
 from .assistant import AssistantService
 from .common import Ctx
 from .config import Config
@@ -137,6 +138,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         """A module may export `async def start(ctx)` (background work, e.g. the reminder clock) that
         returns an optional `async def stop()`."""
         stops = []
+        # Load the local model into memory now, so the first question is not a cold start (never raises).
+        warm = asyncio.create_task(llm_mod.warm_up(config.ollama_host, config.chat_model)) if (deps.llm is None and not os.environ.get("HUB_DEMO")) else None
         for module in modules:
             start = getattr(module, "start", None)
             if start is not None:
