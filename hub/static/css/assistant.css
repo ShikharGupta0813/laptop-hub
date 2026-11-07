@@ -153,3 +153,24 @@
 #view-assistant .as-friday { position: relative; min-height: 32px; padding: 0 12px; gap: 6px; font-size: var(--fs-sm); color: var(--c-accent-text); }
 #view-assistant .as-friday::after { content: ""; position: absolute; inset: -6px 0; } /* 44px hit area */
 #view-assistant .as-friday .ui-icon { width: 16px; height: 16px; }
+
+/* small phones: keep the empty state compact so the suggestions stay in view */
+@media (max-height: 700px) {
+  #view-assistant .as-empty { gap: var(--sp-2); padding: var(--sp-2) 0; }
+  #view-assistant .as-empty-orb { width: 44px; height: 44px; }
+  #view-assistant .as-empty-orb .ui-icon { width: 22px; height: 22px; }
+  #view-assistant .as-empty h2 { font-size: var(--fs-lg); }
+  #view-assistant .as-empty p { font-size: var(--fs-sm); }
+}
+
+/* phone landscape (844x390): collapse the composer chrome so the conversation keeps real height */
+@media (orientation: landscape) and (max-height: 500px) {
+  #view-assistant .as-bar { padding-top: 2px; padding-bottom: 0; }
+  #view-assistant .as-friday-row { display: none; }
+  #view-assistant .as-composer { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+  #view-assistant .as-input { max-height: 72px; }
+  #view-assistant .as-list { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+  #view-assistant .as-empty-orb, #view-assistant .as-empty p { display: none; }
+  #view-assistant .as-empty { gap: var(--sp-2); padding: var(--sp-1) 0; }
+  #view-assistant .as-empty h2 { font-size: var(--fs-md); }
+}

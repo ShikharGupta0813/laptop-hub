@@ -567,9 +567,9 @@ export const THEMES = [
 export const ACCENTS = [
   { id: "crimson", label: "Crimson", swatch: "#FF5368" },
   { id: "amber", label: "Amber", swatch: "#FFB454" },
-  { id: "cyan", label: "Cyan", swatch: "#3DE0FF" },
-  { id: "green", label: "Green", swatch: "#3DFF8A" },
-  { id: "white", label: "White", swatch: "#F2F3F5" },
+  { id: "cyan", label: "Cyan", swatch: "#79C0FF" },
+  { id: "green", label: "Green", swatch: "#7EE787" },
+  { id: "white", label: "White", swatch: "#E0E3E8" },
 ];
 const OLD_THEMES = { midnight: "redline", daylight: "paper", aurora: "slate" };
 const OLD_ACCENTS = { indigo: "crimson", violet: "crimson", rose: "crimson", blue: "cyan", teal: "cyan" };

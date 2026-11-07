@@ -916,3 +916,11 @@ class CallSignTest(unittest.TestCase):
         self.assertEqual(self.fake("Chief", "boss").address(), "boss")       # the owner chose this one
         self.assertEqual(self.fake("", "sir").address(), "sir")
         self.assertEqual(self.fake("Chief", "sir").address(capital=True), "Chief")
+
+
+class SettingsAddressTest(unittest.TestCase):
+    def test_get_settings_reports_the_effective_address(self):
+        from hub import friday as F
+        ctx = type("X", (), {"config": type("C", (), {"display_name": "Chief"})()})()
+        eng = type("E", (), {"ctx": ctx, "settings": {"address_as": "sir", "name": "Friday"}, "address": F.Engine.address})()
+        self.assertEqual(eng.address(), "Chief")

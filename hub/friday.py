@@ -1383,7 +1383,9 @@ def make_router(ctx: Ctx, *, client=None, clock: Clock | None = None,
 
     @router.get("/settings")
     def get_settings():
-        return dict(engine.settings)
+        out = dict(engine.settings)
+        out["address_as"] = engine.address()          # the call-sign the owner chose (or their own setting), not the raw default
+        return out
 
     @router.post("/settings")
     def post_settings(body: Any = Body(default=None)):
