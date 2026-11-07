@@ -11,7 +11,7 @@ import * as ui from "./ui.js";
 // ---- quick actions (also listed in the search overlay) -------------------------------------------
 // open: [view, section] opened with ctx.open; run(ctx): an action. Add one by adding a line.
 export const QUICK_ACTIONS = [
-  { id: "talk", label: "Ask Talk", icon: "sparkles", tone: "accent", hint: "Talk to your assistant", keywords: "assistant ai chat voice", open: ["assistant"] },
+  { id: "talk", label: "Ask Talk", icon: "prompt", tone: "accent", hint: "Talk to your assistant", keywords: "assistant ai chat voice", open: ["assistant"] },
   { id: "note", label: "New note", icon: "note-plus", tone: "orange", hint: "Write a quick note", keywords: "write memo jot", open: ["notes", "new"] },
   { id: "voice", label: "Voice note", icon: "mic", tone: "pink", hint: "Say it, it's written down", keywords: "record dictate audio", open: ["notes", "voice"] },
   { id: "lock", label: "Lock laptop", icon: "lock", tone: "info", hint: "Lock the laptop screen now", keywords: "lock screen secure away", run: (ctx) => lockLaptop(ctx) },
@@ -107,14 +107,24 @@ function dueLabel(day) {
   return `Due ${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}`;
 }
 
-function card(title, { icon, tone, action, cls = "", variant = "" } = {}) {
-  const body = el("div", { class: "hm-card-body" }, ui.skeleton("list", 2));
-  const head = el("div", { class: "ui-card__head" },
-    icon ? ui.tile(icon, tone || "accent", "sm") : null,
-    el("h2", { class: "ui-card__title grow" }, title),
+// A numbered section the portfolio way: `02 / TODAY ──── WORK ›` over a terminal window titled `~/today`.
+function card(title, { n, path, action, cls = "" } = {}) {
+  const body = el("div", { class: "hm-card-body ui-window__body" }, ui.skeleton("list", 2));
+  const head = el("div", { class: "hm-head" },
+    el("h2", { class: "ui-eyebrow hm-eyebrow" }, n ? el("b", {}, n) : null, title),
+    el("span", { class: "hm-head-rule", "aria-hidden": "true" }),
     action ? el("button", { type: "button", class: "ui-link", onclick: action.onClick }, action.label, ui.icon("chevron-right")) : null);
-  const node = el("section", { class: `ui-card ${variant} hm-card ${cls}`.trim(), "aria-label": title }, head, body);
+  const win = el("div", { class: "ui-window hm-card" },
+    el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }),
+      el("span", { class: "ui-window__title" }, path || `~/${title.toLowerCase().replace(/\s+/g, "-")}`)), body);
+  const node = el("section", { class: `hm-sec ${cls}`.trim(), "aria-label": title }, head, win);
   return { node, head, body };
+}
+// `key: value` row for the hero; a row with onClick is a button (44px)
+function kvRow(k, v, { onClick, label, tone } = {}) {
+  const parts = [el("span", { class: "ui-kv__k" }, k), el("span", { class: "ui-kv__v", ...(tone ? { "data-tone": tone } : {}) }, v)];
+  if (!onClick) return el("div", { class: "ui-kv__row hm-kv" }, ...parts);
+  return el("button", { type: "button", class: "ui-kv__row hm-kv hm-kv--btn", onclick: onClick, "aria-label": label || k }, ...parts, ui.icon("chevron-right"));
 }
 
 // ---- the screen ------------------------------------------------------------------------------------
@@ -129,56 +139,71 @@ export function init(container, ctx) {
   let userName = "";
   let loading = null;
 
-  // hero
+  // hero: a terminal window running `$ whoami`, like the portfolio's landing
   const hello = el("h1", { class: "hm-hello" });
-  const date = el("p", { class: "hm-date" });
-  const status = el("div", { class: "hm-status", "aria-live": "polite" }, el("span", { class: "ui-chip ui-chip--static hm-chip" }, el("span", { class: "ui-dot" }), "Checking laptop…"));
-  const hero = el("header", { class: "hm-hero" }, el("div", { class: "hm-hero-text" }, date, hello), status);
+  const date = el("span", {});
+  const status = el("div", { class: "ui-kv hm-status", "aria-live": "polite" }, kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: "ui-led" }), "checking…")));
+  const hero = el("header", { class: "ui-window ui-window--accent hm-hero" },
+    el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }),
+      el("span", { class: "ui-window__title" }, "~/home — zsh"), el("span", { class: "ui-window__meta" }, "tty/01")),
+    el("div", { class: "ui-window__body hm-hero-body" },
+      el("p", { class: "ui-prompt hm-cmd", "aria-hidden": "true" }, "whoami"),
+      hello,
+      el("p", { class: "ui-tag hm-date" }, el("b", {}, "date"), date),
+      status,
+      el("hr", { class: "ui-dash" }),
+      el("p", { class: "ui-tagline hm-tagline" }, "build. debug. optimize. ship.")));
   function paintClock() {
     const now = new Date();
-    hello.replaceChildren(greeting(now) + (userName ? `, ${userName}` : ""), el("span", { class: "hm-wave", "aria-hidden": "true" }, "."));
-    date.textContent = now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+    hello.replaceChildren(el("span", { class: "hm-hello-greet" }, greeting(now) + (userName ? "," : "")),
+      userName ? " " : "", userName ? el("span", { class: "hm-name ui-glitch" }, userName) : "", el("span", { class: "ui-cursor", "aria-hidden": "true" }));
+    date.textContent = now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }).toLowerCase();
   }
 
   // jump to anything
   const jump = el("button", { type: "button", class: "hm-jump", onclick: () => ctx.search() },
-    ui.icon("search"), el("span", { class: "grow" }, "Jump to anything"), el("kbd", { class: "hm-kbd" }, "/"));
+    el("span", { class: "hm-jump-sym", "aria-hidden": "true" }, "$"), el("span", { class: "grow" }, "jump to anything"), el("kbd", { class: "hm-kbd" }, "/"));
 
   // quick actions
   const quick = el("div", { class: "ui-hscroll hm-quick", role: "list", "aria-label": "Quick actions" },
     QUICK_ACTIONS.map((a) => el("button", { type: "button", class: "hm-qa", role: "listitem", onclick: () => runQuickAction(a, ctx) },
       ui.tile(a.icon, a.tone, "lg"), el("span", { class: "hm-qa-label" }, a.label))));
 
-  const todayCard = card("Today", { icon: "calendar", tone: "info", variant: "ui-card--glass", action: { label: "Work", onClick: () => ctx.open("work") } });
-  const ringsCard = card("Streaks", { icon: "flame", tone: "orange", cls: "hm-rings-card" });
-  const learnCard = el("section", { class: "ui-card ui-card--gradient ui-card--pad-lg hm-learn", "aria-label": "Continue learning" }, ui.skeleton("lines", 3));
+  const todayCard = card("Today", { n: "01", action: { label: "Work", onClick: () => ctx.open("work") } });
+  const ringsCard = card("Streaks", { n: "03", cls: "hm-rings-card" });
+  const learnCard = el("div", { class: "ui-window__body hm-learn" }, ui.skeleton("lines", 3));
+  const learnSec = el("section", { class: "hm-sec", "aria-label": "Continue learning" },
+    el("div", { class: "hm-head" }, el("h2", { class: "ui-eyebrow hm-eyebrow" }, el("b", {}, "04"), "Learn"), el("span", { class: "hm-head-rule", "aria-hidden": "true" })),
+    el("div", { class: "ui-window ui-window--accent hm-card" },
+      el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }), el("span", { class: "ui-window__title" }, "~/learn")), learnCard));
   const forYou = el("section", { class: "hm-foryou", "aria-label": "Suggestions", hidden: true });
   let countdown = null;
   function renderSuggestions(list, summaries) {
     const c = summaries?.life?.next_countdown;
     countdown = c && c.title && c.days_remaining != null
-      ? el("span", { class: "ui-chip ui-chip--static hm-chip" }, ui.icon("timer"),
-        el("span", {}, c.days_remaining === 0 ? `${c.title} is today` : `${c.title} in ${c.days_remaining} ${c.days_remaining === 1 ? "day" : "days"}`))
+      ? kvRow("next", c.days_remaining === 0 ? `${c.title} is today` : `${c.title} in ${c.days_remaining} ${c.days_remaining === 1 ? "day" : "days"}`, { tone: "warn" })
       : null;
-    if (countdown && status.querySelector(".ui-dot")) status.append(countdown);
+    if (countdown && status.querySelector(".ui-led")) status.append(countdown);
     const items = list.filter((x) => typeof x === "string" && x.trim()).slice(0, 3);
     forYou.hidden = !items.length;
-    forYou.replaceChildren(el("div", { class: "hm-foryou-head" }, ui.icon("sparkles"), el("span", {}, "For you")),
+    forYou.replaceChildren(el("p", { class: "ui-tag hm-foryou-head" }, el("b", {}, "tag"), el("span", {}, "for-you")),
       ...items.map((t) => el("p", { class: "hm-foryou-item" }, t)));
     cardsDue = Number(summaries?.cards?.due_today) || 0;
   }
   let cardsDue = 0;
-  const notifCard = card("Notifications", { icon: "bell", tone: "bad", action: { label: "All", onClick: () => ctx.open("notifications") } });
+  const notesCard = card("Notes", { n: "05", path: "~/notes/recent", action: { label: "See all", onClick: () => ctx.open("notes") } });
+  const notifCard = card("Inbox", { n: "06", path: "~/notifications", action: { label: "All", onClick: () => ctx.open("notifications") } });
   notifCard.node.hidden = true;
-  const notesCard = card("Recent notes", { icon: "note", tone: "orange", action: { label: "See all", onClick: () => ctx.open("notes") } });
 
-  // Friday hero card: only shown when her module exists on the laptop (settings answer 404 otherwise).
-  const fridayCard = el("section", { class: "hm-friday", hidden: true, "aria-label": "Friday" },
-    el("div", { class: "hm-friday-orb", "aria-hidden": "true" }, el("span", {})),
-    el("div", { class: "hm-friday-text" }, el("p", { class: "hm-friday-hello" }), el("p", { class: "hm-friday-sub" }, "Your day in one minute. I will keep it short.")),
-    el("div", { class: "hm-friday-btns" },
-      ui.button({ variant: "primary", icon: "sparkles", label: "Brief me", onClick: () => ctx.open("friday", "brief") }),
-      ui.button({ variant: "secondary", iconOnly: true, icon: "mic", "aria-label": "Talk to Friday", onClick: () => ctx.open("assistant", "friday") })));
+  // Friday card: only shown when her module exists on the laptop (settings answer 404 otherwise).
+  const fridayCard = el("section", { class: "ui-window hm-friday", hidden: true, "aria-label": "Friday" },
+    el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }),
+      el("span", { class: "ui-window__title" }, "~/friday — brief"), el("span", { class: "ui-window__meta" }, el("span", { class: "ui-led ui-led--accent ui-led--live" }), "ready")),
+    el("div", { class: "ui-window__body hm-friday-body" },
+      el("p", { class: "hm-friday-hello" }), el("p", { class: "hm-friday-sub" }, "Your day in one minute. I will keep it short."),
+      el("div", { class: "hm-friday-btns" },
+        ui.button({ variant: "primary", icon: "prompt", label: "Brief me", onClick: () => ctx.open("friday", "brief") }),
+        ui.button({ variant: "secondary", iconOnly: true, icon: "mic", "aria-label": "Talk to Friday", onClick: () => ctx.open("assistant", "friday") }))));
   import("./friday.js").then(async (m) => {
     try { await m.loadSettings(ctx); } catch (_) { return; }
     m.startAlerts(ctx);
@@ -217,11 +242,12 @@ export function init(container, ctx) {
   }
 
   root.append(hero, setupCard, fridayCard, jump, forYou,
-    el("section", { class: "hm-section", "aria-label": "Quick actions" }, el("div", { class: "ui-section-head" }, el("h2", { class: "ui-section-title" }, "Quick actions")), quick),
     todayCard.node,
-    el("div", { class: "hm-pair" }, ringsCard.node, learnCard),
-    notifCard.node, notesCard.node,
-    el("p", { class: "hm-foot" }, "Pull down to refresh"));
+    el("section", { class: "hm-sec hm-section", "aria-label": "Quick actions" },
+      el("div", { class: "hm-head" }, el("h2", { class: "ui-eyebrow hm-eyebrow" }, el("b", {}, "02"), "Ship"), el("span", { class: "hm-head-rule", "aria-hidden": "true" })), quick),
+    el("div", { class: "hm-pair" }, ringsCard.node, learnSec),
+    notesCard.node, notifCard.node,
+    el("p", { class: "hm-foot" }, "# pull down to refresh"));
   root.classList.add("ui-stagger");
   setTimeout(() => root.classList.remove("ui-stagger"), 1200);
   ui.pullToRefresh(container, () => load(true));
@@ -229,21 +255,22 @@ export function init(container, ctx) {
   // ---- loaders ----
   function renderStatus(laptop, error) {
     if (error || !laptop) {
-      status.replaceChildren(el("button", { type: "button", class: "ui-chip hm-chip", onclick: () => ctx.open("hub") },
-        el("span", { class: "ui-dot ui-dot--bad" }), error?.status === 0 ? "Laptop offline" : "Status unavailable"));
+      status.replaceChildren(kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: "ui-led ui-led--bad" }), error?.status === 0 ? "offline" : "unavailable"),
+        { onClick: () => ctx.open("hub"), label: "Laptop status. Open Hub", tone: "bad" }));
+      if (countdown) status.append(countdown);
       return;
     }
     const online = laptop.online !== false;
     const battery = typeof laptop.battery === "number" ? { percent: laptop.battery } : laptop.battery;
     const cpu = laptop.cpu_percent ?? laptop.cpu;
-    const chips = [el("button", { type: "button", class: "ui-chip hm-chip", onclick: () => ctx.open("hub"), "aria-label": "Laptop status" },
-      el("span", { class: `ui-dot ${online ? "ui-dot--good ui-dot--live" : "ui-dot--bad"}` }), text(laptop.hostname, laptop.name) || (online ? "Laptop online" : "Laptop offline"))];
+    const host = text(laptop.hostname, laptop.name);
+    const chips = [kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: `ui-led ${online ? "ui-led--good ui-led--live" : "ui-led--bad"}` }),
+      (online ? "online" : "offline") + (host ? ` · ${host}` : "")), { onClick: () => ctx.open("hub"), label: "Laptop status. Open Hub" })];
     if (battery?.percent != null) {
       const p = Math.round(battery.percent);
-      chips.push(el("span", { class: "ui-chip ui-chip--static hm-chip" + (p <= 20 && !battery.plugged ? " hm-chip--warn" : "") },
-        ui.icon(battery.plugged ? "battery-charging" : "battery"), el("span", { class: "ui-num" }, `${p}%`)));
+      chips.push(kvRow("battery", el("span", { class: "ui-num" }, `${p}%${battery.plugged ? " · charging" : ""}`), { tone: p <= 20 && !battery.plugged ? "warn" : undefined }));
     }
-    if (cpu != null) chips.push(el("span", { class: "ui-chip ui-chip--static hm-chip", title: "CPU" }, ui.icon("cpu"), el("span", { class: "ui-num" }, `${Math.round(cpu)}%`), el("span", { class: "ui-sr" }, "CPU")));
+    if (cpu != null) chips.push(kvRow("cpu", el("span", { class: "ui-num" }, `${Math.round(cpu)}%`)));
     if (countdown) chips.push(countdown);
     status.replaceChildren(...chips);
   }
@@ -260,7 +287,7 @@ export function init(container, ctx) {
     const blocks = [];
     const now = Date.now();
     if (agenda.length) {
-      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps" }, "Agenda"),
+      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps hm-block-k" }, "agenda"),
         el("div", { class: "hm-timeline" }, agenda.slice(0, 4).map((m) => {
           const start = new Date(m.start || 0).getTime(), end = new Date(m.end || 0).getTime();
           const live = start && end && start <= now && now < end;
@@ -274,7 +301,7 @@ export function init(container, ctx) {
         }))));
     }
     if (tasks.length) {
-      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps" }, "Tasks"),
+      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps hm-block-k" }, "tasks"),
         el("div", { class: "ui-list" }, tasks.slice(0, 4).map((t) => ui.listRow({
           lead: el("span", { class: "hm-check" + (t.completed ? " is-done" : ""), "aria-hidden": "true" }, ui.icon("check")),
           title: text(t.name, t.title) || "Task",
@@ -283,7 +310,7 @@ export function init(container, ctx) {
           onClick: () => openTarget(t.open, { view: "work", section: "tasks", id: t.gid || t.id }) })))));
     }
     if (reminders.length) {
-      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps" }, "Reminders"),
+      blocks.push(el("div", { class: "hm-block" }, el("p", { class: "ui-caps hm-block-k" }, "reminders"),
         el("div", { class: "ui-list" }, reminders.slice(0, 3).map((r) => ui.listRow({
           icon: "alarm", tone: "warn", title: text(r.title, r.text, r.body) || "Reminder", meta: text(r.when) || timeLabel(r),
           onClick: () => openTarget(r.open, { view: "reminders", id: r.id }) })))));
@@ -337,21 +364,21 @@ export function init(container, ctx) {
     const quiz = learning?.last || arr(history?.quizzes)[0];
     const due = learning?.vocab_due ?? english?.vocab_due ?? 0;
     const chips = el("div", { class: "hm-learn-chips" });
-    if (cardsDue) chips.append(el("button", { type: "button", class: "hm-learn-chip", onclick: () => ctx.open("cards") }, ui.icon("layers"), `${cardsDue} flashcards due`));
-    if (due) chips.append(el("button", { type: "button", class: "hm-learn-chip", onclick: () => ctx.open("learn", "english/vocab") }, ui.icon("language"), `${due} words to review`));
-    chips.append(el("button", { type: "button", class: "hm-learn-chip", onclick: () => ctx.open("learn", "english/speak") }, ui.icon("mic"), "Speaking practice"));
+    if (cardsDue) chips.append(el("button", { type: "button", class: "ui-chip hm-learn-chip", onclick: () => ctx.open("cards") }, ui.icon("layers"), `${cardsDue} flashcards due`));
+    if (due) chips.append(el("button", { type: "button", class: "ui-chip hm-learn-chip", onclick: () => ctx.open("learn", "english/vocab") }, ui.icon("language"), `${due} words to review`));
+    chips.append(el("button", { type: "button", class: "ui-chip hm-learn-chip", onclick: () => ctx.open("learn", "english/speak") }, ui.icon("mic"), "Speaking practice"));
     const title = quiz ? text(quiz.title, quiz.source_label) || "Your last quiz" : "Start your first quiz";
     const sub = quiz ? [quiz.percent != null ? `Last score ${Math.round(quiz.percent)}%` : "", quiz.date ? ui.relTime(quiz.date) : ""].filter(Boolean).join(" · ")
       : "Turn any note, PDF or topic into a quick quiz.";
     const pct = quiz?.percent != null ? Math.max(0, Math.min(100, quiz.percent)) / 100 : null;
     learnCard.replaceChildren(...[
-      el("p", { class: "hm-learn-kicker" }, ui.icon("learn"), "Continue learning"),
+      el("p", { class: "ui-tag hm-learn-kicker" }, el("b", {}, "continue"), el("span", {}, quiz ? "last-quiz" : "first-quiz")),
       el("h2", { class: "hm-learn-title" }, title),
       el("p", { class: "hm-learn-sub" }, sub),
       pct != null ? el("div", { class: "hm-learn-bar" }, ui.progressBar(pct, "Last score")) : null,
       el("div", { class: "hm-learn-actions" },
-        el("button", { type: "button", class: "ui-btn hm-learn-go", onclick: () => ctx.open("learn", "quiz") }, ui.icon(quiz ? "play" : "plus"), quiz ? "Resume" : "New quiz"),
-        el("button", { type: "button", class: "ui-btn ui-btn--ghost hm-learn-alt", onclick: () => ctx.open("learn", "chat") }, "Study chat")),
+        el("button", { type: "button", class: "ui-btn ui-btn--primary hm-learn-go", onclick: () => ctx.open("learn", "quiz") }, ui.icon(quiz ? "play" : "plus"), quiz ? "Resume" : "New quiz"),
+        el("button", { type: "button", class: "ui-btn ui-btn--secondary hm-learn-alt", onclick: () => ctx.open("learn", "chat") }, "Study chat")),
       chips].filter(Boolean));
   }
 

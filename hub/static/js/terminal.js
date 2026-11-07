@@ -1,13 +1,18 @@
 // Terminal tab: a real shell on the laptop, drawn with xterm.js (loaded as globals by index.html).
 // The session lives as long as the page: hide() keeps the socket and the terminal alive.
 import { el } from "./api.js";
-import { icon, segmented, resolvedTheme } from "./ui.js";
+import { icon, segmented, isLightTheme } from "./ui.js";
 
 const FONT_MIN = 10;
 const FONT_MAX = 22;
 const FONT_DEFAULT = 14;
 const CONNECT_TIMEOUT_MS = 10000;
 const COPY_LINES = 300;
+const PING_MS = 20000; // liveness probe interval while the screen is on
+const PROBE_WAIT_MS = 3000; // how long a probe may take to flush
+const STRICT_WAIT_MS = 4000; // how long a resumed session gets to answer a probe
+const LONG_AWAY_MS = 30000; // hidden/offline longer than this means the socket needs a hard check
+const LOST_CODES = [1006, 1001, 1011, 1012];
 const KEYBOARD_THRESHOLD = 120; // px the visual viewport must shrink before we call it "keyboard open"
 
 const store = {
@@ -32,7 +37,7 @@ const ANSI_LIGHT = {
 };
 
 function buildTheme() {
-  const light = resolvedTheme() === "daylight";
+  const light = isLightTheme();
   const accent = cssVar("--c-accent") || cssVar("--accent") || "#4fb3ff";
   return {
     background: cssVar("--c-bg") || cssVar("--bg") || "#0f1217",
@@ -78,6 +83,13 @@ export function init(container, ctx) {
   let resizeTimer = null;
   let confirmTimer = null;
   let lastSent = { rows: 0, cols: 0 };
+  let pingTimer = null;
+  let lastTick = Date.now();
+  let lastRx = Date.now();
+  let hiddenAt = 0;
+  let autoRetried = false;
+  let autoResetTimer = null;
+  let staleShown = false;
 
   // ---------- DOM ----------
   const select = el("select", { class: "term-shell", "aria-label": "Shell" });
@@ -94,6 +106,10 @@ export function init(container, ctx) {
   const statusText = el("span", { class: "term-status-text" }, "Disconnected");
   const statusDetail = el("span", { class: "term-status-detail muted" });
   const statusLine = el("div", { class: "term-status", role: "status", "aria-live": "polite" }, dot, statusText, " ", statusDetail);
+
+  const bannerText = el("span", { class: "term-banner-text" }, "Disconnected");
+  const bannerBtn = el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--sm term-banner-btn" }, "Reconnect");
+  const banner = el("div", { class: "term-banner", role: "alert", hidden: true }, bannerText, bannerBtn);
 
   const host = el("div", { class: "term-host" });
   const screen = el("div", { class: "term-screen" }, host);
@@ -112,7 +128,7 @@ export function init(container, ctx) {
   const toBottom = el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--icon term-bottom", "aria-label": "Scroll to bottom", hidden: true }, icon("arrow-down", 20));
   screen.append(toBottom);
   const keybar = el("div", { class: "term-keys", role: "toolbar", "aria-label": "Extra keys" });
-  container.append(toolbar, statusLine, screen, pastePanel, keybar);
+  container.append(toolbar, statusLine, banner, screen, pastePanel, keybar);
 
   // ---------- status ----------
   function setStatus(next, detail = "") {
@@ -126,6 +142,20 @@ export function init(container, ctx) {
     sessionBtn.disabled = busy;
     sessionBtn.removeAttribute("data-confirm");
     clearTimeout(confirmTimer);
+    if (next !== "disconnected") staleShown = false;
+    updateBanner();
+    if (next === "connected") startPing(); else stopPing();
+  }
+
+  // The "Disconnected - Reconnect" banner: always there when the shell is gone, or when a resumed
+  // session stopped answering. It does not touch the scrollback, so the old output stays readable.
+  function updateBanner() {
+    const dead = state === "disconnected" && booted;
+    const show = dead || staleShown;
+    banner.hidden = !show;
+    banner.classList.toggle("is-stale", !dead && staleShown);
+    bannerText.textContent = dead ? "Disconnected \u2014 the shell on the laptop is gone."
+      : "No response from the laptop. The connection may have dropped.";
   }
 
   // Write a coloured notice into the terminal on its own line.
@@ -157,13 +187,16 @@ export function init(container, ctx) {
     }
   }
 
-  function connect(fresh) {
+  function connect(fresh, keepScroll = false) {
     closeSocket();
+    staleShown = false;
     gotError = false;
     lastClose = null;
     ctrl = alt = false;
     refreshMods();
-    if (fresh) {
+    if (fresh && keepScroll) {
+      note("\u2500\u2500 New session. The shell above is gone. \u2500\u2500");
+    } else if (fresh) {
       term.reset();
       note("New session. The previous shell and everything in it is gone.");
     }
@@ -197,6 +230,9 @@ export function init(container, ctx) {
     socket.onopen = () => {
       if (ws !== socket) return;
       opened = true;
+      lastRx = Date.now();
+      clearTimeout(autoResetTimer);
+      autoResetTimer = setTimeout(() => { autoRetried = false; }, 30000); // a stable connection earns a fresh auto-retry
       clearTimeout(connectTimer);
       setStatus("connected", select.value || "");
       if (visible) term.focus();
@@ -214,12 +250,15 @@ export function init(container, ctx) {
         statusDetail.classList.add("is-error");
         return;
       }
+      lastRx = Date.now();
+      if (staleShown) { staleShown = false; updateBanner(); }
       term.write(new Uint8Array(event.data));
     };
     socket.onerror = () => { /* onclose always follows and carries the details */ };
     socket.onclose = (event) => {
       if (ws !== socket) return;
       clearTimeout(connectTimer);
+      clearTimeout(autoResetTimer);
       ws = null;
       lastClose = event.code;
       ctrl = alt = false;
@@ -255,8 +294,86 @@ export function init(container, ctx) {
       setStatus("disconnected", kept || detail);
       if (kept) statusDetail.classList.add("is-error"); else statusDetail.classList.toggle("is-error", event.code !== 1000);
       if (!gotError && !diagnosing) note(line, event.code === 1000 || event.code === 1005 ? "33" : "31");
+      if (opened && !gotError && LOST_CODES.includes(event.code)) maybeAutoReconnect();
     };
   }
+
+  // ---------- liveness ----------
+  // A phone that slept or lost its network can leave a socket that looks open but never delivers. The
+  // server answers nothing to a resize, so we watch for what the browser can tell us: a failed send,
+  // a socket that is no longer OPEN, or bytes that never flush. After a long absence we also resize
+  // the shell by one column and back, which makes most shells redraw, and show a warning if nothing
+  // comes back.
+  const awake = () => visible && !document.hidden;
+
+  function startPing() {
+    stopPing();
+    lastTick = Date.now();
+    pingTimer = setInterval(() => {
+      const gap = Date.now() - lastTick;
+      lastTick = Date.now();
+      if (!awake() || state !== "connected") return;
+      probe(gap > PING_MS * 2); // timers froze: the device slept
+    }, PING_MS);
+  }
+  function stopPing() { clearInterval(pingTimer); pingTimer = null; }
+
+  function probe(strict) {
+    if (state !== "connected") return;
+    const sock = ws;
+    if (!sock || sock.readyState !== WebSocket.OPEN) { markDead(); return; }
+    const { rows, cols } = dims();
+    const before = lastRx;
+    try {
+      if (strict && cols > 10) {
+        sock.send(JSON.stringify({ type: "resize", rows, cols: cols - 1 }));
+        setTimeout(() => { try { if (ws === sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: "resize", rows, cols })); } catch (_) { /* the check below reports it */ } }, 80);
+      } else {
+        sock.send(JSON.stringify({ type: "resize", rows, cols }));
+      }
+    } catch (_) { markDead(); return; }
+    setTimeout(() => {
+      if (ws !== sock || state !== "connected") return;
+      if (sock.readyState !== WebSocket.OPEN || sock.bufferedAmount > 0) { markDead(); return; }
+      if (strict && lastRx === before) { staleShown = true; updateBanner(); }
+    }, strict ? STRICT_WAIT_MS : PROBE_WAIT_MS);
+  }
+
+  function markDead() {
+    if (state !== "connected") return;
+    const old = ws;
+    ws = null;
+    clearTimeout(autoResetTimer);
+    try { old?.close(); } catch (_) { /* already dead */ }
+    ctrl = alt = false;
+    refreshMods();
+    lastClose = 1006;
+    setStatus("disconnected", "Connection lost. Is the laptop awake and the hub running?");
+    statusDetail.classList.add("is-error");
+    note("Connection lost (the laptop stopped answering).", "31");
+    maybeAutoReconnect();
+  }
+
+  // One silent retry per loss. It starts a new shell and keeps the old output above it.
+  function maybeAutoReconnect() {
+    if (autoRetried || !term || !awake() || state !== "disconnected" || navigator.onLine === false) return;
+    autoRetried = true;
+    startSession(true, true);
+  }
+
+  function checkNow() {
+    if (!term || !awake()) return;
+    const away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (state === "connected") probe(away > LONG_AWAY_MS || navigator.onLine === false);
+    else if (state === "disconnected" && booted && LOST_CODES.includes(lastClose)) maybeAutoReconnect();
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    checkNow();
+  });
+  window.addEventListener("online", () => { hiddenAt = hiddenAt || Date.now() - LONG_AWAY_MS - 1; checkNow(); });
+  window.addEventListener("offline", () => { hiddenAt = hiddenAt || Date.now(); });
 
   // A refused handshake carries no reason, so work out what it was: signed out, laptop
   // unreachable, or (most likely) a shell/address problem.
@@ -287,7 +404,7 @@ export function init(container, ctx) {
 
   function send(obj) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(obj));
+      try { ws.send(JSON.stringify(obj)); } catch (_) { markDead(); return false; }
       return true;
     }
     return false;
@@ -308,6 +425,7 @@ export function init(container, ctx) {
 
   function sendInput(data) {
     if (!data) return;
+    if (state === "connected" && (!ws || ws.readyState !== WebSocket.OPEN)) { markDead(); return; }
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       if (state !== "connecting") statusDetail.textContent = "Not connected. Press Reconnect to start a new shell.";
       return;
@@ -564,7 +682,7 @@ export function init(container, ctx) {
         if (state === "connected") sessionBtn.textContent = "New session";
       }, 3500);
     } else if (state === "disconnected") {
-      startSession(true);
+      startSession(true, true);
     }
   });
 
@@ -573,10 +691,12 @@ export function init(container, ctx) {
     if (term && booted && state !== "connecting") startSession(true);
   });
 
-  function startSession(fresh) {
+  bannerBtn.addEventListener("click", () => startSession(true, true));
+
+  function startSession(fresh, keepScroll = false) {
     if (!term) return;
     statusDetail.classList.remove("is-error");
-    connect(fresh);
+    connect(fresh, keepScroll);
     term.focus();
   }
 
@@ -727,11 +847,12 @@ export function init(container, ctx) {
       fitNow();
       sendResize();
       // After a re-login the old socket died with 4401: start again.
-      if (state === "disconnected" && lastClose === 4401) startSession(true);
-      else term.focus();
+      if (state === "disconnected" && lastClose === 4401) startSession(true, true);
+      else { term.focus(); checkNow(); }
     },
     hide() {
       visible = false;
+      if (!hiddenAt) hiddenAt = Date.now();
       container.classList.remove("kb-open");
       container.style.top = container.style.left = container.style.width = container.style.height = "";
       if (term) term.blur();

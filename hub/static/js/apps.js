@@ -97,6 +97,8 @@ const ENTRIES = [
     ["status", "battery", "cpu", "disk", "upload", "logout", "install", "settings", "send file", "hub"], { view: "hub" }, { icon: "laptop" }),
   view("inbox", "Inbox", "Files and links your phone sent to the laptop, and back.", "files",
     ["received", "shared", "files", "capture", "share"], { view: "inbox" }, { icon: "inbox", isNew: true }),
+  view("setup", "Setup checklist", "See what is connected (mail, Asana, calendar, AI, alerts) and how to fix what is not.", "system",
+    ["setup", "connect", "gmail", "asana", "checklist", "status", "help", "fix"], { view: "setup" }, { icon: "check-circle", isNew: true }),
   view("launcher", "Launcher", "Start any program, folder or link on the laptop, or open the whole laptop.", "files",
     ["launch", "open app", "start program", "whole laptop", "workspace", "nifi", "start menu"], { view: "launcher" }, { icon: "grid", isNew: true }),
   view("screen", "Remote screen", "See the laptop screen and tap through it.", "files",

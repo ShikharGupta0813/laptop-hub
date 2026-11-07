@@ -1,5 +1,5 @@
 /* App shell: login, top bar, views, bottom navigation, search overlay. Tokens come from css/design.css.
- * Language: a terminal window. Flat, hairline-bordered, mono labels, one crimson tick per surface. */
+ * Language: the portfolio's terminal window. Traffic-light chrome, #1e2230 hairlines, mono everywhere, one crimson tick per surface. */
 
 /* ---- login ------------------------------------------------------------------------------------- */
 .lg {
@@ -30,10 +30,12 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
   content: ""; position: absolute; z-index: 2; top: 0; left: 0; width: 44px; height: 2px; background: var(--c-accent); box-shadow: var(--glow);
 }
 .lg-bar {
-  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px;
-  border-bottom: 1px solid var(--c-line); background: var(--c-bg-deep);
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--c-text-2);
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 14px;
+  border-bottom: 1px solid var(--c-line); background: var(--c-bg-2);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--c-text-2);
 }
+.lg-bar::before { content: ""; flex: none; width: 42px; height: 10px; background: var(--tl-dots); } /* macOS traffic lights */
+.lg-bar > .ui-led { order: 9; }
 .lg-bar > :last-child { margin-left: auto; color: var(--c-text-3); }
 .lg-scan { /* the crimson read-head sweeping the window */
   position: absolute; z-index: 1; left: 0; right: 0; top: 36px; height: 1px; pointer-events: none;
@@ -45,6 +47,7 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
 .lg-body { display: grid; gap: var(--sp-4); padding: var(--sp-6) var(--sp-5) var(--sp-5); text-align: left; }
 .lg-brand { display: grid; gap: 10px; }
 .lg-title { margin: 0; font-size: 30px; color: var(--c-text); }
+.lg-sub { letter-spacing: var(--tracking-caps); }
 .lg-sub { margin: 0; }
 .lg-field { width: 100%; display: grid; gap: 8px; text-align: left; margin-top: var(--sp-2); }
 .lg-prompt { display: flex; align-items: center; gap: 0; min-height: 24px; font-family: var(--font-mono); font-size: 13.5px; color: var(--c-text); font-variant-ligatures: none; }
@@ -67,11 +70,11 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
   font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; line-height: 1.5;
 }
 .lg-error::before { content: "ERR"; flex: none; font-weight: 800; letter-spacing: .08em; }
-.lg-submit { margin-top: var(--sp-1); font-family: var(--font-mono); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+.lg-submit { margin-top: var(--sp-1); font-family: var(--font-mono); font-size: 13px; letter-spacing: var(--tracking-caps); text-transform: uppercase; font-weight: 700; }
 .lg-submit .ui-icon { transition: transform var(--dur-base) var(--ease-out); }
 .lg-submit:hover .ui-icon { transform: translateX(3px); }
 .lg-paste { margin-top: -6px; color: var(--c-text-2); }
-.lg-hint { margin: 0; padding-top: var(--sp-3); border-top: 1px dashed var(--c-line-strong); font-size: var(--fs-xs); color: var(--c-text-2); line-height: 1.6; }
+.lg-hint { margin: 0; padding-top: var(--sp-3); border-top: 1px dashed var(--c-line-strong); font-size: var(--fs-xs); color: var(--c-text-2); line-height: 1.7; }
 .lg-hint code { font-size: 11px; color: var(--c-text); }
 .lg-foot { margin: 0; display: grid; justify-items: center; gap: 8px; text-align: center; }
 .lg-secure { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: .06em; color: var(--c-text-2); }
@@ -95,10 +98,10 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
   height: calc(var(--appbar-h) + env(safe-area-inset-top, 0px));
   padding: env(safe-area-inset-top, 0px) 6px 0 var(--gutter);
   border-bottom: 1px solid var(--c-line);
-  background: color-mix(in srgb, var(--c-bg) 88%, transparent);
+  background: var(--c-bg);
   transition: background var(--dur-base), border-color var(--dur-base);
 }
-.sh-bar.is-scrolled { background: var(--c-glass-strong); border-bottom-color: var(--c-line-strong); }
+.sh-bar.is-scrolled { background: var(--c-bg-2); border-bottom-color: var(--c-line-strong); }
 .sh-bar.has-back { padding-left: 4px; }
 .sh-back { margin-right: 2px; }
 .sh-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
@@ -110,6 +113,10 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
   content: ""; flex: none; width: 6px; height: 6px; background: var(--c-accent); box-shadow: var(--glow);
 }
 .sh-title h1.is-changing { animation: sh-title-in var(--dur-base) var(--ease-out); }
+/* on Home the bar says REDLINE: it gets the portfolio's name glitch (off with reduced motion) */
+.sh:has(#view-home:not([hidden])) .sh-title h1:not(.is-changing) { animation: ui-glitch 7s steps(1, end) 2s infinite; }
+@media (prefers-reduced-motion: reduce) { .sh .sh-title h1 { animation: none !important; } }
+html[data-motion="reduce"] .sh .sh-title h1 { animation: none !important; }
 @keyframes sh-title-in { from { opacity: 0; transform: translateY(3px); } }
 .sh-logo {
   width: 30px; height: 30px; border-radius: var(--r-sm); flex: none; display: grid; place-items: center;
@@ -168,9 +175,10 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
 .sh-tab {
   position: relative; min-height: 58px; min-width: 0; display: grid; place-items: center; align-content: center; gap: 4px;
   background: none; border: 0; border-radius: 0; color: var(--c-text-2); cursor: pointer;
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   transition: color var(--dur-fast);
 }
+.sh-tab > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 .sh-tab .ui-icon { width: 22px; height: 22px; transition: transform var(--dur-base) var(--ease-out); }
 .sh-tab:active .ui-icon { transform: translateY(1px); }
 .sh-tab[aria-current="page"] { color: var(--c-accent-text); font-weight: 700; }
@@ -190,7 +198,7 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
 @keyframes ob-out { to { opacity: 0; transform: translateY(-4px); } }
 .ob-head { flex: none; display: flex; gap: var(--sp-2); align-items: center; padding: calc(10px + env(safe-area-inset-top, 0px)) var(--gutter) 10px; border-bottom: 1px solid var(--c-line); }
 .ob-head .ui-input-wrap { flex: 1; }
-.ob-input { min-height: 46px; border-radius: var(--r-md); background: var(--c-surface-1); font-size: 17px; padding-right: 44px; -webkit-appearance: none; appearance: none; }
+.ob-input { min-height: 46px; border-radius: var(--r-md); background: var(--c-surface-1); font-size: 16px; padding-right: 44px; -webkit-appearance: none; appearance: none; }
 .ob-input::-webkit-search-cancel-button { display: none; }
 .ob-clear { color: var(--c-text-3); }
 .ob-cancel { padding: 0 6px 0 4px; font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c-accent-text); }
@@ -205,8 +213,8 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
 .ob-jump button {
   display: grid; justify-items: center; gap: 7px; padding: 12px 2px 9px; min-height: 80px; min-width: 0;
   border: 1px solid var(--c-line); background: var(--c-surface-1); border-radius: var(--r-lg);
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .04em; color: var(--c-text-2); cursor: pointer; text-align: center;
-  overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0; color: var(--c-text-2); cursor: pointer; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.25;
 }
 .ob-jump button:active { background: var(--c-surface-2); border-color: var(--c-accent-line); }
 .ob-jump .ui-tile { width: 40px; height: 40px; border-radius: var(--r-md); }
@@ -217,3 +225,16 @@ html[data-theme="paper"] .lg-scanlines { background: repeating-linear-gradient(1
   .lg-scan { display: none; }
 }
 html[data-motion="reduce"] .lg-scan { display: none; }
+
+/* ---- phone landscape (844x390): give the screen back its height --------------------------------- */
+/* The bottom dock drops its labels (icons keep aria-labels via their tab text, kept for screen readers) and the top bar slims. */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root { --appbar-h: 44px; }
+  .sh-bar { height: calc(44px + env(safe-area-inset-top, 0px)); }
+  .sh-tab { min-height: 44px; gap: 0; }
+  .sh-tab > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .sh-tab .ui-icon { width: 20px; height: 20px; }
+  .sh-pill { bottom: 2px; }
+  .view { padding-top: var(--sp-2); padding-bottom: var(--sp-4); }
+  .lg { align-content: start; }
+}

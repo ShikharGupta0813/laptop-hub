@@ -343,24 +343,103 @@ export function init(container, ctx) {
     syncOverlayHistory(!inBrowser);
   }
 
-  // Android Back closes the reader or a panel (Trash, Recent, Storage) instead of leaving Files: while one is
-  // open it owns one history entry. Closing it with its own button rewinds that entry.
-  let overlayEntry = false;
-  let skipPops = 0;
+  // Android Back, in order: close a sheet or search or selection (layers), close the reader or a panel
+  // (one layer while open), step back through followed document links, go up through the folders
+  // visited (each folder change adds a history entry tagged with its location), and only then leave Files.
+  let overlayRelease = null;
+  let overlayPending = false;
   function syncOverlayHistory(open) {
-    if (open && !overlayEntry) {
-      try { history.pushState({ ...(history.state || {}), fileOverlay: true }, ""); overlayEntry = true; } catch (_) { /* sandboxed */ }
-    } else if (!open && overlayEntry) {
-      overlayEntry = false;
-      if (history.state?.fileOverlay) { skipPops += 1; history.back(); }
+    if (open && !overlayRelease && !overlayPending) {
+      overlayPending = true;
+      ui.historySettled().then(() => {
+        overlayPending = false;
+        if (!readerOpen && !panelKind) return;
+        if (!overlayRelease) overlayRelease = ui.pushLayer(onOverlayBack);
+      });
+    } else if (!open && overlayRelease) {
+      const release = overlayRelease;
+      overlayRelease = null;
+      release();
     }
   }
-  window.addEventListener("popstate", (event) => {
-    if (skipPops > 0) { skipPops -= 1; return; }
-    if (!overlayEntry || event.state?.fileOverlay) return;
-    overlayEntry = false;                       // the entry is already gone: close without rewinding again
-    if (panelKind) closePanel();
+  function onOverlayBack() {
+    overlayRelease = null;                      // the entry is already gone: close without rewinding again
+    if (panelKind) { closePanel(); return; }
+    const previous = readerOpen ? stack.pop() : null;
+    if (previous) {                             // Back inside the reader steps through followed links first
+      openReader(previous.root, previous.path, { size: previous.size, restoreScroll: previous.scroll, push: false });
+      syncOverlayHistory(true);
+      return;
+    }
     if (readerOpen) closeReader();
+  }
+
+  // A small helper for modes that live above the folder list (selection, search results).
+  function modeLayer(onBack) {
+    let release = null;
+    let pending = false;
+    return {
+      open() {
+        if (release || pending) return;
+        pending = true;
+        ui.historySettled().then(() => {
+          pending = false;
+          if (!release && onBack.active()) release = ui.pushLayer(() => { release = null; onBack.close(); });
+        });
+      },
+      close() {
+        if (!release) return;
+        const r = release;
+        release = null;
+        r();
+      },
+    };
+  }
+  const selectLayer = modeLayer({ active: () => selecting, close: () => exitSelect() });
+  const searchLayer = modeLayer({ active: () => !!searchResults, close: () => clearSearch() });
+
+  // Folder history: location entries on top of the Files entry made by the tab switcher.
+  let tracked = null; // {root, path} the history knows about
+  async function trackLocation() {
+    if (!root) return;
+    const loc = { root, path };
+    if (tracked && tracked.root === loc.root && tracked.path === loc.path) return;
+    const was = tracked;
+    tracked = loc;
+    await ui.historySettled();
+    try {
+      const state = history.state || {};
+      if (state.view !== "files" || state.layer) return;
+      if (!state.fileLoc && was) history.replaceState({ ...state, fileLoc: was }, "");
+      history.pushState({ ...(history.state || {}), fileLoc: loc }, "");
+    } catch (_) { /* sandboxed */ }
+  }
+  // First time on screen: make the entry we arrived on a "root" stop so Back climbs out of a restored folder.
+  function trackInitial() {
+    if (tracked || !root) return;
+    try {
+      const state = history.state || {};
+      if (state.view !== "files" || state.layer) return;
+      if (state.fileLoc) { tracked = { root: state.fileLoc.root, path: state.fileLoc.path }; return; }
+      history.replaceState({ ...state, fileLoc: { root, path: "" } }, "");
+      tracked = { root, path: "" };
+      if (path) trackLocation();
+    } catch (_) { /* sandboxed */ }
+  }
+  window.addEventListener("popstate", (event) => {
+    const loc = event.state?.fileLoc;
+    if (!loc || event.state.view !== "files" || !roots.some((r) => r.name === loc.root)) return;
+    if (tracked && tracked.root === loc.root && tracked.path === loc.path) return;
+    tracked = { root: loc.root, path: loc.path };
+    if (readerOpen) closeReader();
+    if (panelKind) closePanel();
+    exitSelect();
+    root = loc.root;
+    path = loc.path;
+    clearSearch(false);
+    renderRoots();
+    rememberLocation();
+    loadList();
   });
 
   // ---- Roots and listing -------------------------------------------------------------------
@@ -450,6 +529,7 @@ export function init(container, ctx) {
     renderRoots();
     rememberLocation();
     loadList();
+    trackLocation();
   }
 
   function goTo(folder) {
@@ -458,6 +538,7 @@ export function init(container, ctx) {
     clearSearch(false);
     rememberLocation();
     loadList();
+    trackLocation();
   }
 
   function renderCrumbs() {
@@ -664,12 +745,14 @@ export function init(container, ctx) {
 
   function enterSelect(item) {
     selecting = true;
+    selectLayer.open();
     selected.clear();
     if (item) selected.set(item.path, item);
     syncSelection();
   }
 
   function exitSelect() {
+    selectLayer.close();
     if (!selecting && !selected.size) return;
     selecting = false;
     selected.clear();
@@ -1251,6 +1334,7 @@ export function init(container, ctx) {
 
   function clearSearch(reload = true) {
     searchResults = null;
+    searchLayer.close();
     searchQuery = "";
     searchInput.value = "";
     if (reload) loadList();
@@ -1261,6 +1345,7 @@ export function init(container, ctx) {
     exitSelect();
     searchQuery = query;
     searchResults = [];
+    searchLayer.open();
     updateChrome();
     listBox.replaceChildren(loadingBox());
     try {
@@ -1808,12 +1893,14 @@ export function init(container, ctx) {
     renderRoots();
     rememberLocation();
     loadList();
+    trackLocation();
   }
 
   const handle = {
     async show() {
       if (readerOpen) { attachSelection(); return; }
       const ready = await loadRoots();
+      if (ready) trackInitial();
       if (ready && !searchResults && !panelKind) loadList({ silent: !!entries });
     },
     hide() {
@@ -1840,6 +1927,7 @@ export function init(container, ctx) {
         renderRoots();
         rememberLocation();
         loadList({ silent: false });
+        trackLocation();
       }
       openReader(r, p, { reset: true });
     },
