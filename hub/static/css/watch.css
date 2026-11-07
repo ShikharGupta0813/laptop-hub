@@ -7,7 +7,7 @@
 
 #view-watch .wt-hero { display: grid; gap: var(--sp-3); padding: var(--sp-4); }
 #view-watch .wt-hero__top { display: flex; align-items: center; gap: var(--sp-3); }
-#view-watch .wt-pulse { position: relative; width: 52px; height: 52px; border-radius: 18px; display: grid; place-items: center; flex: none;
+#view-watch .wt-pulse { position: relative; width: 52px; height: 52px; border-radius: var(--r-lg); display: grid; place-items: center; flex: none;
   background: var(--c-surface-2); color: var(--c-text-3); }
 #view-watch .wt-pulse .ui-icon { width: 26px; height: 26px; }
 #view-watch .wt-pulse.is-on { background: var(--c-good-soft); color: var(--c-good); }

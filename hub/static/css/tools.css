@@ -17,7 +17,7 @@
 #view-tools .tl-result { font-size: var(--fs-3xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); text-align: right; overflow-wrap: anywhere; line-height: 1.15; cursor: copy; min-height: 1.15em; }
 #view-tools .tl-result.is-error { color: var(--c-text-3); }
 #view-tools .tl-display .tl-hint { text-align: right; }
-#view-tools .tl-expr { font-family: ui-monospace, Menlo, Consolas, monospace; }
+#view-tools .tl-expr { font-family: var(--font-mono); }
 
 /* keypad */
 #view-tools .tl-fn { padding-block: 2px; }

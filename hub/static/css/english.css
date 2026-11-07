@@ -191,7 +191,7 @@
 }
 #view-learn .english-root .eng-composer-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
 #view-learn .english-root .eng-input-wrap { position: relative; flex: 1; min-width: 0; }
-#view-learn .english-root .eng-input-wrap textarea { width: 100%; resize: none; min-height: var(--tap); max-height: 140px; border-radius: 22px; padding: 11px 16px; display: block; }
+#view-learn .english-root .eng-input-wrap textarea { width: 100%; resize: none; min-height: var(--tap); max-height: 140px; border-radius: var(--r-md); padding: 11px 14px; display: block; }
 #view-learn .english-root .eng-input-wrap .eng-timer { display: none; position: absolute; right: 14px; top: 11px; font-size: var(--fs-sm); }
 #view-learn .english-root .eng-input-wrap .eng-timer.on { display: inline; }
 #view-learn .english-root .eng-send { flex: none; }

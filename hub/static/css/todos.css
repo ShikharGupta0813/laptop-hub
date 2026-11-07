@@ -10,12 +10,12 @@
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 #view-todos .td-quick:focus-within { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
-#view-todos .td-quick__plus { width: 20px; height: 20px; color: var(--c-text-3); flex: none; }
+#view-todos .td-quick__plus { width: 20px; height: 20px; color: var(--c-accent-text); flex: none; }
 #view-todos .td-quick__input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; padding: 0; min-height: 44px; font-size: var(--fs-base); }
 #view-todos .td-quick__input:focus { outline: none; box-shadow: none; }
 #view-todos .td-echo {
   display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-lg);
-  background: var(--c-good-soft); animation: ui-rise var(--dur-base) var(--ease-out) both;
+  background: var(--c-good-soft); box-shadow: inset 2px 0 0 var(--c-good); animation: ui-rise var(--dur-base) var(--ease-out) both;
 }
 #view-todos .td-echo > .ui-icon { color: var(--c-good); flex: none; margin-top: 1px; }
 #view-todos .td-echo__body { display: grid; gap: 4px; min-width: 0; }
@@ -24,14 +24,14 @@
 
 /* chips */
 #view-todos .td-chips { gap: 6px; padding-top: 2px; padding-bottom: 4px; }
-#view-todos .td-chip__n { font-size: var(--fs-xs); font-weight: var(--fw-bold); min-width: 18px; text-align: center; padding: 1px 6px; border-radius: var(--r-full); background: var(--c-surface-3); color: var(--c-text-2); }
+#view-todos .td-chip__n { font-size: var(--fs-xs); font-weight: var(--fw-bold); min-width: 18px; text-align: center; padding: 1px 5px; border-radius: var(--r-xs); background: var(--c-surface-3); color: var(--c-text-2); }
 #view-todos .td-chip[aria-pressed="true"] .td-chip__n { background: var(--c-accent); color: var(--c-accent-ink); }
 #view-todos .td-chip--bad .td-chip__n { background: var(--c-bad); color: var(--c-accent-ink); }
 #view-todos .td-chip--bad .ui-icon:first-child { color: var(--c-bad); }
 #view-todos .td-chip--add { border-style: dashed; color: var(--c-text-2); background: none; }
 #view-todos .td-chips__sep { width: 1px; height: 20px; background: var(--c-line-strong); align-self: center; margin: 0 4px; }
 #view-todos .td-listhead { display: flex; align-items: center; gap: var(--sp-1); }
-#view-todos .td-listhead__title { flex: 1; margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); overflow: hidden; text-overflow: ellipsis; }
+#view-todos .td-listhead__title { flex: 1; margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-bold); letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* rows */
 #view-todos .td-body { display: grid; gap: var(--sp-2); }
@@ -59,7 +59,7 @@
   flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; position: relative;
 }
 #view-todos .td-check::before, .td-sheet .td-check::before {
-  content: ""; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--_c); background: transparent;
+  content: ""; width: 22px; height: 22px; border-radius: var(--r-xs); border: 1.5px solid var(--_c); background: transparent;
   transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-spring);
 }
 #view-todos .td-check--p1, .td-sheet .td-check--p1 { --_c: var(--c-info); }
@@ -78,7 +78,7 @@
 .td-sheet .td-due-row + .ui-btn { justify-self: start; margin-top: 2px; }
 .td-sheet .ui-field { display: grid; gap: 6px; }
 .td-sheet .td-stepsbox { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); background: var(--c-surface-1); border: 1px solid var(--c-line); border-radius: var(--r-lg); }
-html[data-theme="daylight"] .td-sheet .td-stepsbox { background: var(--c-surface-2); }
+html[data-theme="paper"] .td-sheet .td-stepsbox { background: var(--c-surface-2); }
 .td-sheet .td-steps__bar { display: flex; align-items: center; gap: var(--sp-3); }
 .td-sheet .td-steps__bar .ui-bar { flex: 1; }
 .td-sheet .td-steps__n { font-size: var(--fs-xs); color: var(--c-text-2); }

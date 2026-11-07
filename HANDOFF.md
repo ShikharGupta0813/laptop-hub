@@ -149,6 +149,29 @@ proactive "you were tagged" alerts (off until enabled). Limits: always-listening
 foreground service + on-device wake word); "tagged" = comments by others on the owner's open tasks; Asana priority is not read.
 Owner has no Jarvis folder; calendar shows 503 until Jarvis/iCal is configured. Android build run #3 succeeded (capture code compiles).
 
+### 4a-3. Added 2026-11-07/08 (after the first real run)
+- **REDLINE**: the app is renamed (title, manifest, Android app_name) and restyled to the owner's GitHub/portfolio identity: near-black
+  `#08090d`, crimson `#ff5368`, amber, JetBrains Mono, window-chrome cards, `01 / LABEL` eyebrows. Themes: redline (default), slate, paper.
+  Portfolio tokens were read from https://portfolio-nu-eight-vlznys99og.vercel.app/ (the session's network had to allow that host).
+- **Display name**: `config.display_name` (default "Chief"), set by the wizard or Settings; used by the Home greeting and as Friday's
+  default way to address the owner.
+- **`python -m hub setup`** (hub/setup_wizard.py): interactive wizard for Jarvis folder clone, Gmail app password (keyring), Asana token,
+  calendar iCal URL, Google Chat webhooks, Claude key (user env var via winreg), ntfy topic, Cloudflare WARP script, auto-start task, power
+  settings. Secrets only via getpass into the existing stores; never printed or logged. Run `--only gmail,asana` or `--check`.
+- **Setup checklist** screen (`js/setup.js`) + Home card: live status of every integration with fix steps.
+- **Workspaces + Launcher** (`hub/workspaces.py`, `js/launcher.js`, Remote screen): typed multi-step workspaces (script/url/app/folder/file/wait),
+  Start Menu app discovery, a "Whole laptop" tile, window switcher; `python -m hub add-script NAME --label L -- ARGV...` registers a
+  laptop command (scripts are not editable from the phone by design). NiFi-over-company-Cloudflare-VPN example in SETUP-WINDOWS.md 9b.
+- **Friday**: @mention detection (name + gid), followed tasks, Asana Priority field, alert batching; voice persona and spoken alerts.
+- **Fixes from real use**: Local-model speed (tool routing, short prompt, keep_alive, warm-up), terminal touch scroll + reconnect banner,
+  Files open/download (HubWeb.java DownloadListener) and Back handling, double-tap guards (`ui.busy`, sheet actions), "Log out of all
+  devices" (Settings > Account & security, `POST /api/logout-all`).
+- Android build runs #3 and #4 succeeded; rebuild after the REDLINE rename/icons (Actions > Build Android APK, hub_url =
+  https://shikharonestack.tail3ffc35.ts.net).
+- Owner environment: Windows, repo at D:\laptop-hub, Tailscale address above, no Jarvis folder yet (wizard offers to clone it).
+  Still unverified on real hardware: Start Menu app launch, WARP connect command, Gmail/Asana/calendar with real accounts, UPI capture,
+  Android notification access, voice mode on the phone, remote-screen touch control.
+
 ### 4b. Older items
 
 1. **Run it on the real laptop** (nothing below was ever run on Windows or with real models): follow README.md,

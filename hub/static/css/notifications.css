@@ -31,6 +31,6 @@
 #view-notifications .ntf-row.is-flash { animation: ntf-flash 1.6s var(--ease-out); }
 @keyframes ntf-flash { 0%, 60% { background: var(--c-accent-soft); } }
 #view-notifications .ntf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); margin-top: 4px; font-size: var(--fs-xs); color: var(--c-text-3); }
-#view-notifications .ntf-src { padding: 1px 8px; border-radius: var(--r-full); background: var(--c-surface-2); color: var(--c-text-2); }
+#view-notifications .ntf-src { padding: 1px 8px; border-radius: var(--r-xs); background: var(--c-surface-2); color: var(--c-text-2); }
 #view-notifications .ntf-del { flex: none; align-self: center; margin-right: var(--sp-1); color: var(--c-text-3); }
 #view-notifications .ui-row__sub.ui-clamp-2 { white-space: normal; }

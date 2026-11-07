@@ -149,7 +149,7 @@
 #view-apps .ap-log {
   margin: 0; height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-2xs); line-height: 1.5;
   padding: var(--sp-3); border-radius: var(--r-md); background: var(--c-surface-2); color: var(--c-text-2);
-  font-family: ui-monospace, Menlo, Consolas, monospace; -webkit-overflow-scrolling: touch;
+  font-family: var(--font-mono); -webkit-overflow-scrolling: touch;
 }
 #view-apps .ap-log.empty { color: var(--c-text-3); }
 #view-apps .ap-why-pre { height: auto; max-height: 200px; }

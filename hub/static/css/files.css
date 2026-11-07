@@ -82,9 +82,8 @@
 }
 #view-files .fl-gcard .fl-meta { font-size: var(--fs-xs); }
 #view-files .fl-gcard .fl-more {
-  position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; margin: 0; border-radius: var(--r-full);
+  position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; margin: 0; border-radius: var(--r-md);
   background: var(--c-glass-strong); color: var(--c-text);
-  -webkit-backdrop-filter: blur(var(--blur-sm)); backdrop-filter: blur(var(--blur-sm));
 }
 #view-files .fl-gcard .fl-check { position: absolute; top: 16px; left: 16px; z-index: 1; background: var(--c-glass-strong); margin: 0; }
 #view-files .fl-gcard .fl-check.is-on { background: var(--c-accent); }
@@ -102,7 +101,6 @@
 #view-files .fl-head {
   display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3); flex: none; min-height: 56px;
   border-bottom: 1px solid var(--c-line); background: var(--c-glass);
-  -webkit-backdrop-filter: blur(var(--blur-md)); backdrop-filter: blur(var(--blur-md));
 }
 #view-files .fl-headtext { min-width: 0; }
 #view-files .fl-title { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: var(--tracking-snug); }
@@ -133,7 +131,6 @@
 #view-files .fl-bar {
   flex: none; display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--gutter) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
   background: var(--c-glass-strong); border-top: 1px solid var(--c-line);
-  -webkit-backdrop-filter: blur(var(--blur-lg)); backdrop-filter: blur(var(--blur-lg));
 }
 #view-files .fl-askhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 #view-files .fl-asktitle { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--fw-semibold); font-size: var(--fs-md); }
@@ -158,4 +155,4 @@
 .fl-answersheet .fl-answer > :first-child { margin-top: 0; }
 .fl-answersheet .fl-sheet-error { margin: 0; }
 
-#view-files .fl-pdftext { margin: var(--sp-3) 0 0; padding: var(--sp-3); background: var(--c-surface-1); border-radius: var(--r-md); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+#view-files .fl-pdftext { margin: var(--sp-3) 0 0; padding: var(--sp-3); background: var(--c-surface-1); border-radius: var(--r-md); font-family: var(--font-mono); font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

@@ -43,13 +43,13 @@
 
 /* record FAB (sticky so it stays put while the list scrolls) */
 #view-notes .nt-dock { position: sticky; bottom: 0; height: 0; z-index: var(--z-fab); pointer-events: none; }
-#view-notes .nt-fab { pointer-events: auto; right: 0; bottom: var(--sp-2); width: 64px; height: 64px; padding: 0; border-radius: 50%;
+#view-notes .nt-fab { pointer-events: auto; right: 0; bottom: var(--sp-2); width: 64px; height: 64px; padding: 0; border-radius: var(--r-lg);
   transition: width var(--dur-base) var(--ease-out), border-radius var(--dur-base) var(--ease-out), background var(--dur-fast), transform var(--dur-fast); }
 #view-notes .nt-fab__icon { display: grid; place-items: center; }
 #view-notes .nt-fab__icon .ui-icon { width: 28px; height: 28px; }
 #view-notes .nt-fab__time { display: none; font-size: var(--fs-md); font-weight: var(--fw-bold); }
 #view-notes .nt-fab__ring { position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--c-accent); opacity: 0; pointer-events: none; }
-#view-notes .nt-fab.is-recording { width: 116px; border-radius: 32px; background: var(--c-bad); color: var(--c-accent-ink); box-shadow: var(--shadow-3); }
+#view-notes .nt-fab.is-recording { width: 116px; border-radius: var(--r-lg); background: var(--c-bad); color: var(--c-accent-ink); box-shadow: var(--shadow-3); }
 #view-notes .nt-fab.is-recording .nt-fab__time { display: inline; }
 #view-notes .nt-fab.is-recording .nt-fab__ring { border-color: var(--c-bad); animation: nt-ring 1.5s var(--ease-out) infinite; }
 #view-notes .nt-fab.is-uploading { opacity: .7; }

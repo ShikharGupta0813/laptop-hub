@@ -3,7 +3,7 @@
 #view-inbox .ib > * { min-width: 0; }
 #view-inbox .ib-head { display: grid; gap: var(--sp-3); }
 #view-inbox .ib-head[hidden], #view-inbox .ib-watch[hidden] { display: none; }
-#view-inbox .ib-search input { border-radius: var(--r-full); }
+#view-inbox .ib-search input { border-radius: var(--r-md); }
 #view-inbox .ib-toolbar { display: flex; align-items: center; gap: var(--sp-3); }
 #view-inbox .ib-toolbar .ui-seg { flex: 1; }
 #view-inbox .ib-list { display: grid; gap: var(--sp-3); }

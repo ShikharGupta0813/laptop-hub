@@ -27,16 +27,16 @@
 #view-assistant .as-list:focus-visible { outline-offset: -3px; }
 #view-assistant .as-jump {
   position: absolute; left: 50%; bottom: var(--sp-3); transform: translateX(-50%); box-shadow: var(--shadow-3);
-  background: var(--c-glass-strong); -webkit-backdrop-filter: blur(var(--blur-md)); backdrop-filter: blur(var(--blur-md));
+  background: var(--c-glass-strong);
 }
 #view-assistant .as-jump[hidden] { display: none; }
 
 #view-assistant .as-empty { margin: auto 0; text-align: center; padding: var(--sp-4) 0; display: grid; justify-items: center; gap: var(--sp-3); }
-#view-assistant .as-empty h2 { margin: 0; font-size: var(--fs-xl); letter-spacing: var(--tracking-tight); }
+#view-assistant .as-empty h2 { margin: 0; font-size: var(--fs-xl); letter-spacing: -0.01em; }
 #view-assistant .as-empty p { margin: 0; max-width: 36ch; font-size: var(--fs-md); }
 #view-assistant .as-empty-orb {
-  width: 72px; height: 72px; border-radius: var(--r-full); display: grid; place-items: center; color: var(--c-accent-ink);
-  background: var(--c-accent-grad); box-shadow: var(--shadow-accent);
+  width: 64px; height: 64px; border-radius: var(--r-lg); display: grid; place-items: center; color: var(--c-accent-text);
+  background: var(--c-surface-1); border: 1px solid var(--c-accent-line); box-shadow: inset 0 2px 0 var(--c-accent);
 }
 #view-assistant .as-empty-orb .ui-icon { width: 32px; height: 32px; }
 #view-assistant .as-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin: var(--sp-1) 0; }
@@ -46,7 +46,7 @@
 #view-assistant .as-msg { display: flex; align-items: flex-end; gap: var(--sp-1); min-width: 0; }
 #view-assistant .as-user { justify-content: flex-end; }
 #view-assistant .as-bubble {
-  max-width: 88%; min-width: 0; padding: 10px 14px; border-radius: 20px; overflow-wrap: anywhere; word-break: break-word;
+  max-width: 88%; min-width: 0; padding: 10px 14px; border-radius: var(--r-lg); overflow-wrap: anywhere; word-break: break-word;
   font-size: var(--fs-base); line-height: 1.45;
 }
 #view-assistant .as-user .as-bubble {
@@ -126,7 +126,7 @@
 /* ---- composer: a pill with mic, input, and a right-hand slot (voice / send / stop) ---- */
 #view-assistant .as-composer { flex: none; padding: var(--sp-2) var(--gutter) var(--sp-2); }
 #view-assistant .as-pill {
-  display: flex; align-items: flex-end; gap: 2px; padding: 4px; border-radius: 28px; background: var(--c-surface-1);
+  display: flex; align-items: flex-end; gap: 2px; padding: 4px; border-radius: var(--r-lg); background: var(--c-surface-1);
   border: 1px solid var(--c-line-strong); box-shadow: var(--shadow-1); transition: border-color var(--dur-fast);
 }
 #view-assistant .as-pill:focus-within { border-color: var(--c-accent); }

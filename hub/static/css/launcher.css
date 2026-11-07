@@ -6,19 +6,28 @@
 #view-launcher .lc-head__text { flex: 1; min-width: 0; }
 #view-launcher .ui-card__sub { font-size: var(--fs-sm); color: var(--c-text-2); }
 
-#view-launcher .lc-hero { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); background: var(--c-card-grad); color: var(--c-accent-ink); border: 0; box-shadow: var(--shadow-2); }
+/* hero: a terminal window drawn in CSS (traffic lights + path in ::before), so the markup stays as it is */
+#view-launcher .lc-hero {
+  position: relative; display: flex; flex-direction: column; gap: var(--sp-4); padding: calc(34px + var(--sp-4)) var(--sp-4) var(--sp-4);
+  background: var(--c-surface-1); color: var(--c-text); border: 1px solid var(--c-accent-line); overflow: hidden;
+}
+#view-launcher .lc-hero::before {
+  content: "~/launcher — remote"; position: absolute; top: 0; left: 0; right: 0; height: 34px; display: flex; align-items: center; padding-left: 66px;
+  background: var(--tl-dots) no-repeat 12px center / 42px 10px, var(--c-bg-2); border-bottom: 1px solid var(--c-line);
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--c-text-2);
+}
+#view-launcher .lc-hero::after { content: ""; position: absolute; top: 0; left: 0; width: 44px; height: 2px; background: var(--c-accent); }
 #view-launcher .lc-hero__top { display: flex; align-items: center; gap: var(--sp-3); }
-#view-launcher .lc-hero__title { font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); color: white; }
-#view-launcher .lc-hero__sub { font-size: var(--fs-sm); color: white; opacity: .88; margin-top: var(--sp-1); }
-#view-launcher .lc-hero .ui-tile { background: rgb(255 255 255 / .2); color: white; }
-#view-launcher .lc-hero .ui-btn--primary { background: var(--c-surface-1); color: var(--c-text); box-shadow: var(--shadow-1); }
+#view-launcher .lc-hero__title { font-size: var(--fs-lg); font-weight: var(--fw-bold); letter-spacing: -0.01em; color: var(--c-text); }
+#view-launcher .lc-hero__sub { font-size: var(--fs-sm); color: var(--c-text-2); margin-top: var(--sp-1); }
+#view-launcher .lc-hero .ui-tile { --_tone: var(--c-accent); }
 
 #view-launcher .lc-search { width: 100%; }
 #view-launcher .lc-results { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 24px; }
 #view-launcher .lc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
 #view-launcher .lc-tile { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); min-height: 104px; padding: var(--sp-3) var(--sp-2); border-radius: var(--r-lg); border: 1px solid var(--c-line); background: var(--c-surface-2); color: var(--c-text); font: inherit; cursor: pointer; min-width: 0; }
-#view-launcher .lc-tile:active { background: var(--c-surface-3); transform: scale(.97); }
-#view-launcher .lc-tile__name { font-size: var(--fs-xs); font-weight: var(--fw-medium); line-height: 1.2; text-align: center; width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: break-word; }
+#view-launcher .lc-tile:active { background: var(--c-surface-3); border-color: var(--c-accent-line); }
+#view-launcher .lc-tile__name { font-size: 11px; font-weight: var(--fw-medium); line-height: 1.2; text-align: center; width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: break-word; }
 #view-launcher .lc-hint { margin: 0; font-size: var(--fs-xs); color: var(--c-text-2); }
 #view-launcher .lc-linkrow { display: flex; gap: var(--sp-2); align-items: center; }
 #view-launcher .lc-linkrow input { flex: 1; min-width: 0; }

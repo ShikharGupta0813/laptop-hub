@@ -27,19 +27,19 @@
 #view-screen .sc-cursor { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: var(--r-full); background: var(--c-accent-soft); border: 2px solid var(--c-accent); box-shadow: var(--shadow-accent); transform: scale(var(--inv, 1)); pointer-events: none; }
 #view-screen .sc-cursor[hidden] { display: none; }
 #view-screen .sc-overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; padding: var(--sp-4); }
-#view-screen .sc-overlay__card { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-lg); background: var(--c-glass-strong); backdrop-filter: blur(var(--blur-md)); text-align: center; box-shadow: var(--shadow-3); max-width: 280px; }
+#view-screen .sc-overlay__card { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-lg); background: var(--c-glass-strong); text-align: center; box-shadow: var(--shadow-3); max-width: 280px; }
 #view-screen .sc-overlay__card p { margin: 0; font-size: var(--fs-sm); color: var(--c-text); }
 
 /* floating bar */
 #view-screen .sc-hud { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2); pointer-events: none; }
 #view-screen .sc-hud__side { display: flex; align-items: center; gap: var(--sp-1); pointer-events: auto; }
-#view-screen .sc-chip { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 32px; white-space: nowrap; padding: 0 var(--sp-3); border-radius: var(--r-full); background: var(--c-glass-strong); backdrop-filter: blur(var(--blur-md)); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--c-text); box-shadow: var(--shadow-1); }
+#view-screen .sc-chip { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 32px; white-space: nowrap; padding: 0 var(--sp-3); border-radius: var(--r-sm); background: var(--c-glass-strong); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--c-text); box-shadow: var(--shadow-1); }
 #view-screen .sc-chip .ui-icon { width: 14px; height: 14px; }
 #view-screen .sc-chip.is-paused .ui-dot { opacity: .4; }
 #view-screen .sc-chip--armed { background: var(--c-bad); color: var(--c-accent-ink); padding-right: var(--sp-1); }
 #view-screen .sc-chip[hidden] { display: none; }
 #view-screen .sc-chip__x { min-height: 44px; margin: -6px 0; padding: 0 var(--sp-2) 0 var(--sp-3); border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
-#view-screen .sc-hudbtn { background: var(--c-glass-strong); backdrop-filter: blur(var(--blur-md)); box-shadow: var(--shadow-1); }
+#view-screen .sc-hudbtn { background: var(--c-glass-strong); box-shadow: var(--shadow-1); }
 #view-screen .sc-hudbtn[hidden] { display: none; }
 
 /* keys */
@@ -108,7 +108,7 @@ html.sc-noscroll, html.sc-noscroll body { overflow: hidden; }
 .sc-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .sc-steps__empty { padding: var(--sp-4); border-radius: var(--r-md); border: 1px dashed var(--c-line-strong); color: var(--c-text-2); font-size: var(--fs-sm); text-align: center; }
 .sc-step { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: var(--sp-2) var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--c-line); background: var(--c-surface-2); }
-.sc-step__n { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: var(--r-full); background: var(--c-accent-soft); color: var(--c-accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-bold); }
+.sc-step__n { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: var(--r-xs); background: var(--c-accent-soft); color: var(--c-accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-bold); }
 .sc-step__text { display: flex; flex-direction: column; min-width: 0; gap: var(--sp-1); }
 .sc-step__name { font-size: var(--fs-md); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
 .sc-step__sub { font-size: var(--fs-xs); color: var(--c-text-2); }

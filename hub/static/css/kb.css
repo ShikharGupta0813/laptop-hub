@@ -12,7 +12,7 @@
 .kb-path { font-size: var(--fs-xs); color: var(--c-text-3); }
 .kb-where { font-size: var(--fs-xs); color: var(--c-accent-text); font-weight: var(--fw-medium); }
 .kb-snippet { margin: 0; font-size: var(--fs-sm); color: var(--c-text-2); line-height: 1.5; overflow-wrap: anywhere; }
-.kb-score { flex: none; width: 36px; height: 6px; border-radius: var(--r-full); background: var(--c-surface-3); overflow: hidden; }
+.kb-score { flex: none; width: 36px; height: 6px; border-radius: 1px; background: var(--c-surface-3); overflow: hidden; }
 .kb-score i { display: block; height: 100%; width: calc(var(--v, 0) * 100%); background: var(--c-accent-grad); border-radius: inherit; }
 
 /* ask */
@@ -29,13 +29,13 @@
 .kb-answer > :first-child { margin-top: 0; }
 .kb-answer > :last-child { margin-bottom: 0; }
 .kb-cite {
-  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin: 0 1px; vertical-align: 1px; border: 0; border-radius: var(--r-full);
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin: 0 1px; vertical-align: 1px; border: 0; border-radius: var(--r-xs);
   background: var(--c-accent-soft); color: var(--c-accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-bold); cursor: pointer; position: relative;
 }
 .kb-cite::after { content: ""; position: absolute; inset: -12px -6px; } /* 44px hit area */
 .kb-cite:active { background: var(--c-accent); color: var(--c-accent-ink); }
 .kb-sources { min-width: 0; }
-.kb-num { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-full); background: var(--c-accent-soft); color: var(--c-accent-text); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
+.kb-num { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--c-accent-soft); color: var(--c-accent-text); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
 .kb-srcsub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* status */
@@ -48,4 +48,4 @@
 .kb-stat span { font-size: var(--fs-2xs); color: var(--c-text-2); }
 .kb-roots { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .kb-cmd { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--c-surface-3); min-width: 0; }
-.kb-cmd code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); overflow-x: auto; white-space: nowrap; min-width: 0; }
+.kb-cmd code { font-family: var(--font-mono); font-size: var(--fs-sm); overflow-x: auto; white-space: nowrap; min-width: 0; }

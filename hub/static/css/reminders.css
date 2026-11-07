@@ -5,7 +5,7 @@
 
 #view-reminders .rm-quick { display: grid; gap: var(--sp-3); }
 #view-reminders .rm-quick-row { display: flex; gap: var(--sp-2); align-items: center; }
-#view-reminders .rm-input { flex: 1; min-width: 0; border-radius: var(--r-full); padding-left: var(--sp-4); }
+#view-reminders .rm-input { flex: 1; min-width: 0; border-radius: var(--r-md); padding-left: var(--sp-4); }
 #view-reminders .rm-echo:empty { display: none; }
 #view-reminders .rm-echo-chip {
   display: flex; align-items: center; gap: var(--sp-2); padding: 10px 14px; border-radius: var(--r-md);
@@ -45,7 +45,7 @@
 #view-reminders .rm-row.is-done .rm-text { text-decoration: line-through; color: var(--c-text-2); }
 #view-reminders .rm-row.is-done { opacity: .75; }
 #view-reminders .rm-check { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; border: 0; background: none; padding: 0; position: relative; cursor: pointer; }
-#view-reminders .rm-check::before { content: ""; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--c-line-strong); transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-spring); }
+#view-reminders .rm-check::before { content: ""; width: 22px; height: 22px; border-radius: var(--r-xs); border: 1.5px solid var(--c-line-strong); transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-spring); }
 #view-reminders .rm-row.is-overdue .rm-check::before { border-color: var(--c-bad); }
 #view-reminders .rm-check .ui-icon { position: absolute; width: 15px; height: 15px; color: var(--c-accent-ink); opacity: 0; transform: scale(.5); transition: opacity var(--dur-fast), transform var(--dur-fast) var(--ease-spring); }
 #view-reminders .rm-check:active::before { transform: scale(.88); }

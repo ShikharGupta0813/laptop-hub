@@ -113,7 +113,7 @@ const CHECKS = [
       try {
         const s = await withTimeout(hc.status());
         return s?.listenerEnabled ? R("ok", "Notification access is on.", { fix: androidFix })
-          : R("warn", "Notification access is off.", { fix: { steps: ["Tap the button, then switch Laptop Hub on in Android's Notification access list."], action: "listener" } });
+          : R("warn", "Notification access is off.", { fix: { steps: ["Tap the button, then switch REDLINE on in Android's Notification access list."], action: "listener" } });
       } catch (e) { return FAIL(e, "the phone"); }
     } },
   { id: "capture", title: "Payment, mail and chat capture", icon: "trend", tone: "good", optional: true, phone: true,

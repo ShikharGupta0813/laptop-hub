@@ -86,7 +86,7 @@ export function init(container, ctx) {
     if (notify) chips.push(notify.ntfy_enabled ? chip("bell", "Phone push on", "good") : chip("bell", "Phone push off"));
     return el("div", { class: "ui-card st-hero" },
       el("div", { class: "st-hero__top" }, ui.tile("laptop", "accent", "lg"),
-        el("div", { class: "grow" }, el("h2", { class: "ui-card__title" }, "Laptop Hub"),
+        el("div", { class: "grow" }, el("h2", { class: "ui-card__title" }, "REDLINE"),
           el("p", { class: "ui-card__sub" }, `Version ${S.version || "?"}${S.platform ? " on " + S.platform : ""}`))),
       el("div", { class: "st-chips" }, chips));
   }
@@ -419,13 +419,13 @@ export function init(container, ctx) {
     const s = drill("Phone capture", async () => {
       const steps = el("div", { class: "ui-card st-steps-card" }, el("h3", { class: "ui-card__title" }, "Set it up"),
         el("ol", { class: "st-steps" },
-          el("li", {}, el("strong", {}, "Notification access. "), "Tap Open notification access and switch Laptop Hub on."),
-          el("li", {}, el("strong", {}, "Greyed out? "), "Android 13 and newer block this for apps installed from an APK. Go to Settings, Apps, Laptop Hub, the three dots at the top right, then ", el("strong", {}, "Allow restricted settings"), ". Try step 1 again."),
+          el("li", {}, el("strong", {}, "Notification access. "), "Tap Open notification access and switch REDLINE on."),
+          el("li", {}, el("strong", {}, "Greyed out? "), "Android 13 and newer block this for apps installed from an APK. Go to Settings, Apps, REDLINE, the three dots at the top right, then ", el("strong", {}, "Allow restricted settings"), ". Try step 1 again."),
           el("li", {}, el("strong", {}, "Bank SMS (optional). "), "Tap Allow SMS. The app can only receive new texts, never read your inbox."),
           el("li", {}, el("strong", {}, "Test. "), "A fake “Paid ₹1” should appear in Spending."),
           el("li", {}, el("strong", {}, "Keep it running. "), "Set the app's battery use to Unrestricted so it isn't put to sleep.")));
       if (!plugin) {
-        return el("div", { class: "ui-stack ui-stack--lg" }, ui.emptyState({ icon: "phone", title: "Only works in the installed Android app", body: "Open Laptop Hub from the Android app on your phone to turn on spending and message capture." }), steps);
+        return el("div", { class: "ui-stack ui-stack--lg" }, ui.emptyState({ icon: "phone", title: "Only works in the installed Android app", body: "Open REDLINE from the Android app on your phone to turn on spending and message capture." }), steps);
       }
       let st;
       try { st = await plugin.status(); } catch (error) { throw new Error("The app didn't answer. " + (error?.message || "")); }

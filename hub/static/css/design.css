@@ -191,10 +191,10 @@ html {
   --c-accent-ink: var(--a-ink);
   --c-accent-soft: color-mix(in srgb, var(--a) 14%, transparent);
   --c-accent-line: color-mix(in srgb, var(--a) 42%, transparent);
-  --c-accent-grad: linear-gradient(135deg, var(--a) 0%, var(--a-strong) 100%);
+  --c-accent-grad: linear-gradient(var(--a), var(--a));   /* flat on purpose: no glossy two-tone fills */
   /* "gradient" cards are deep, accent-tinted surfaces: white text always reads (>= 7:1) */
   --c-card-grad: linear-gradient(180deg, color-mix(in srgb, var(--a-deep) 62%, #10121A) 0%, color-mix(in srgb, var(--a-deep) 30%, #10121A) 100%);
-  --shadow-accent: 0 0 0 1px color-mix(in srgb, var(--a) 30%, transparent), 0 6px 22px -10px color-mix(in srgb, var(--a) 70%, transparent);
+  --shadow-accent: 0 0 0 1px color-mix(in srgb, var(--a) 35%, transparent);
   --glow: 0 0 14px color-mix(in srgb, var(--a) 55%, transparent);
   /* page texture: a faint 24px grid with a crimson haze at the very top */
   --c-bg-glow:
@@ -318,21 +318,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 /* ---- identity motifs --------------------------------------------------------------------------- */
 /* 01 / WHOAMI : <p class="ui-eyebrow"><b>01</b> Whoami</p>, or <p class="ui-eyebrow" data-n="01">Whoami</p> */
 .ui-eyebrow {
-  display: flex; align-items: center; gap: .6em; margin: 0; min-width: 0;
-  font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 600; line-height: 1.4;
+  display: flex; align-items: center; gap: .5em; margin: 0; min-width: 0;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 700; line-height: 1.4;
   letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--c-text-2);
 }
 .ui-eyebrow > b, .ui-eyebrow[data-n]::before { color: var(--c-accent-text); font-weight: 700; }
 .ui-eyebrow > b::after, .ui-eyebrow[data-n]::before { white-space: pre; }
-.ui-eyebrow > b::after { content: "  /"; color: var(--c-text-3); font-weight: 500; }
-.ui-eyebrow[data-n]::before { content: attr(data-n) "  /"; }
+.ui-eyebrow > b::after { content: " /"; color: var(--c-mute); font-weight: 500; }
+.ui-eyebrow[data-n]::before { content: attr(data-n) " /"; }
 .ui-eyebrow--rule::after { content: ""; flex: 1; height: 1px; background: var(--c-line); }
 
 /* key: value rows (YAML style) */
 .ui-kv { display: grid; gap: 0; margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5; min-width: 0; font-variant-ligatures: none; }
 .ui-kv__row { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 0 1ch; align-items: baseline; padding: 3px 0; min-width: 0; }
 .ui-kv__k { color: var(--c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ui-kv__k::after { content: ":"; color: var(--c-text-3); }
+.ui-kv__k::after { content: ":"; color: var(--c-mute); }
 .ui-kv__v { color: var(--c-text); overflow-wrap: anywhere; min-width: 0; margin: 0; }
 .ui-kv__v[data-tone] { color: var(--_tone); }
 .ui-kv--ruled .ui-kv__row + .ui-kv__row { border-top: 1px dashed var(--c-line); }
@@ -558,8 +558,10 @@ html[data-theme="paper"] .ui-card--gradient::before { background: linear-gradien
 .ui-card__head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); min-width: 0; }
 .ui-card__title { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: 0; margin: 0; }
 .ui-card__sub { font-size: var(--fs-sm); color: var(--c-text-2); margin: 0; }
-.ui-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin: 0 2px var(--sp-2); }
-.ui-section-title { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: 0; margin: 0; }
+.ui-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 0 2px var(--sp-2); min-height: 28px; }
+/* every screen's section heading reads like the portfolio's labels: `// SECTION` in mono caps */
+.ui-section-title { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--c-text); margin: 0; line-height: 1.4; }
+.ui-section-title::before { content: "// "; white-space: pre; color: var(--c-accent-text); }
 .ui-link {
   background: none; border: 0; padding: 0 2px; min-height: var(--tap); color: var(--c-accent-text);
   font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
