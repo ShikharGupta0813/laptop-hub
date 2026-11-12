@@ -117,7 +117,7 @@ export function init(container, ctx) {
 
   const prefs = {
     provider: normalizeProvider(store.get("localStorage", "hub.assistant.provider", "") || defaultProvider()),
-    speak: store.get("localStorage", "hub.assistant.speak", "0") === "1",
+    speak: store.get("localStorage", "hub.assistant.speak", "1") !== "0",
     autoSend: store.get("localStorage", "hub.assistant.autosend", "1") !== "0",
     // Per browser session only (sessionStorage), never localStorage: off again after a restart.
     autoApprove: store.get("sessionStorage", "hub.assistant.autoapprove", "0") === "1",
