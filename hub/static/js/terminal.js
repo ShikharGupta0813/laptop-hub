@@ -596,11 +596,15 @@ export function init(container, ctx) {
   pasteCancel.addEventListener("click", () => { pastePanel.hidden = true; layoutSoon(); term.focus(); });
 
   // ---------- sizing ----------
+  const MIN_COLS = 100;
   function usable() { return visible && host.clientWidth > 20 && host.clientHeight > 20; }
 
   function fitNow() {
     if (!term || !usable()) return false;
     try { fit.fit(); } catch (_) { return false; }
+    // A phone is only ~40 characters wide, which makes PowerShell and ls hide their last columns (the file names).
+    // Keep the terminal at least MIN_COLS wide and let the screen pan sideways instead.
+    try { if (term.cols < MIN_COLS) term.resize(MIN_COLS, term.rows); } catch (_) { /* keep the fitted size */ }
     return true;
   }
 

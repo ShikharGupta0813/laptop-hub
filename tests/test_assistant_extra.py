@@ -46,7 +46,7 @@ class ExtraToolsTest(Base):
 
     async def test_the_model_is_offered_the_extra_tools(self):
         svc = self.svc([reply("hi")])
-        await collect(svc.run("s", "hello", "claude", False))
+        await collect(svc.run("s", "what is the weather", "claude", False))
         names = [t["name"] for t in self.claude.calls[0]["tools"]]
         self.assertIn("my_tasks", names)
         self.assertIn("laptop_lock", names)

@@ -207,7 +207,7 @@ class ToolErrorTest(Base):
 
     async def test_a_crashing_model_ends_as_an_error_event(self):
         svc = self.service([RuntimeError("model blew up")])
-        events = await collect(svc.run("s", "hi", "claude", False))
+        events = await collect(svc.run("s", "what is the weather", "claude", False))
         self.assertEqual(of(events, "error")[0]["message"], "Assistant failed: model blew up")
         self.assertFalse(svc._sessions["s"].running)
 
@@ -243,7 +243,7 @@ class PersonaTest(Base):
     async def test_persona_reaches_the_local_prompt(self):
         ollama = FakeOllama([ollama_text("ok")])
         svc = self.service(local=A.LocalChat("http://x", "m", transport=ollama.transport))
-        await collect(svc.run("s", "hello", "local", False, persona="friday"))
+        await collect(svc.run("s", "what is the weather", "local", False, persona="friday"))
         self.assertIn("day assistant", ollama.bodies[0]["messages"][0]["content"])
 
 
@@ -326,7 +326,7 @@ class RealLatencyTest(Base):
     async def test_a_turn_records_a_span_with_stt_and_first_token(self):
         svc = self.service([reply("Hello there friend.")])
         svc.latency.note_stt(420)
-        await collect(svc.run("s", "hi", "claude", False, voice=True))
+        await collect(svc.run("s", "what is the weather", "claude", False, voice=True))
         span = svc.latency.recent(1)[0]
         self.assertEqual(span["stt_ms"], 420)
         self.assertIsInstance(span["first_token_ms"], int)

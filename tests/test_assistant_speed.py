@@ -28,7 +28,7 @@ class SpeedTest(Base):
 
     async def test_greeting_sends_no_tools_and_small_ctx(self):
         svc = self.service(local=self.local([ollama_text("Hi!")]), extra_tools=self.extra)
-        await collect(svc.run("s", "Hello", "local", False))
+        await collect(svc.run("s", "Hello there my friend, how are you today", "local", False))
         body = self.ollama.bodies[0]
         self.assertNotIn("tools", body)
         self.assertEqual(body["options"]["num_ctx"], 4096)
@@ -56,24 +56,24 @@ class SpeedTest(Base):
 
     async def test_keep_alive_on_every_request(self):
         svc = self.service(local=self.local([ollama_text("a"), ollama_text("b")]))
-        await collect(svc.run("s", "hi", "local", False))
+        await collect(svc.run("s", "what is the weather", "local", False))
         await collect(svc.run("s", "list the files in ~", "local", False))
         self.assertTrue(all(b["keep_alive"] == "30m" for b in self.ollama.bodies))
         self.assertIn("list_dir", self.names(1))
 
     async def test_claude_still_gets_all_tools(self):
         svc = self.service([reply("hi")], extra_tools=self.extra)
-        await collect(svc.run("s", "Hello", "claude", False))
+        await collect(svc.run("s", "what is the weather", "claude", False))
         sent = {t["name"] for t in self.claude.calls[0]["tools"]}
         self.assertEqual(sent, {s["name"] for s in svc.specs})
 
     async def test_status_events_are_opt_in(self):
         svc = self.service(local=self.local([ollama_text("a")]))
-        self.assertFalse(of(await collect(svc.run("s", "hi", "local", False)), "status"))
+        self.assertFalse(of(await collect(svc.run("s", "what is the weather", "local", False)), "status"))
         svc.emit_status = True
         svc._local = self.local([ollama_text("b"), ollama_text("c")])
         svc._local_last_used = float("-inf")  # cold
-        events = await collect(svc.run("t", "hi", "local", False))
+        events = await collect(svc.run("t", "what is the weather", "local", False))
         self.assertEqual(of(events, "status")[0]["text"], "Loading the local model…")
         events = await collect(svc.run("t", "again", "local", False))
         self.assertEqual(of(events, "status")[0]["text"], "Thinking…")

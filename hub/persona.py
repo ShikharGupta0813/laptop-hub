@@ -51,3 +51,27 @@ def persona_prompt(persona: str, call_sign: str, jarvis_name: str = "Jarvis") ->
     return (f"You are {jarvis_name or 'Jarvis'}, the owner's laptop operator: terminal, files, apps, system. Precise and "
             f"calm; lead with the result, then one line of detail; dry wit only if it costs no time. "
             f"Call the owner \"{call}\".")
+
+
+_GREETING = re.compile(
+    r"^\s*(?:(?:hey|hi|hello|hola|yo|ok|okay|good\s+(?:morning|afternoon|evening|night))[,\s!.]*)*"
+    r"(?:{names})?[\s,!.?]*(?:are\s+you\s+there|you\s+there|wake\s+up|thanks?|thank\s+you)?[\s,!.?]*$", re.I)
+
+
+def greeting_reply(text: str, persona: str = "", call_sign: str = "Chief", jarvis_name: str = "Jarvis") -> str:
+    """A short fixed answer when the whole message is just a hello (or only a name). "" when it is anything else.
+
+    No model and no tools are involved, so a greeting can never open files or ask for approvals."""
+    raw = str(text or "").strip()
+    if not raw or len(raw) > 60:
+        return ""
+    names = "|".join(re.escape(n) for n in dict.fromkeys(("jarvis", (jarvis_name or "Jarvis").strip().lower(), "friday")) if n)
+    if not re.fullmatch(_GREETING.pattern.replace("{names}", names), raw, re.I):
+        return ""
+    who = persona or ("friday" if "friday" in raw.lower() else "jarvis")
+    call = (call_sign or "Chief").strip()
+    if re.search(r"thank", raw, re.I):
+        return "Any time."
+    if who == "friday":
+        return f"Hi {call}! Want a look at your day, or shall I get something done?"
+    return f"At your service, {call}. What do you need?"

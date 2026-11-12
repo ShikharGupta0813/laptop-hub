@@ -62,17 +62,17 @@ class Base(unittest.IsolatedAsyncioTestCase):
 class StreamingAndParams(Base):
     async def test_text_streams_in_pieces_and_history_keeps_the_turn(self):
         svc = self.service([reply("Hello ", "there.", deltas=["Hel", "lo ", "there."])])
-        events = await collect(svc.run("s", "hi", "claude", False))
+        events = await collect(svc.run("s", "what is the weather", "claude", False))
         self.assertEqual([e["t"] for e in of(events, "text")], ["Hel", "lo ", "there."])
         self.assertFalse(of(events, "error"))
         history = svc._sessions["s"].history["claude"]
-        self.assertEqual(history[0], {"role": "user", "content": "hi"})
+        self.assertEqual(history[0], {"role": "user", "content": "what is the weather"})
         self.assertEqual(history[1]["role"], "assistant")
 
     async def test_request_follows_the_api_rules(self):
         first = reply("ok")
         svc = self.service([first, reply("again")])
-        await collect(svc.run("s", "hi", "claude", False))
+        await collect(svc.run("s", "what is the weather", "claude", False))
         await collect(svc.run("s", "and again", "claude", False))
         params = self.claude.calls[0]
         self.assertEqual(params["model"], "claude-sonnet-5-5")
@@ -391,7 +391,7 @@ class Loop(Base):
         busy = await collect(svc.run("s", "second", "claude", False))
         self.assertEqual([e["type"] for e in busy], ["error"])
         self.assertIn("still working", busy[0]["message"])
-        other = await collect(svc.run("other-session", "hi", "claude", False))  # not blocked
+        other = await collect(svc.run("other-session", "what is the weather", "claude", False))  # not blocked
         self.assertFalse(of(other, "error"))
         svc.resolve("s", "c1", True)
         rest = [e async for e in gen]
@@ -427,7 +427,7 @@ class Loop(Base):
 
     async def test_reset_forgets(self):
         svc = self.service([reply("one"), reply("two")])
-        await collect(svc.run("s", "hi", "claude", False))
+        await collect(svc.run("s", "what is the weather", "claude", False))
         svc.reset("s")
         await collect(svc.run("s", "hi again", "claude", False))
         self.assertEqual(self.claude.calls[1]["messages"], [{"role": "user", "content": "hi again"}])
@@ -454,7 +454,7 @@ class Loop(Base):
 class ClaudeErrors(Base):
     async def test_missing_api_key(self):
         svc = A.AssistantService(self.config)
-        events = await collect(svc.run("s", "hi", "claude", False))
+        events = await collect(svc.run("s", "what is the weather", "claude", False))
         self.assertEqual(len(events), 1)
         self.assertIn("ANTHROPIC_API_KEY", events[0]["message"])
         self.assertEqual(svc._sessions["s"].history["claude"], [])
@@ -467,7 +467,7 @@ class ClaudeErrors(Base):
         for exc, words in cases:
             with self.subTest(exc=type(exc).__name__):
                 svc = self.service([exc])
-                events = await collect(svc.run("s", "hi", "claude", False))
+                events = await collect(svc.run("s", "what is the weather", "claude", False))
                 self.assertEqual([e["type"] for e in events], ["error"])
                 self.assertIn(words, events[0]["message"])
                 self.assertEqual(svc._sessions["s"].history["claude"], [])
@@ -493,7 +493,7 @@ class ClaudeErrors(Base):
         broken = reply("Trying ")
         broken["raise_after"] = ValueError("Unable to parse tool parameter JSON")
         svc = self.service([broken, reply("ok now")])
-        events = await collect(svc.run("s", "hi", "claude", False))
+        events = await collect(svc.run("s", "what is the weather", "claude", False))
         self.assertFalse(of(events, "error"))
         self.assertEqual(len(self.claude.calls), 2)
 
@@ -565,7 +565,7 @@ class Local(Base):
         for item, words in cases:
             with self.subTest(words=words):
                 svc = self.service(local=self.local([item, item]))
-                events = await collect(svc.run("s", "hi", "local", False))
+                events = await collect(svc.run("s", "what is the weather", "local", False))
                 self.assertEqual([e["type"] for e in events], ["error"])
                 self.assertIn(words, events[0]["message"])
                 self.assertEqual(svc._sessions["s"].history["local"], [])

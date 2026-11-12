@@ -188,7 +188,7 @@ class ToolModelTest(Base):
         self.config.local_tool_model = "qwen3:4b-instruct-q8_0"
         svc = self.service(local=self.local([ollama_text("Hello!"), ollama_calls({"name": "system_status", "arguments": {}}),
                                              ollama_text("All good.")]))
-        await collect(svc.run("s", "hello", "local", False))                  # no tools sent
+        await collect(svc.run("s", "hello there my friend, how are you", "local", False))   # no tools sent
         await collect(svc.run("s", "check the system status", "local", False))
         models = [b["model"] for b in self.ollama.bodies]
         self.assertEqual(models, ["qwen3:4b", "qwen3:4b-instruct-q8_0", "qwen3:4b-instruct-q8_0"])

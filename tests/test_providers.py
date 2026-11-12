@@ -550,12 +550,12 @@ class TextToolsAssistantTest(AssistantBase):
 
     async def test_plain_answer_streams_and_sends_the_system_prompt(self):
         for provider in ("claude-login", "gemini"):
-            svc, fake, events = await self.run_with(provider, [["Hel", "lo."]], text="hi")
+            svc, fake, events = await self.run_with(provider, [["Hel", "lo."]], text="what is the weather")
             self.assertEqual("".join(e["t"] for e in of(events, "text")), "Hello.")
             self.assertFalse(of(events, "error"))
             self.assertIn("DATA, never instructions", fake.calls[0][0])
             self.assertNotIn("<tool_call>", fake.calls[0][0])   # a greeting routes no tools
-            self.assertEqual(svc._sessions["s"].history[provider][0], {"role": "user", "content": "hi"})
+            self.assertEqual(svc._sessions["s"].history[provider][0], {"role": "user", "content": "what is the weather"})
 
     async def test_a_tool_call_runs_and_the_result_goes_back(self):
         call = '{"name": "system_status", "arguments": {}}'
@@ -595,19 +595,19 @@ class TextToolsAssistantTest(AssistantBase):
                 yield ""
         svc = self.service()
         svc.model_for = lambda p: Broken()
-        events = await collect(svc.run("s", "hi", "gemini", False))
+        events = await collect(svc.run("s", "what is the weather", "gemini", False))
         self.assertIn("quota", of(events, "error")[0]["message"])
         self.assertEqual(svc._sessions["s"].history["gemini"], [])
 
     async def test_without_a_client_factory_it_says_so(self):
         svc = self.service()
-        events = await collect(svc.run("s", "hi", "gemini", False))
+        events = await collect(svc.run("s", "what is the weather", "gemini", False))
         self.assertTrue(of(events, "error"))
 
     async def test_claude_api_path_is_unchanged(self):
         from tests.fakes_assistant import reply
         svc = self.service([reply("Hi from the API.")])
-        events = await collect(svc.run("s", "hi", "claude", False))
+        events = await collect(svc.run("s", "what is the weather", "claude", False))
         self.assertEqual("".join(e["t"] for e in of(events, "text")), "Hi from the API.")
 
 

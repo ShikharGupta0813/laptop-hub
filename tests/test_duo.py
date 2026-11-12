@@ -306,7 +306,7 @@ class DuoGeminiNoQuotaTest(AssistantBase):
 
         svc = self.service()
         svc.model_for = lambda p: DuoClient(Dead(), Supervisor(FakeClaude()))
-        events = await asyncio.wait_for(collect(svc.run("s", "hello", "duo", False)), 5)
+        events = await asyncio.wait_for(collect(svc.run("s", "what is the weather", "duo", False)), 5)
         errors = [e for e in events if e["type"] == "error"]
         self.assertEqual(len(errors), 1)
         self.assertIn("free tier has no quota", errors[0]["message"])
@@ -327,7 +327,7 @@ class DuoGeminiNoQuotaTest(AssistantBase):
         gem = llm.GeminiClient("gemini-2.5-flash", api_key="KD", transport=httpx.MockTransport(handler))
         svc = self.service()
         svc.model_for = lambda p: DuoClient(gem, Supervisor(FakeClaude()))
-        events = await asyncio.wait_for(collect(svc.run("s", "hello", "duo", False)), 10)
+        events = await asyncio.wait_for(collect(svc.run("s", "what is the weather", "duo", False)), 10)
         errors = [e for e in events if e["type"] == "error"]
         self.assertEqual(len(errors), 1)
         self.assertIn("free tier has no quota", errors[0]["message"])

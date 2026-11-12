@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 import uuid
+import contextlib
 from contextlib import aclosing
 from datetime import datetime
 from pathlib import Path
@@ -38,7 +39,7 @@ from .fastcmd import match_fast_command
 from .latency import Latency
 from .llm import FALLBACK_BETA, KEEP_ALIVE, LLMError, ThinkFilter
 from .notes import NoteError, NoteStore
-from .persona import clean_persona, persona_prompt
+from .persona import clean_persona, greeting_reply, persona_prompt
 
 # ---- limits ---------------------------------------------------------------------------------
 
@@ -568,6 +569,11 @@ def needs_plan(text: str) -> bool:
     return bool(TOOLISH.search(text))
 
 
+async def _no_events():
+    return
+    yield  # pragma: no cover  (makes this an async generator)
+
+
 class ToolCallFilter:
     """Passes text through until a <tool_call> starts, holding back a half-written tag."""
 
@@ -700,8 +706,15 @@ class AssistantService:
                                 "stt_ms": self.latency.take_stt() if voice else None,
                                 "first_token_ms": None, "tools": 0, "fast": False, "ok": True}
         try:
-            fast = self._fast_match(text)
-            if fast is not None:
+            hello = greeting_reply(text, session.persona, getattr(self.config, "display_name", "Chief"),
+                                   getattr(self.config, "jarvis_name", "Jarvis"))
+            fast = None if hello else self._fast_match(text)
+            if hello:
+                span["fast"] = True
+                span["first_token_ms"] = 0
+                yield {"type": "text", "t": hello}
+                turns = None
+            elif fast is not None:
                 span["fast"] = True
                 turns = self._fast_turn(session_id, session, text, provider, auto_approve, fast)
             elif provider == "local":
@@ -710,8 +723,8 @@ class AssistantService:
                 turns = self._text_turns(provider, session_id, session, text, auto_approve)
             else:
                 turns = self._claude_turns(session_id, session, text, auto_approve)
-            async with aclosing(turns):  # closing us closes it too, so its cleanup runs now
-                async for event in turns:
+            async with aclosing(turns) if turns is not None else contextlib.nullcontext():  # closing us closes it too
+                async for event in (turns if turns is not None else _no_events()):
                     kind = event.get("type")
                     if kind == "text" and span["first_token_ms"] is None:
                         span["first_token_ms"] = int((time.monotonic() - started) * 1000)
