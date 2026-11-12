@@ -21,25 +21,38 @@ html.vm-open .sh-nav { visibility: hidden; }
 .vm-title { margin: var(--sp-2) 0 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); }
 .vm-hint { margin: 0; min-height: 1.4em; font-size: var(--fs-md); color: var(--c-text-2); max-width: 32ch; }
 
-/* ---- the orb ---- */
+/* ---- the core: Jarvis = cyan, Friday = amber. A soft pulse while listening, a waveform line while speaking ---- */
+.vm { --_c: var(--jarvis); --_ct: var(--jarvis-text); --_ci: var(--jarvis-ink); }
+.vm[data-persona="friday"] { --_c: var(--friday); --_ct: var(--friday-text); --_ci: var(--friday-ink); }
+.vm-who {
+  margin: 0; padding: 4px 14px; border-radius: var(--r-full); color: var(--_ct); font-size: var(--fs-xs); letter-spacing: .3em;
+  border: 1px solid color-mix(in srgb, var(--_c) 40%, transparent); background: color-mix(in srgb, var(--_c) 10%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.vm-title { font-family: var(--font-display); font-size: var(--fs-xl); letter-spacing: .12em; text-transform: uppercase; }
 .vm-orb {
   --size: min(52vw, 220px);
-  position: relative; width: var(--size); height: var(--size); border: 0; border-radius: var(--r-xl); background: none; padding: 0;
-  cursor: pointer; display: grid; place-items: center; color: var(--c-accent-ink); flex: none; -webkit-tap-highlight-color: transparent;
+  position: relative; width: var(--size); height: var(--size); border: 0; border-radius: 50%; background: none; padding: 0;
+  cursor: pointer; display: grid; place-items: center; color: var(--_ci); flex: none; -webkit-tap-highlight-color: transparent;
 }
 .vm-orb:disabled { cursor: default; opacity: .5; }
-.vm-orb__core, .vm-orb__glow, .vm-orb__ring { position: absolute; inset: 0; border-radius: var(--r-xl); pointer-events: none; }
+.vm-orb__core, .vm-orb__glow, .vm-orb__ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
 .vm-orb__core {
-  inset: 14%; background: var(--c-accent); box-shadow: var(--shadow-accent);
+  inset: 14%;
+  background: radial-gradient(circle at 38% 30%, #F8FFFF 0, var(--_c) 30%, color-mix(in srgb, var(--_c) 52%, #0a1e60) 100%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--_c) 70%, transparent), 0 0 42px -2px color-mix(in srgb, var(--_c) 65%, transparent), inset 0 -10px 22px rgb(0 0 0 / .22);
   transform: scale(calc(1 + var(--lvl) * .22)); transition: transform 70ms linear;
 }
 .vm-orb__glow {
-  background: color-mix(in oklab, var(--c-accent) 18%, transparent); border: 1px solid var(--c-accent-line);
+  background: radial-gradient(circle, color-mix(in srgb, var(--_c) 30%, transparent) 0, color-mix(in srgb, var(--_c) 10%, transparent) 55%, transparent 72%);
   opacity: calc(.35 + var(--lvl) * .65); transform: scale(calc(1.05 + var(--lvl) * .5)); transition: transform 70ms linear, opacity 70ms linear;
 }
-.vm-orb__ring { border: 2px solid color-mix(in oklab, var(--c-accent) 55%, transparent); opacity: 0; }
+.vm-orb__ring { border: 1.5px solid color-mix(in srgb, var(--_c) 60%, transparent); opacity: 0; }
 .vm-orb__icon { position: relative; display: grid; place-items: center; }
 .vm-orb__icon .ui-icon { width: 40px; height: 40px; stroke-width: 2; }
+.vm:not([data-state="listening"]) .vm-orb__core { animation: none; }
+.vm[data-state="listening"] .vm-orb__core { animation: vm-breathe 3s var(--ease-in-out) infinite; }
+@keyframes vm-breathe { 50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--_c) 70%, transparent), 0 0 64px 4px color-mix(in srgb, var(--_c) 75%, transparent), inset 0 -10px 22px rgb(0 0 0 / .22); } }
 
 .vm[data-state="listening"] .vm-orb__ring--a { animation: vm-ring 2.4s var(--ease-out) infinite; }
 .vm[data-state="listening"] .vm-orb__ring--b { animation: vm-ring 2.4s var(--ease-out) 1.2s infinite; }
@@ -54,15 +67,22 @@ html.vm-open .sh-nav { visibility: hidden; }
 @keyframes vm-think { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.04); } }
 @keyframes vm-spin { to { transform: rotate(360deg); } }
 
-.vm[data-state="speaking"] .vm-orb__core { background: var(--c-info); }
+.vm[data-state="speaking"] .vm-orb__core { filter: brightness(1.1); }
 .vm[data-state="speaking"] .vm-orb__ring--a { animation: vm-ring 1.6s var(--ease-out) infinite; }
 .vm[data-state="speaking"] .vm-orb__ring--b { animation: vm-ring 1.6s var(--ease-out) .8s infinite; }
+/* the waveform line under the core: flat while idle, live while speaking */
+.vm-wave { height: 28px; gap: 4px; }
+.vm-wave > i { width: 3px; opacity: .35; }
+.vm-wave > i:nth-child(5) { animation-duration: .8s; }
+.vm[data-state="speaking"] .vm-wave > i { opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--_c) 60%, transparent); }
+.vm-wave > i:nth-child(8) { animation-delay: -.2s !important; } .vm-wave > i:nth-child(9) { animation-delay: -.5s !important; }
 
 .vm[data-state="approval"] .vm-orb { --size: min(28vw, 110px); }
-.vm[data-state="approval"] .vm-orb__core { background: var(--c-warn); box-shadow: none; }
+.vm[data-state="approval"] .vm-orb__core { background: radial-gradient(circle at 38% 30%, #FFF8E8 0, var(--c-warn) 34%, #6a4300 100%); box-shadow: 0 0 30px -4px var(--c-warn); }
 .vm[data-state="approval"] .vm-orb__icon .ui-icon { width: 28px; height: 28px; }
 .vm[data-state="approval"] .vm-orb__glow { opacity: .3; }
-.vm[data-state="error"] .vm-orb { display: none; }
+.vm[data-state="approval"] .vm-wave { display: none; }
+.vm[data-state="error"] .vm-orb, .vm[data-state="error"] .vm-wave, .vm[data-state="error"] .vm-who { display: none; }
 .vm[data-state="error"] .vm-title { color: var(--c-bad); }
 
 /* ---- captions ---- */
@@ -102,11 +122,14 @@ html.vm-open .sh-nav { visibility: hidden; }
 
 @media (max-height: 620px) {
   .vm-orb { --size: min(36vw, 140px); }
+  .vm-wave { height: 20px; }
   .vm-title { font-size: var(--fs-xl); }
 }
 @media (prefers-reduced-motion: reduce) {
   .vm-orb__core, .vm-orb__glow { transition: none; }
+  .vm-orb__core, .vm-orb__ring, .vm-wave > i { animation: none !important; }
 }
+html[data-motion="reduce"] :is(.vm-orb__core, .vm-orb__ring, .vm-wave > i) { animation: none !important; }
 
 /* ---- Friday: laptop-prep readout (the exact items, in full) ---- */
 .vm-fr { flex: none; max-width: var(--content-max); width: 100%; margin: 0 auto var(--sp-3); display: grid; gap: var(--sp-2); }
@@ -123,5 +146,6 @@ html.vm-open .sh-nav { visibility: hidden; }
 .vm-fr__btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: var(--sp-2); }
 .vm-fr__btns .ui-btn { min-height: 56px; }
 .vm.has-fr .vm-orb { --size: min(30vw, 120px); }
+.vm.has-fr .vm-wave, .vm.has-approval .vm-wave { display: none; }
 .vm.has-fr .vm-cap--ai { max-height: 4.5em; }
 .vm.has-fr .vm-foot { display: none; }

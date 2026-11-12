@@ -13,11 +13,13 @@ function ensureStyle() {
   if (document.getElementById("fc-style")) return;
   const style = document.createElement("style");
   style.id = "fc-style";
-  style.textContent = `.fc-chip{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px;border:1px solid var(--c-bad,#e5484d);
-    border-radius:999px;background:transparent;color:var(--c-bad,#e5484d);font:600 11px/1.6 inherit;letter-spacing:.04em;cursor:pointer}
+  style.textContent = `.fc-chip{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:2px 10px;border:1px solid color-mix(in srgb,var(--c-warn,#ffb02e) 60%,transparent);
+    border-radius:999px;background:color-mix(in srgb,var(--c-warn,#ffb02e) 14%,transparent);color:var(--c-warn,#ffb02e);font-family:inherit;font-weight:700;font-size:10.5px;line-height:1.7;letter-spacing:.14em;cursor:pointer;
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 0 16px -6px var(--c-warn,#ffb02e)}
+    .fc-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
     .fc-chip[hidden]{display:none}
-    .fc-chip--float{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);right:8px;z-index:50;background:var(--c-bg,#000)}
-    .fc-input{width:100%;box-sizing:border-box;padding:12px;font:inherit;border-radius:10px;border:1px solid var(--c-line-strong,#888);background:var(--c-bg-2,transparent);color:inherit}`;
+    .fc-chip--float{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);right:8px;z-index:50;background:var(--c-glass-strong,#000)}
+    .fc-input{width:100%;box-sizing:border-box;padding:12px;font:inherit;border-radius:12px;border:1px solid var(--c-line-strong,#888);background:var(--c-input,transparent);color:inherit}`;
   document.head.append(style);
 }
 

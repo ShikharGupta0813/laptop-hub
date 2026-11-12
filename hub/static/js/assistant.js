@@ -218,7 +218,34 @@ export function init(container, ctx) {
   const pill = el("div", { class: "as-pill" }, micButton, input, voiceButton, sendButton, stopButton);
   const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip), pill);
 
-  const root = el("div", { class: "as-root" }, toolbar, optionsPanel, autoBanner, listWrap, composer);
+  // The core: Jarvis = cyan orb, Friday = amber orb. It follows whoever answered last (persona routing is server-side,
+  // by a leading name), pulses while the assistant works and shows a waveform line while words stream in.
+  const coreOrb = el("span", { class: "ui-core as-core__orb", "data-persona": "jarvis", "data-state": "idle", "aria-hidden": "true" });
+  const coreName = el("span", { class: "as-core__name" }, "Jarvis");
+  const coreStatus = el("span", { class: "as-core__status" }, "Ready");
+  const coreWave = el("span", { class: "ui-wave as-core__wave", "aria-hidden": "true" }, ...Array.from({ length: 7 }, () => el("i")));
+  const core = el("div", { class: "as-core", "data-persona": "jarvis", "data-state": "idle", role: "status", "aria-live": "off" },
+    coreOrb, el("div", { class: "as-core__txt" }, coreName, coreStatus), coreWave);
+  let curPersona = "jarvis";
+  const PERSONA_NAME = { jarvis: "Jarvis", friday: "Friday" };
+  function setCore(state, persona) {
+    if (persona) {
+      curPersona = persona === "friday" ? "friday" : "jarvis";
+      core.dataset.persona = curPersona; coreOrb.dataset.persona = curPersona; coreName.textContent = PERSONA_NAME[curPersona];
+    }
+    if (state) {
+      core.dataset.state = state; coreOrb.dataset.state = state;
+      coreStatus.textContent = { idle: "Ready", thinking: "Working…", speaking: "Answering", listening: "Listening" }[state] || "Ready";
+    }
+  }
+  // "Friday, …" / "Jarvis, …" route on the server; mirror that so the right core lights up
+  function personaFor(text, explicit) {
+    if (explicit === "friday" || explicit === "jarvis") return explicit;
+    const m = /^\s*(?:(?:hey|ok|okay)[,\s]+)?(friday|jarvis)\b/i.exec(text || "");
+    return m ? m[1].toLowerCase() : "jarvis";
+  }
+
+  const root = el("div", { class: "as-root" }, core, toolbar, optionsPanel, autoBanner, listWrap, composer);
   container.replaceChildren(root);
   list.append(empty);
   // No saved choice: use the hub's default AI (Claude key, Gemini, Claude login or local) once it is known.
@@ -324,6 +351,7 @@ export function init(container, ctx) {
 
   function setBusy(busy) {
     streaming = busy;
+    setCore(busy ? "thinking" : "idle");
     micButton.disabled = busy || micState === "transcribing";
     root.classList.toggle("is-busy", busy);
     list.setAttribute("aria-busy", String(busy));
@@ -377,8 +405,9 @@ export function init(container, ctx) {
 
   function makeBubble() {
     const node = el("div", { class: "as-bubble markdown", "aria-busy": "true" });
-    const wrap = el("div", { class: "as-msg as-assistant" }, node);
+    const wrap = el("div", { class: "as-msg as-assistant", "data-persona": curPersona }, node);
     append(wrap);
+    setCore("speaking");
     return { node, wrap, raw: "", timer: null, last: 0 };
   }
 
@@ -618,7 +647,8 @@ export function init(container, ctx) {
     controller = new AbortController();
     const signal = controller.signal;
     setBusy(true);
-    t.typing = append(el("div", { class: "as-msg as-assistant as-typing", "aria-label": "The assistant is working" },
+    setCore(null, personaFor(text, persona));
+    t.typing = append(el("div", { class: "as-msg as-assistant as-typing", "data-persona": curPersona, "aria-label": "The assistant is working" },
       el("div", { class: "as-bubble" }, el("span", { class: "as-dots", "aria-hidden": "true" }, el("i"), el("i"), el("i")))));
 
     try {

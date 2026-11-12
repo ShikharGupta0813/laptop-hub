@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v16-today-2026.11";
+const VERSION = "v17-arc-glass-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
@@ -9,7 +9,7 @@ const SHELL = [
   "/css/hub.css", "/css/inbox.css", "/css/journal.css", "/css/kb.css", "/css/learn.css", "/css/notes.css",
   "/css/notifications.css", "/css/reminders.css", "/css/screen.css", "/css/settings.css", "/css/shell.css",
   "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/js/today.js",
-  "/js/fullcontrol.js",
+  "/js/fullcontrol.js", "/js/wheel.js", "/css/wheel.css", "/vendor/fonts/orbitron-var-latin.woff2",
   "/js/speechchunk.js",
   "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js", "/js/bookmarks.js", "/js/boot.js",
   "/js/cards.js", "/js/english.js", "/js/expenses.js", "/js/fileeditor.js", "/js/files.js", "/js/focus.js",

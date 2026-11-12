@@ -563,49 +563,49 @@ export function clockTime(value) {
 }
 
 // ---- themes and accents -------------------------------------------------------------------------
-// The theme is saved as redline | slate | paper | auto. <html data-theme> always holds a resolved theme
-// (auto becomes redline or paper), so CSS never needs an "auto" block. Old saved names still work.
+// The theme is saved as arc | paper | auto. <html data-theme> always holds a resolved theme (auto becomes arc or
+// paper), so CSS never needs an "auto" block. Old saved names (redline, slate, midnight, aurora) become arc and
+// daylight becomes paper, so nothing saved before the ARC-Glass redesign breaks. Keep in sync with boot.js.
 export const THEMES = [
-  { id: "redline", label: "Redline", icon: "prompt", note: "default", accent: "crimson" },
-  { id: "slate", label: "Slate", icon: "terminal", note: "graphite", accent: "amber" },
-  { id: "paper", label: "Paper", icon: "sun", note: "light", accent: "crimson" },
+  { id: "arc", label: "Arc", icon: "prompt", note: "dark glass", accent: "cyan" },
+  { id: "paper", label: "Paper", icon: "sun", note: "light", accent: "cyan" },
   { id: "auto", label: "Auto", icon: "refresh", note: "system" },
 ];
 export const ACCENTS = [
-  { id: "crimson", label: "Crimson", swatch: "#FF5368" },
-  { id: "amber", label: "Amber", swatch: "#FFB454" },
-  { id: "cyan", label: "Cyan", swatch: "#79C0FF" },
-  { id: "green", label: "Green", swatch: "#7EE787" },
-  { id: "white", label: "White", swatch: "#E0E3E8" },
+  { id: "cyan", label: "Cyan", swatch: "#5EE7FF" },
+  { id: "amber", label: "Amber", swatch: "#FFB02E" },
+  { id: "green", label: "Green", swatch: "#4FF0A8" },
+  { id: "violet", label: "Violet", swatch: "#A78BFA" },
+  { id: "white", label: "White", swatch: "#E6EEF5" },
 ];
-const OLD_THEMES = { midnight: "redline", daylight: "paper", aurora: "slate" };
-const OLD_ACCENTS = { indigo: "crimson", violet: "crimson", rose: "crimson", blue: "cyan", teal: "cyan" };
-const THEME_BG = { redline: "#08090D", slate: "#0D0E10", paper: "#F3EEE6" };
+const OLD_THEMES = { redline: "arc", slate: "arc", midnight: "arc", aurora: "arc", daylight: "paper" };
+const OLD_ACCENTS = { crimson: "cyan", indigo: "violet", rose: "cyan", blue: "cyan", teal: "cyan" };
+const THEME_BG = { arc: "#05070C", paper: "#E9F0F7" };
 function read(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; } }
 function write(key, value) { try { localStorage.setItem(key, value); } catch (_) { /* private mode */ } }
 
 export function getTheme() {
-  const t = read("hub.theme", "redline");
+  const t = read("hub.theme", "arc");
   const id = OLD_THEMES[t] || t;
-  return THEMES.some((x) => x.id === id) ? id : "redline";
+  return THEMES.some((x) => x.id === id) ? id : "arc";
 }
 export function getAccent() {
   const a = read("hub.accent", "");
   const id = OLD_ACCENTS[a] || a;
   if (ACCENTS.some((x) => x.id === id)) return id;
-  return getTheme() === "slate" ? "amber" : "crimson";   // nothing saved: the theme's signature accent
+  return "cyan";   // nothing saved (or an unknown value): arc-cyan
 }
-// The theme actually on screen: redline | slate | paper.
+// The theme actually on screen: arc | paper.
 export function resolvedTheme() {
   const t = getTheme();
   if (t !== "auto") return t;
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "paper" : "redline";
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "paper" : "arc";
 }
 export function isLightTheme() { return resolvedTheme() === "paper"; }
 function applyTheme() {
   document.documentElement.dataset.theme = resolvedTheme();
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", THEME_BG[resolvedTheme()] || THEME_BG.redline);
+  if (meta) meta.setAttribute("content", THEME_BG[resolvedTheme()] || THEME_BG.arc);
 }
 export function setTheme(id) {
   id = OLD_THEMES[id] || id;
@@ -637,9 +637,9 @@ export function appearancePanel() {
     for (const b of themeRow.children) b.setAttribute("aria-checked", String(b.dataset.value === getTheme()));
     for (const b of accentRow.children) b.setAttribute("aria-checked", String(b.dataset.value === getAccent()));
   };
-  const signature = (id) => THEMES.find((t) => t.id === id)?.accent || "crimson";
+  const signature = (id) => THEMES.find((t) => t.id === id)?.accent || "cyan";
   for (const t of THEMES) {
-    const sample = t.id === "slate" ? "~/ok" : t.id === "paper" ? "~/doc" : t.id === "auto" ? "~/sys" : "~/run";
+    const sample = t.id === "paper" ? "~/doc" : t.id === "auto" ? "~/sys" : "~/arc";
     themeRow.append(el("button", { type: "button", role: "radio", class: "ui-theme-card", "data-value": t.id,
       onclick: () => {
         haptic("select");
@@ -659,7 +659,19 @@ export function appearancePanel() {
     accentRow.append(sw);   // swatch colours live in design.css, per theme
   }
   paint();
+  // the floating assistant wheel (js/wheel.js listens for "hub:wheel"); default ON
+  let wheelOn = true;
+  try { wheelOn = localStorage.getItem("hub.wheel") !== "0"; } catch (_) { /* private mode */ }
+  const wheelSwitch = switchControl({ checked: wheelOn, label: "Assistant wheel", onChange: (on) => {
+    try { localStorage.setItem("hub.wheel", on ? "1" : "0"); } catch (_) { /* private mode */ }
+    window.dispatchEvent(new CustomEvent("hub:wheel", { detail: { on } }));
+  } });
+  const wheelRow = el("div", { class: "ui-row", style: "padding-left:0;padding-right:0" },
+    el("div", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Assistant wheel"),
+      el("span", { class: "ui-row__sub ui-row__sub--wrap" }, "A floating orb above the tab bar that fans out Talk, Apps, Files, Terminal and Screen.")),
+    wheelSwitch);
   return el("div", { class: "ui-stack" },
     el("p", { class: "ui-eyebrow" }, el("b", {}, "01"), "Theme"), themeRow,
-    el("p", { class: "ui-eyebrow" }, el("b", {}, "02"), "Accent"), accentRow);
+    el("p", { class: "ui-eyebrow" }, el("b", {}, "02"), "Accent"), accentRow,
+    el("p", { class: "ui-eyebrow" }, el("b", {}, "03"), "Shortcuts"), wheelRow);
 }

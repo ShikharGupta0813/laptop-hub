@@ -6,6 +6,23 @@
   min-width: 0; overflow: hidden; max-width: var(--content-max); margin: 0 auto;
 }
 
+/* ---- core header: Jarvis cyan / Friday amber ---- */
+#view-assistant .as-core {
+  --_c: var(--jarvis); --_ct: var(--jarvis-text);
+  flex: none; display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-2) var(--gutter) 0; padding: 6px 14px 6px 8px; min-width: 0;
+  border-radius: var(--r-full); background: var(--c-surface-1); border: 1px solid color-mix(in srgb, var(--_c) 32%, var(--c-line));
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); box-shadow: var(--shadow-2), 0 0 24px -12px var(--_c);
+}
+#view-assistant .as-core[data-persona="friday"] { --_c: var(--friday); --_ct: var(--friday-text); }
+#view-assistant .as-core__orb { --core: 34px; }
+#view-assistant .as-core__txt { display: grid; min-width: 0; flex: 1; line-height: 1.2; }
+#view-assistant .as-core__name { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--_ct); }
+#view-assistant .as-core__status { font-size: var(--fs-2xs); letter-spacing: .14em; text-transform: uppercase; color: var(--c-text-2); }
+#view-assistant .as-core__wave { height: 20px; }
+#view-assistant .as-core[data-state="speaking"] .as-core__wave > i, #view-assistant .as-core[data-state="thinking"] .as-core__wave > i { opacity: 1; }
+#view-assistant .as-core[data-state="thinking"] .as-core__wave > i { animation: ui-wave 1.6s var(--ease-in-out) infinite; }
+#view-assistant .as-core[data-state="thinking"] .as-core__orb { animation: ui-core-pulse 1.6s var(--ease-in-out) infinite; }
+
 /* ---- toolbar (the top bar is the header, so this has no background of its own) ---- */
 #view-assistant .as-bar { flex: none; display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--gutter) var(--sp-1); }
 #view-assistant .as-bar .ui-seg { min-width: 176px; }
@@ -13,10 +30,10 @@
 #view-assistant .as-opt { cursor: pointer; }
 #view-assistant .as-autobanner {
   flex: none; display: flex; align-items: center; gap: var(--sp-2); margin: 0 var(--gutter) var(--sp-1); padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
-  border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--c-bad-soft); color: var(--c-text);
-  border: 1px solid color-mix(in oklab, var(--c-bad) 40%, transparent);
+  border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--c-warn-soft); color: var(--c-text);
+  border: 1px solid color-mix(in oklab, var(--c-warn) 50%, transparent);
 }
-#view-assistant .as-autobanner .ui-icon { color: var(--c-bad); width: 20px; height: 20px; flex: none; }
+#view-assistant .as-autobanner .ui-icon { color: var(--c-warn); width: 20px; height: 20px; flex: none; }
 
 /* ---- message list ---- */
 #view-assistant .as-listwrap { position: relative; flex: 1; min-height: 0; display: flex; }
@@ -35,8 +52,9 @@
 #view-assistant .as-empty h2 { margin: 0; font-size: var(--fs-xl); letter-spacing: -0.01em; }
 #view-assistant .as-empty p { margin: 0; max-width: 36ch; font-size: var(--fs-md); }
 #view-assistant .as-empty-orb {
-  width: 64px; height: 64px; border-radius: var(--r-lg); display: grid; place-items: center; color: var(--c-accent-text);
-  background: var(--c-surface-1); border: 1px solid var(--c-accent-line); box-shadow: inset 0 2px 0 var(--c-accent);
+  width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; color: var(--jarvis-ink);
+  background: radial-gradient(circle at 38% 30%, #F8FFFF 0, var(--jarvis) 34%, color-mix(in srgb, var(--jarvis) 50%, #0a1e60) 100%);
+  border: 1px solid color-mix(in srgb, var(--jarvis) 60%, transparent); box-shadow: 0 0 36px -4px color-mix(in srgb, var(--jarvis) 65%, transparent);
 }
 #view-assistant .as-empty-orb .ui-icon { width: 32px; height: 32px; }
 #view-assistant .as-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin: var(--sp-1) 0; }
@@ -53,7 +71,19 @@
   background: var(--c-accent-soft); color: var(--c-text); border-bottom-right-radius: var(--r-xs); white-space: pre-wrap;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c-accent) 25%, transparent);
 }
-#view-assistant .as-assistant .as-bubble { background: var(--c-surface-2); border-bottom-left-radius: var(--r-xs); }
+#view-assistant .as-assistant .as-bubble {
+  background: var(--c-surface-1); border-bottom-left-radius: var(--r-xs); border: 1px solid var(--c-line);
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
+}
+/* the speaker's mini core: cyan for Jarvis, amber for Friday, with a matching edge on the bubble */
+#view-assistant .as-assistant[data-persona] { --_c: var(--jarvis); }
+#view-assistant .as-assistant[data-persona="friday"] { --_c: var(--friday); }
+#view-assistant .as-assistant[data-persona]::before {
+  content: ""; flex: none; align-self: flex-end; width: 18px; height: 18px; margin: 0 2px 6px 0; border-radius: 50%;
+  background: radial-gradient(circle at 40% 34%, #fff 0, var(--_c) 40%, color-mix(in srgb, var(--_c) 40%, transparent) 100%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--_c) 60%, transparent);
+}
+#view-assistant .as-assistant[data-persona] .as-bubble { border-color: color-mix(in srgb, var(--_c) 26%, var(--c-line)); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--_c) 70%, transparent); }
 #view-assistant .as-assistant .as-bubble > :first-child { margin-top: 0; }
 #view-assistant .as-assistant .as-bubble > :last-child { margin-bottom: 0; }
 #view-assistant .as-assistant .as-bubble p { margin: .5em 0; }
@@ -126,7 +156,8 @@
 /* ---- composer: a pill with mic, input, and a right-hand slot (voice / send / stop) ---- */
 #view-assistant .as-composer { flex: none; padding: var(--sp-2) var(--gutter) var(--sp-2); }
 #view-assistant .as-pill {
-  display: flex; align-items: flex-end; gap: 2px; padding: 4px; border-radius: var(--r-lg); background: var(--c-surface-1);
+  display: flex; align-items: flex-end; gap: 2px; padding: 4px; border-radius: 26px; background: var(--c-glass);
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
   border: 1px solid var(--c-line-strong); box-shadow: var(--shadow-1); transition: border-color var(--dur-fast);
 }
 #view-assistant .as-pill:focus-within { border-color: var(--c-accent); }
@@ -135,9 +166,9 @@
   border: 0; background: none; box-shadow: none; outline: none; font-size: var(--fs-base); overflow-y: auto;
 }
 #view-assistant .as-pill .ui-btn { flex: none; }
-#view-assistant .as-mic.is-recording { background: var(--c-bad); color: var(--c-accent-ink); animation: as-pulse 1.4s infinite; }
+#view-assistant .as-mic.is-recording { background: var(--c-warn); color: #1A0F00; animation: as-pulse 1.4s infinite; }
 #view-assistant .as-mic.is-unavailable { color: var(--c-text-3); }
-@keyframes as-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-bad) 50%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+@keyframes as-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-warn) 50%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
 #view-assistant .as-notice {
   margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); font-size: var(--fs-sm);
   border: 1px solid color-mix(in oklab, var(--c-warn) 50%, transparent); background: var(--c-warn-soft); overflow-wrap: anywhere;
@@ -166,6 +197,7 @@
 /* phone landscape (844x390): collapse the composer chrome so the conversation keeps real height */
 @media (orientation: landscape) and (max-height: 500px) {
   #view-assistant .as-bar { padding-top: 2px; padding-bottom: 0; }
+  #view-assistant .as-core { display: none; }
   #view-assistant .as-friday-row { display: none; }
   #view-assistant .as-composer { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
   #view-assistant .as-input { max-height: 72px; }

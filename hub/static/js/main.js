@@ -6,6 +6,7 @@
 import { api, ApiError } from "./api.js";
 import * as ui from "./ui.js";
 import { openSearch } from "./omnibox.js";
+import { mountWheel } from "./wheel.js";
 
 // ---- the registry: adding a screen is one line ----------------------------------------------------
 // id: also the DOM id (#view-<id>) and the hash (#/<id>). path: module, loaded on first open.
@@ -207,6 +208,7 @@ function paintChrome(v) {
     if (on) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
     button.setAttribute("aria-selected", String(on));
   }
+  $("app").dataset.view = v.id;   // lets css/wheel.css step the wheel aside on screens with their own corner controls
   const pill = document.querySelector(".sh-pill");
   if (pill) { pill.style.setProperty("--i", String(Math.max(0, i))); pill.classList.toggle("is-off", i < 0); }
   const bar = $("appbar");
@@ -340,6 +342,7 @@ function buildChrome() {
       } }, ui.icon(v.icon), ui.el("span", {}, v.label)));
   }
   nav.replaceChildren(dock);
+  mountWheel($("views"), ctx);   // the floating assistant wheel, above the tab bar
 
   // "/" or Ctrl+K opens search on a keyboard.
   document.addEventListener("keydown", (e) => {

@@ -20,8 +20,8 @@ Rules
 - Keep all existing behaviour when restyling an old screen: change presentation, not protocol.
 - Verify with Playwright (require('playwright'), chromium.launch(), viewport 390x844, deviceScaleFactor 2) against
   `python -m hub.devserver --port <your port>` started in the background (token `devtoken`, demo data seeded, fake models); log in with
-  the token, exercise every state, screenshot the Redline, Slate and Paper themes (set localStorage `hub.theme` to `redline|slate|paper`;
-  old `midnight|daylight|aurora` values are migrated on load), also at 360x640 and 844x390, READ the PNGs
+  the token, exercise every state, screenshot the Arc and Paper themes (set localStorage `hub.theme` to `arc|paper`;
+  old `redline|slate|midnight|daylight|aurora` values are migrated on load), also at 360x640 and 844x390, READ the PNGs
   yourself and iterate until polished. Check there are no console errors or CSP violations. Kill your devserver at the end.
   Save screenshots under /tmp/claude-0/shots/<your-area>/.
 - Do not git commit. Final report under 200 words: files, what works, what is unverified.

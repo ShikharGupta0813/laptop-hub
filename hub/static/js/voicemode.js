@@ -99,6 +99,9 @@ export function openVoiceMode(host) {
     el("span", { class: "vm-orb__glow", "aria-hidden": "true" }),
     el("span", { class: "vm-orb__core", "aria-hidden": "true" }),
     el("span", { class: "vm-orb__icon", "aria-hidden": "true" }));
+  // persona: Jarvis = cyan core, Friday = amber core (css keys off data-persona on the overlay)
+  const who = el("p", { class: "vm-who ui-caps", "aria-hidden": "true" }, names.jarvis);
+  const wave = el("span", { class: "vm-wave ui-wave", "aria-hidden": "true" }, ...Array.from({ length: 9 }, () => el("i")));
   const title = el("h2", { class: "vm-title", id: "vm-title" });
   const hint = el("p", { class: "vm-hint" });
   const userCap = el("p", { class: "vm-cap vm-cap--user" });
@@ -131,7 +134,7 @@ export function openVoiceMode(host) {
   const foot = el("p", { class: "vm-foot" }, "Say “stop”, “cancel” or “new chat”. Tap the orb to interrupt.");
 
   const root = el("div", { class: "vm", id: "vm-overlay", role: "dialog", "aria-modal": "true", "aria-labelledby": "vm-title", "data-state": "listening" },
-    top, el("div", { class: "vm-stage" }, orb, title, hint, captions, errBox), frPanel, approval, foot);
+    top, el("div", { class: "vm-stage" }, who, orb, wave, title, hint, captions, errBox), frPanel, approval, foot);
   document.body.append(root);
   document.documentElement.classList.add("vm-open");
   release = ui.pushLayer(() => close(true));
@@ -146,6 +149,14 @@ export function openVoiceMode(host) {
     if (!on) cancelSpeech();
   }
   setTts(ttsOn);
+
+  function setPersona(p) {
+    const key = p === "friday" ? "friday" : "jarvis";
+    root.dataset.persona = key;
+    who.textContent = key === "friday" ? (fr?.personaName?.() || "Friday") : names.jarvis;
+  }
+  root.dataset.persona = host.friday ? "friday" : "jarvis";
+  if (host.friday) who.textContent = "Friday";
 
   function setState(next, extraHint) {
     if (!alive) return;
@@ -557,6 +568,7 @@ export function openVoiceMode(host) {
       if (info) names = { jarvis: info.jarvis_name || "Jarvis", call: info.display_name || "" };
     } catch (_) { /* older hub: names stay default */ }
     if (!alive) return;
+    setPersona(host.friday ? "friday" : "jarvis");
     if (frOn) {
       top.querySelector(".vm-top__mid").firstChild.textContent = `${fr.personaName()} `;
       renderPanel();
@@ -611,6 +623,7 @@ export function openVoiceMode(host) {
       let persona = host.friday ? "friday" : "";
       if (routed.persona) {
         persona = routed.persona;
+        setPersona(persona);
         text = routed.text;
         if (!text) { userCap.textContent = `“${routed.persona === "friday" ? "Friday" : names.jarvis}”`; await say(`Yes${names.call ? ", " + names.call : ""}?`, { raw: true }); continue; }
       }

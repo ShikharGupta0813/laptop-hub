@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <title>REDLINE</title>
-  <rect width="512" height="512" fill="#05060A"/>
-  <g transform="translate(256 256) scale(.72) translate(-256 -256)" fill="#FF5368">
+  <rect width="512" height="512" fill="#05070C"/>
+  <g transform="translate(256 256) scale(.72) translate(-256 -256)" fill="#5EE7FF">
     <rect x="123" y="128" width="44" height="256"/>
-    <path d="M145 150H260a58 58 0 0 1 0 116H145" fill="none" stroke="#FF5368" stroke-width="44"/>
+    <path d="M145 150H260a58 58 0 0 1 0 116H145" fill="none" stroke="#5EE7FF" stroke-width="44"/>
     <path d="M247.3 253.8 210.7 278.2 305.5 419.8 342.1 395.4Z" clip-path="url(#c)"/>
     <rect x="350" y="340" width="40" height="44"/>
   </g>

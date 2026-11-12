@@ -5,34 +5,111 @@
 #view-home .hm { max-width: var(--content-max); margin: 0 auto; display: grid; gap: var(--sp-6); padding-top: var(--sp-3); min-width: 0; }
 #view-home .hm > * { min-width: 0; }
 
-/* hero: ~/home — zsh */
-#view-home .hm-hero-body { display: grid; gap: var(--sp-2); padding: var(--sp-4) var(--sp-4) var(--sp-3); }
-#view-home .hm-cmd { margin: 0; }
+/* greeting */
+#view-home .hm-greet { display: grid; gap: 4px; padding: 0 2px; }
+#view-home .hm-kicker { margin: 0; color: var(--c-accent-text); }
 #view-home .hm-hello {
-  margin: 0; font-size: var(--fs-2xl); line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; overflow-wrap: anywhere;
+  margin: 0; font-size: var(--fs-xl); line-height: 1.25; font-weight: 600; letter-spacing: .01em; overflow-wrap: anywhere;
 }
-#view-home .hm-hello-greet { color: var(--c-text-2); font-weight: 600; }
-#view-home .hm-name { display: inline-block; color: var(--c-text); }
-#view-home .hm-hello .ui-cursor { width: .5em; height: .95em; vertical-align: -0.1em; margin-left: .2em; }
+#view-home .hm-hello-greet { color: var(--c-text-2); font-weight: 500; }
+#view-home .hm-name { display: inline-block; color: var(--c-text); font-family: var(--font-display); font-weight: 700; letter-spacing: .06em; }
+#view-home .hm-hello .ui-cursor { width: .45em; height: .9em; vertical-align: -0.1em; margin-left: .2em; border-radius: 1px; }
 #view-home .hm-date { margin: 0; }
-#view-home .hm-status { margin: var(--sp-1) 0 0; font-size: var(--fs-sm); }
+
+/* the reactor: a conic gauge in the middle, six glass nodes on a hexagon around it. Everything is a % of the stage,
+ * so it scales from 300px to 430px wide without media queries (and below 340px it folds to a 2x3 grid). */
+#view-home .hm-reactor { display: grid; place-items: center; min-width: 0; margin: var(--sp-1) 0 0; }
+#view-home .hm-stage { position: relative; width: min(100%, 372px); aspect-ratio: 1; min-width: 0; }
+#view-home .hm-orbit { /* the faint orbit the nodes ride on */
+  position: absolute; left: 11%; top: 11%; width: 78%; height: 78%; border-radius: 50%; pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--c-accent) 26%, transparent);
+}
+#view-home .hm-orbit::before, #view-home .hm-orbit::after { content: ""; position: absolute; left: 50%; width: 1px; height: 14px; background: var(--c-accent-line); }
+#view-home .hm-orbit::before { top: -7px; } #view-home .hm-orbit::after { bottom: -7px; }
+#view-home .hm-ring {
+  --_tone: var(--c-accent);
+  position: absolute; left: 50%; top: 50%; width: 52%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  border: 0; padding: 0; background: none; border-radius: 50%; cursor: pointer; color: var(--c-text); display: grid; place-items: center;
+}
+#view-home .hm-ring[data-tone="warn"] { --_tone: var(--c-warn); }
+#view-home .hm-ring[data-tone="bad"] { --_tone: var(--c-bad); }
+#view-home .hm-ring[data-tone="good"] { --_tone: var(--c-good); }
+#view-home .hm-ring-gauge {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--_tone) calc(var(--p, 0) * 1turn), var(--c-surface-3) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 11px), #000 calc(100% - 10px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 11px), #000 calc(100% - 10px));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--_tone) 55%, transparent));
+  transition: background .6s var(--ease-out);
+}
+#view-home .hm-ring-ticks { /* fine 1px telemetry ticks just outside the gauge */
+  position: absolute; inset: -9px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from -.5deg, color-mix(in srgb, var(--_tone) 55%, transparent) 0 1deg, transparent 1deg 7.5deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  opacity: .7;
+}
+#view-home .hm-ring-core {
+  position: relative; width: 78%; aspect-ratio: 1; border-radius: 50%; display: grid; place-content: center; justify-items: center; gap: 2px; text-align: center;
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--_tone) 26%, transparent), color-mix(in srgb, var(--c-bg-deep) 70%, transparent) 68%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_tone) 30%, transparent), inset 0 0 28px -6px color-mix(in srgb, var(--_tone) 40%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  animation: hm-breathe 4.2s var(--ease-in-out) infinite;
+}
+@keyframes hm-breathe { 50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_tone) 45%, transparent), inset 0 0 38px -4px color-mix(in srgb, var(--_tone) 55%, transparent); } }
+#view-home .hm-ring-val { font-size: clamp(22px, 8.4vw, 34px); font-weight: 700; line-height: 1; color: var(--c-text); }
+#view-home .hm-ring-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--_tone); font-weight: 700; }
+#view-home .hm-ring-sub { font-family: var(--font-mono); font-size: 10px; color: var(--c-text-2); max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-home .hm-node {
+  position: absolute; left: var(--x); top: var(--y); width: 17%; aspect-ratio: 1; min-width: 52px; transform: translate(-50%, -50%);
+  display: grid; place-content: center; justify-items: center; gap: 3px; padding: 0; border-radius: 50%; cursor: pointer;
+  background: var(--c-surface-1); border: 1px solid var(--c-line-strong); color: var(--c-text);
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
+  box-shadow: var(--shadow-2), 0 0 18px -8px var(--c-accent);
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast), box-shadow var(--dur-fast);
+  animation: ui-rise var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 50ms + 80ms);
+}
+#view-home .hm-node .ui-icon { width: 20px; height: 20px; color: var(--c-accent-text); }
+#view-home .hm-node-label { font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--c-text-2); line-height: 1; }
+#view-home .hm-node:hover { border-color: var(--c-accent-line); }
+#view-home .hm-node:active { transform: translate(-50%, -50%) scale(.94); border-color: var(--c-accent); }
+#view-home .hm-node[data-persona="jarvis"] { border-color: color-mix(in srgb, var(--jarvis) 45%, transparent); box-shadow: var(--shadow-2), 0 0 20px -6px var(--jarvis); }
+#view-home .hm-node[data-persona="jarvis"] .ui-icon { color: var(--jarvis-text); }
+#view-home .hm-node[data-persona="friday"] { border-color: color-mix(in srgb, var(--friday) 50%, transparent); box-shadow: var(--shadow-2), 0 0 20px -6px var(--friday); }
+#view-home .hm-node[data-persona="friday"] .ui-icon { color: var(--friday-text); }
+#view-home .hm-node[data-persona="friday"] .hm-node-label { color: var(--friday-text); }
+#view-home .hm-node[data-persona="jarvis"] .hm-node-label { color: var(--jarvis-text); }
+@media (max-width: 339px) {   /* too narrow for a ring of nodes: gauge on top, 2x3 grid below */
+  #view-home .hm-stage { aspect-ratio: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); width: 100%; }
+  #view-home .hm-orbit { display: none; }
+  #view-home .hm-ring { position: relative; left: auto; top: auto; transform: none; grid-column: 1 / -1; width: 62%; margin: 0 auto var(--sp-3); }
+  #view-home .hm-node { position: relative; left: auto; top: auto; transform: none; width: 100%; min-width: 0; border-radius: var(--r-lg); aspect-ratio: 1.15; }
+  #view-home .hm-node:active { transform: scale(.96); }
+}
+@media (prefers-reduced-motion: reduce) { #view-home .hm-ring-core { animation: none; } }
+html[data-motion="reduce"] #view-home .hm-ring-core { animation: none; }
+
+/* telemetry window */
+#view-home .hm-hero-body { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
+#view-home .hm-status { margin: 0; font-size: var(--fs-sm); }
 #view-home .hm-kv { grid-template-columns: 8ch minmax(0, 1fr); min-height: 28px; align-items: center; padding: 0; }
 #view-home .hm-kv--btn {
   grid-template-columns: 8ch minmax(0, 1fr) auto; min-height: var(--tap); width: calc(100% + 16px); margin: 0 -8px; padding: 0 8px;
   border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--r-sm);
 }
-#view-home .hm-kv--btn:hover { background: var(--c-surface-2); }
+#view-home .hm-kv--btn:hover { background: rgb(255 255 255 / .05); }
 #view-home .hm-kv--btn:active { background: var(--c-surface-3); }
 #view-home .hm-kv--btn > .ui-icon { width: 15px; height: 15px; color: var(--c-text-3); }
 #view-home .hm-led-v { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 #view-home .hm-led-v .ui-led { flex: none; }
-#view-home .hm-hero .ui-dash { margin: var(--sp-2) 0 var(--sp-1); }
+#view-home .hm-hero .ui-dash { margin: var(--sp-1) 0; }
 #view-home .hm-tagline { margin: 0; color: var(--c-text-3); }
 
 /* jump to anything: a prompt line */
 #view-home .hm-jump {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 0 10px 0 14px;
-  border-radius: var(--r-lg); border: 1px solid var(--c-line-strong); background: var(--c-bg-2); color: var(--c-text-3);
+  border-radius: var(--r-full); border: 1px solid var(--c-line-strong); background: var(--c-surface-1); color: var(--c-text-3);
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
   font-family: var(--font-mono); font-size: var(--fs-md); text-align: left; cursor: text;
   transition: border-color var(--dur-fast);
 }
@@ -54,6 +131,7 @@
 #view-home .hm-qa {
   width: 76px; display: grid; justify-items: center; align-content: start; gap: 8px; padding: 10px 0 9px;
   border: 1px solid var(--c-line); background: var(--c-surface-1); color: var(--c-text); cursor: pointer; border-radius: var(--r-lg);
+  -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); box-shadow: var(--shadow-2);
   transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 #view-home .hm-qa:hover { border-color: var(--c-line-strong); }

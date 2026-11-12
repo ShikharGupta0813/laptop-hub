@@ -140,17 +140,54 @@ export function init(container, ctx) {
   let userName = "";
   let loading = null;
 
-  // hero: a terminal window running `$ whoami`, like the portfolio's landing
+  // greeting + the reactor: a circular status gauge ringed by six glass shortcut nodes
   const hello = el("h1", { class: "hm-hello" });
   const date = el("span", {});
+  const greet = el("header", { class: "hm-greet" },
+    el("p", { class: "ui-tagline hm-kicker" }, "arc // standing by"),
+    hello,
+    el("p", { class: "ui-tag hm-date" }, el("b", {}, "date"), date));
+
+  const ringVal = el("span", { class: "hm-ring-val ui-display" }, "…");
+  const ringLabel = el("span", { class: "hm-ring-label" }, "Checking");
+  const ringSub = el("span", { class: "hm-ring-sub" }, "laptop");
+  const ring = el("button", { type: "button", class: "hm-ring", style: "--p:0", "data-tone": "accent",
+    "aria-label": "Laptop status. Open the laptop screen", onclick: () => { ui.haptic("light"); ctx.open("hub"); } },
+    el("span", { class: "hm-ring-ticks", "aria-hidden": "true" }),
+    el("span", { class: "hm-ring-gauge", "aria-hidden": "true" }),
+    el("span", { class: "hm-ring-core" }, ringVal, ringLabel, ringSub));
+  const NODES = [
+    { id: "talk", label: "Talk", icon: "talk", persona: "jarvis", open: ["assistant"] },
+    { id: "friday", label: "Friday", icon: "sparkles", persona: "friday", open: ["friday"] },
+    { id: "today", label: "Today", icon: "clock", open: ["today"] },
+    { id: "autopilot", label: "Autopilot", icon: "zap", open: ["autopilot"] },
+    { id: "files", label: "Files", icon: "folder", open: ["files"] },
+    { id: "terminal", label: "Terminal", icon: "terminal", open: ["terminal"] },
+  ];
+  const nodes = NODES.map((n, i) => {
+    const angle = (-90 + i * 60) * Math.PI / 180;   // clockwise from the top
+    const x = 50 + 39 * Math.cos(angle), y = 50 + 39 * Math.sin(angle);
+    return el("button", { type: "button", class: "hm-node", ...(n.persona ? { "data-persona": n.persona } : {}),
+      style: `--x:${x.toFixed(2)}%;--y:${y.toFixed(2)}%;--i:${i}`, "aria-label": n.label,
+      onclick: () => { ui.haptic("light"); ctx.open(...n.open); } },
+    ui.icon(n.icon), el("span", { class: "hm-node-label" }, n.label));
+  });
+  const reactor = el("section", { class: "hm-reactor", "aria-label": "Status and shortcuts" },
+    el("div", { class: "hm-stage" }, el("i", { class: "hm-orbit", "aria-hidden": "true" }), ring, ...nodes));
+  // ring paint: value 0..1 fills the conic gauge; tone picks its colour
+  function paintReactor({ value, big, label, sub, tone }) {
+    ring.style.setProperty("--p", String(Math.max(0, Math.min(1, value))));
+    ring.dataset.tone = tone || "accent";
+    ringVal.textContent = big; ringLabel.textContent = label; ringSub.textContent = sub || "";
+    ring.setAttribute("aria-label", `${label}: ${big}${sub ? ", " + sub : ""}. Open the laptop screen`);
+  }
+
+  // telemetry: `key: value` status lines under the ring
   const status = el("div", { class: "ui-kv hm-status", "aria-live": "polite" }, kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: "ui-led" }), "checking…")));
-  const hero = el("header", { class: "ui-window ui-window--accent hm-hero" },
+  const hero = el("section", { class: "ui-window hm-hero", "aria-label": "Laptop telemetry" },
     el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }),
-      el("span", { class: "ui-window__title" }, "~/home — zsh"), el("span", { class: "ui-window__meta" }, "tty/01")),
+      el("span", { class: "ui-window__title" }, "telemetry"), el("span", { class: "ui-window__meta" }, "tty/01")),
     el("div", { class: "ui-window__body hm-hero-body" },
-      el("p", { class: "ui-prompt hm-cmd", "aria-hidden": "true" }, "whoami"),
-      hello,
-      el("p", { class: "ui-tag hm-date" }, el("b", {}, "date"), date),
       status,
       el("hr", { class: "ui-dash" }),
       el("p", { class: "ui-tagline hm-tagline" }, "build. debug. optimize. ship.")));
@@ -197,7 +234,7 @@ export function init(container, ctx) {
   notifCard.node.hidden = true;
 
   // Friday card: only shown when her module exists on the laptop (settings answer 404 otherwise).
-  const fridayCard = el("section", { class: "ui-window hm-friday", hidden: true, "aria-label": "Friday" },
+  const fridayCard = el("section", { class: "ui-window ui-persona-friday hm-friday", hidden: true, "aria-label": "Friday" },
     el("div", { class: "ui-window__bar", "aria-hidden": "true" }, el("span", { class: "ui-window__dots" }),
       el("span", { class: "ui-window__title" }, "~/friday — brief"), el("span", { class: "ui-window__meta" }, el("span", { class: "ui-led ui-led--accent ui-led--live" }), "ready")),
     el("div", { class: "ui-window__body hm-friday-body" },
@@ -242,7 +279,7 @@ export function init(container, ctx) {
     })).catch(() => { /* optional card */ });
   }
 
-  root.append(hero, setupCard, fridayCard, jump, forYou,
+  root.append(greet, reactor, hero, setupCard, fridayCard, jump, forYou,
     todayCard.node,
     el("section", { class: "hm-sec hm-section", "aria-label": "Quick actions" },
       el("div", { class: "hm-head" }, el("h2", { class: "ui-eyebrow hm-eyebrow" }, el("b", {}, "02"), "Ship"), el("span", { class: "hm-head-rule", "aria-hidden": "true" })), quick),
@@ -256,6 +293,7 @@ export function init(container, ctx) {
   // ---- loaders ----
   function renderStatus(laptop, error) {
     if (error || !laptop) {
+      paintReactor({ value: 0, big: error?.status === 0 ? "OFF" : "N/A", label: "Hub status", sub: error?.status === 0 ? "offline" : "unavailable", tone: "bad" });
       status.replaceChildren(kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: "ui-led ui-led--bad" }), error?.status === 0 ? "offline" : "unavailable"),
         { onClick: () => ctx.open("hub"), label: "Laptop status. Open Hub", tone: "bad" }));
       if (countdown) status.append(countdown);
@@ -267,6 +305,13 @@ export function init(container, ctx) {
     const host = text(laptop.hostname, laptop.name);
     const chips = [kvRow("laptop", el("span", { class: "hm-led-v" }, el("span", { class: `ui-led ${online ? "ui-led--good ui-led--live" : "ui-led--bad"}` }),
       (online ? "online" : "offline") + (host ? ` · ${host}` : "")), { onClick: () => ctx.open("hub"), label: "Laptop status. Open Hub" })];
+    const pct = battery?.percent != null ? Math.round(battery.percent) : null;
+    if (pct != null) {
+      paintReactor({ value: online ? pct / 100 : 0, big: `${pct}%`, label: "Battery", sub: battery.plugged ? "charging" : (online ? (host || "online") : "offline"),
+        tone: !online ? "bad" : (pct <= 20 && !battery.plugged ? "warn" : "accent") });
+    } else {
+      paintReactor({ value: online ? 1 : 0, big: online ? "LIVE" : "DOWN", label: "Hub status", sub: host || (online ? "online" : "offline"), tone: online ? "accent" : "bad" });
+    }
     if (battery?.percent != null) {
       const p = Math.round(battery.percent);
       chips.push(kvRow("battery", el("span", { class: "ui-num" }, `${p}%${battery.plugged ? " · charging" : ""}`), { tone: p <= 20 && !battery.plugged ? "warn" : undefined }));
