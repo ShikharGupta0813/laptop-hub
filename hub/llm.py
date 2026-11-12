@@ -331,6 +331,79 @@ def forget_gemini_key_cache() -> None:
     _KEY_CACHE.clear()
 
 
+# ---- Gemini model picking and "no free quota" memory (in this process only, never on disk) -----------
+
+GEMINI_BAD_TTL = 24 * 3600
+GEMINI_MODEL_RE = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash|pro)(-lite)?(-\d+|-latest)?$")
+GEMINI_EXHAUSTED = ("This key's free tier has no quota for the available models. Options: a new key from a fresh "
+                    "AI Studio project (aistudio.google.com/apikey), enable billing on the Google Cloud project "
+                    "(pay-as-you-go; the Google AI Pro subscription does not include API quota), or use Claude "
+                    "login / a local model.")
+GEMINI_NO_QUOTA_REASON = "key found \u2014 no free quota on this key (limit 0)"
+# model -> (expires at, "quota" | "missing"); last_error -> {"fp", "at"} for the key that ran out
+_GEMINI: dict = {"bad": {}, "last_error": None}
+
+
+def _key_fp(key: str) -> str:
+    import hashlib
+    return hashlib.sha256((key or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _gemini_is_bad(model: str) -> bool:
+    entry = _GEMINI["bad"].get(model)
+    return bool(entry and entry[0] > time.time())
+
+
+def gemini_no_quota(status: int, detail: str) -> bool:
+    """A 429 that will not clear by waiting a minute: this model has no free quota ('limit: 0') or its daily one is spent."""
+    if status != 429:
+        return False
+    low = detail.lower()
+    return bool(re.search(r"limit:\s*0\b", low)) or "perday" in low or "per day" in low
+
+
+def rank_gemini_models(models: list, configured: str = "") -> list[str]:
+    """Usable text models, best first. Only plain stable names (gemini-<ver>-flash|pro[-lite][-NNN|-latest]) that
+    can generateContent: previews, experiments, codenames (gemini-4-argon), image/tts/live/... never match.
+    The configured tier comes first (pro -> pro, else flash), then newer versions, plain before lite."""
+    want_pro = "pro" in (configured or "").lower()
+    ranked = []
+    for m in models:
+        name = str(m.get("name", "")).removeprefix("models/").lower()
+        match = GEMINI_MODEL_RE.match(name)
+        if not match or "generateContent" not in (m.get("supportedGenerationMethods") or []):
+            continue
+        version, family, lite, tail = match.groups()
+        tier = 0 if (family == "pro") == want_pro else 1
+        ranked.append(((tier, -float(version), 1 if lite else 0, 1 if tail else 0, name), name))
+    return [name for _, name in sorted(ranked)]
+
+
+def note_gemini_quota_failure(key: str) -> None:
+    _GEMINI["last_error"] = {"fp": _key_fp(key), "at": time.time()}
+
+
+def gemini_worked(key: str) -> None:
+    last = _GEMINI["last_error"]
+    if last and last["fp"] == _key_fp(key):
+        _GEMINI["last_error"] = None
+
+
+def gemini_quota_problem(key: str | None = None) -> str:
+    """Non-empty when the last Gemini call with this key found no free quota (kept in memory for this process only)."""
+    last = _GEMINI["last_error"]
+    if not last or time.time() - last["at"] > GEMINI_BAD_TTL:
+        return ""
+    if _key_fp(key if key is not None else gemini_key()) != last["fp"]:
+        return ""
+    return GEMINI_NO_QUOTA_REASON
+
+
+def reset_gemini_state() -> None:
+    _GEMINI["bad"].clear()
+    _GEMINI["last_error"] = None
+
+
 def cli_problem(text: str, returncode: int | None = None) -> LLMError:
     """A friendly LLMError for what the `claude` program printed when it failed."""
     low = text.lower()
@@ -520,43 +593,48 @@ class GeminiClient:
     def _url(self, method: str) -> str:
         return f"{GEMINI_BASE}/models/{self.model}:{method}"
 
-    async def _resolve_model(self, client: "httpx.AsyncClient", key: str) -> bool:
-        """The configured model is gone (404): ask Google which models exist and pick a current one (Pro if the configured name had 'pro', else Flash)."""
+    async def _candidates(self, client: "httpx.AsyncClient", key: str) -> list[str]:
+        """Ranked model names from models.list (empty when Google can't be asked)."""
         try:
             resp = await client.get(f"{GEMINI_BASE}/models", params={"pageSize": 200},
                                     headers={"x-goog-api-key": key})
             if resp.status_code >= 400:
-                return False
+                return []
             models = resp.json().get("models") or []
         except (httpx.HTTPError, ValueError):
-            return False
-        want_pro = "pro" in self.model.lower()      # a configured Pro model falls back to the best Pro, else Flash
-        best = (self._best(models, "pro") if want_pro else None) or self._best(models, "flash")
-        if not best or best == self.model:
-            return False
-        self.model = best
-        return True
+            return []
+        return rank_gemini_models(models, self.model)
 
+    async def _switch(self, client: "httpx.AsyncClient", key: str) -> bool:
+        """Move to the best candidate not known to be broken. False when none is left."""
+        for name in await self._candidates(client, key):
+            if name != self.model and not _gemini_is_bad(name):
+                self.model = name
+                return True
+        return False
+
+    async def _ensure_model(self, client: "httpx.AsyncClient", key: str) -> None:
+        """Before the first request: skip a model that already failed (no quota / not found) today."""
+        if _gemini_is_bad(self.model):
+            await self._switch(client, key)    # none left: try the configured one again, the failure explains itself
+
+    async def _failover(self, client: "httpx.AsyncClient", key: str, status: int, detail: str) -> bool:
+        """A request failed. True: the model was swapped for the next candidate, so retry. False: not a
+        model problem. Raises the final error when every candidate is used up."""
+        quota = gemini_no_quota(status, detail)
+        if status != 404 and not quota:
+            return False
+        _GEMINI["bad"][self.model] = (time.time() + GEMINI_BAD_TTL, "quota" if quota else "missing")
+        if await self._switch(client, key):
+            return True
+        if any(kind == "quota" and t > time.time() for t, kind in _GEMINI["bad"].values()):
+            raise self._exhausted(key)
+        raise self._problem(status, detail)
 
     @staticmethod
-    def _best(models: list, family: str) -> str | None:
-        """The newest stable (else preview) gemini-<version>-<family> model that can generate text."""
-        best, best_rank = None, None
-        for m in models:
-            name = str(m.get("name", "")).removeprefix("models/")
-            low = name.lower()
-            if "generateContent" not in (m.get("supportedGenerationMethods") or []):
-                continue
-            if not low.startswith("gemini-") or family not in low:
-                continue
-            if any(bad in low for bad in ("image", "tts", "live", "audio", "lite", "embedding", "robotics", "computer")):
-                continue
-            ver = re.search(r"gemini-(\d+(?:\.\d+)?)", low)
-            rank = (0 if any(t in low for t in ("preview", "exp")) else 1,
-                    float(ver.group(1)) if ver else 0.0, -len(name))
-            if best_rank is None or rank > best_rank:
-                best, best_rank = name, rank
-        return best
+    def _exhausted(key: str) -> LLMError:
+        note_gemini_quota_failure(key)
+        return LLMError(GEMINI_EXHAUSTED)
 
     @staticmethod
     def _problem(status: int, detail: str) -> LLMError:
@@ -597,30 +675,31 @@ class GeminiClient:
         timeout = httpx.Timeout(10.0, read=120.0)
         try:
             async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
-                for attempt in (0, 1):
-                  async with client.stream("POST", self._url("streamGenerateContent"), params={"alt": "sse"},
-                                         headers={"x-goog-api-key": key},
-                                         json=self._body(system, user, False)) as resp:
-                    if resp.status_code == 404 and attempt == 0:
-                        await resp.aread()
-                        if await self._resolve_model(client, key):
-                            continue
-                    if resp.status_code >= 400:
-                        raise self._problem(resp.status_code, (await resp.aread()).decode("utf-8", "replace"))
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        raw = line[5:].strip()
-                        if not raw or raw == "[DONE]":
-                            continue
-                        try:
-                            data = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
-                        text = self._texts(data)
-                        if text:
-                            yield text
-                    return
+                await self._ensure_model(client, key)
+                while True:
+                    async with client.stream("POST", self._url("streamGenerateContent"), params={"alt": "sse"},
+                                             headers={"x-goog-api-key": key},
+                                             json=self._body(system, user, False)) as resp:
+                        if resp.status_code >= 400:
+                            detail = (await resp.aread()).decode("utf-8", "replace")
+                            if await self._failover(client, key, resp.status_code, detail):
+                                continue
+                            raise self._problem(resp.status_code, detail)
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            raw = line[5:].strip()
+                            if not raw or raw == "[DONE]":
+                                continue
+                            try:
+                                data = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
+                            text = self._texts(data)
+                            if text:
+                                gemini_worked(key)
+                                yield text
+                        return
         except LLMError:
             raise
         except httpx.HTTPError as exc:
@@ -631,16 +710,20 @@ class GeminiClient:
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=120.0),
                                          transport=self._transport) as client:
-                resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key},
-                                         json=self._body(system, user, json_mode))
-                if resp.status_code == 404 and await self._resolve_model(client, key):
+                await self._ensure_model(client, key)
+                while True:
                     resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key},
                                              json=self._body(system, user, json_mode))
+                    if resp.status_code >= 400 and await self._failover(client, key, resp.status_code, resp.text):
+                        continue
+                    break
         except httpx.HTTPError as exc:
             raise self._network(exc) from None
         if resp.status_code >= 400:
             raise self._problem(resp.status_code, resp.text)
         try:
-            return self._texts(resp.json()).strip()
+            text = self._texts(resp.json()).strip()
         except ValueError:
             raise LLMError("Gemini sent an answer that could not be read.") from None
+        gemini_worked(key)
+        return text

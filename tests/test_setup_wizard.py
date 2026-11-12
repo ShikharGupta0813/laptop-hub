@@ -35,6 +35,8 @@ class FakeSystem:
         self.smtp_error = None
         self.http: dict[str, tuple[int, bytes]] = {}
         self.http_error = None
+        self.posts: list[tuple[str, dict]] = []
+        self.post_answers: dict[str, tuple[int, bytes]] = {}
         self.env_vars: dict[str, str] = {}
         self.user_env: dict[str, str] = {}
         self.tty = True
@@ -73,6 +75,14 @@ class FakeSystem:
     def http_get(self, url, headers=None, follow_redirects=True, timeout=10):
         if self.http_error: raise sw.CheckFailed(self.http_error)
         return self.http.get(url, (404, b""))
+
+    def http_post_json(self, url, body, headers=None, timeout=20):
+        if self.http_error: raise sw.CheckFailed(self.http_error)
+        self.posts.append((url, body))
+        for name, answer in self.post_answers.items():
+            if f"/{name}:" in url:
+                return answer
+        return 200, b"{}"
 
     def count_events_today(self, ics): return 3
 
@@ -233,6 +243,39 @@ class TestOtherSteps(Base):
         result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI], confirms=[True])))
         self.assertEqual(result.status, "ok")
         self.assertEqual(self.sys.keyring[("jarvis-gemini", "api_key")], GEMINI)
+
+    def test_gemini_probe_is_opt_in(self):
+        self.sys.http[sw.GEMINI_CHECK_URL] = (200, b"{}")
+        sw.step_gemini(self.wizard(Script(secrets_=[GEMINI])))
+        self.assertEqual(self.sys.posts, [])
+
+    def test_gemini_probe_ok_sends_one_token(self):
+        self.sys.http[sw.GEMINI_CHECK_URL] = (200, b"{}")
+        result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI], confirms=[True])))
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(len(self.sys.posts), 1)
+        self.assertEqual(self.sys.posts[0][1]["generationConfig"]["maxOutputTokens"], 1)
+        self.assertIn("has quota", self.output())
+        self.assertNoSecrets()
+
+    def test_gemini_probe_no_quota_prints_the_options(self):
+        from hub import llm
+        llm.reset_gemini_state()
+        self.addCleanup(llm.reset_gemini_state)
+        self.sys.http[sw.GEMINI_CHECK_URL] = (200, b"{}")
+        self.sys.post_answers["gemini-2.5-flash"] = (429, b"quota exceeded ... limit: 0, model: gemini-2.5-flash")
+        result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI], confirms=[True])))
+        self.assertEqual(result.status, "warn")
+        self.assertIn("does not include API quota", self.output())
+        self.assertIn("limit 0", llm.gemini_quota_problem(GEMINI))
+        self.assertEqual(self.sys.keyring[("jarvis-gemini", "api_key")], GEMINI)   # still saved
+
+    def test_gemini_probe_not_found(self):
+        self.sys.http[sw.GEMINI_CHECK_URL] = (200, b"{}")
+        self.sys.post_answers["gemini-2.5-flash"] = (404, b"not found")
+        result = sw.step_gemini(self.wizard(Script(secrets_=[GEMINI], confirms=[True])))
+        self.assertEqual(result.status, "ok")
+        self.assertIn("doesn't know the model", self.output())
 
     def test_claude_is_an_alias_of_ai_and_gemini_runs_alone(self):
         self.assertEqual(sw.parse_only("claude"), ["ai"])

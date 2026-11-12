@@ -137,6 +137,9 @@ def sse(*texts):
 
 
 class GeminiTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        llm.reset_gemini_state()
+
     def client(self, handler, key="KEY123", **kw):
         return llm.GeminiClient("gemini-2.5-flash", api_key=key, transport=httpx.MockTransport(handler), **kw)
 
@@ -238,6 +241,132 @@ class GeminiTest(unittest.IsolatedAsyncioTestCase):
         client = self.client(handler, "KEY")
         self.assertEqual(await client.complete("s", "u"), "hi")
         self.assertEqual(client.model, "gemini-3-flash")
+
+
+LIMIT0 = {"error": {"code": 429, "message": "You exceeded your current quota. * Quota exceeded for metric: "
+                    "generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: x"}}
+
+
+def _model(name, methods=("generateContent",)):
+    return {"name": f"models/{name}", "supportedGenerationMethods": list(methods)}
+
+
+class GeminiPickerTest(unittest.TestCase):
+    def test_ranking_drops_codenames_previews_and_non_text_models(self):
+        models = [_model(n) for n in (
+            "gemini-4-argon", "gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-3-flash",
+            "gemini-2.5-flash-image", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3-pro", "gemini-2.5-flash-tts",
+            "gemini-2.5-flash-thinking", "gemini-live-2.5-flash", "gemini-robotics-er-1.5-flash",
+            "gemini-embedding-001", "gemini-2.5-flash-latest")]
+        models.append(_model("gemini-9-flash", ["embedContent"]))
+        order = llm.rank_gemini_models(models, "gemini-2.5-flash")
+        self.assertEqual(order, ["gemini-3-flash", "gemini-2.5-flash", "gemini-2.5-flash-latest",
+                                 "gemini-2.5-flash-lite", "gemini-3-pro", "gemini-2.5-pro"])
+        self.assertNotIn("gemini-4-argon", order)
+
+    def test_a_pro_configured_model_ranks_pro_first(self):
+        order = llm.rank_gemini_models([_model(n) for n in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro")],
+                                       "gemini-2.5-pro")
+        self.assertEqual(order, ["gemini-3-pro", "gemini-2.5-pro", "gemini-2.5-flash"])
+
+    def test_which_429s_mean_no_quota(self):
+        self.assertTrue(llm.gemini_no_quota(429, json.dumps(LIMIT0)))
+        self.assertTrue(llm.gemini_no_quota(429, "GenerateRequestsPerDayPerProjectPerModel-FreeTier"))
+        self.assertFalse(llm.gemini_no_quota(429, "slow down, per minute"))
+        self.assertFalse(llm.gemini_no_quota(500, "limit: 0"))
+
+
+class GeminiFailoverTest(unittest.IsolatedAsyncioTestCase):
+    NAMES = ["gemini-4-argon", "gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-flash-lite"]
+
+    def setUp(self):
+        llm.reset_gemini_state()
+        self.addCleanup(llm.reset_gemini_state)
+        self.asked = []
+
+    def client(self, behaviour, model="gemini-2.5-flash"):
+        def handler(request):
+            if request.url.path.endswith("/models") and request.method == "GET":
+                return httpx.Response(200, json={"models": [_model(n) for n in self.NAMES]})
+            name = request.url.path.split("/")[-1].split(":")[0]
+            self.asked.append(name)
+            result = behaviour(name)
+            if result == "ok":
+                if "stream" in request.url.path:
+                    return httpx.Response(200, text=sse("fine"), headers={"content-type": "text/event-stream"})
+                return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "fine"}]}}]})
+            return httpx.Response(result[0], **result[1])
+        return llm.GeminiClient(model, api_key="K1", transport=httpx.MockTransport(handler))
+
+    @staticmethod
+    def a_dead_b_good(name):
+        return (429, {"json": LIMIT0}) if name == "gemini-2.5-flash" else (
+            "ok" if name == "gemini-3-flash" else (404, {"json": {}}))
+
+    async def test_limit_zero_on_one_model_moves_to_the_next_complete(self):
+        c = self.client(self.a_dead_b_good)
+        self.assertEqual(await c.complete("s", "u"), "fine")
+        self.assertEqual(c.model, "gemini-3-flash")
+        self.assertNotIn("gemini-4-argon", self.asked)
+        self.asked.clear()
+        self.assertEqual(await c.complete("s", "u"), "fine")
+        self.assertEqual(self.asked, ["gemini-3-flash"])        # the good one is kept
+
+    async def test_limit_zero_on_one_model_moves_to_the_next_stream(self):
+        c = self.client(self.a_dead_b_good)
+        self.assertEqual(await _drain(c.stream("s", "u")), ["fine"])
+        self.assertEqual(c.model, "gemini-3-flash")
+
+    async def test_a_failed_model_is_remembered_by_a_new_client_today(self):
+        await self.client(self.a_dead_b_good).complete("s", "u")
+        self.asked.clear()
+        c = self.client(self.a_dead_b_good)
+        self.assertEqual(await c.complete("s", "u"), "fine")
+        self.assertEqual(self.asked, ["gemini-3-flash"])        # never asked the dead one again
+
+    async def test_all_exhausted_gives_the_options_and_sets_the_reason(self):
+        c = self.client(lambda name: (429, {"json": LIMIT0}))
+        for call in (lambda: c.complete("s", "u"), lambda: _drain(c.stream("s", "u"))):
+            llm.reset_gemini_state()
+            with self.assertRaises(llm.LLMError) as cm:
+                await call()
+            msg = str(cm.exception)
+            self.assertIn("free tier has no quota for the available models", msg)
+            self.assertIn("aistudio.google.com/apikey", msg)
+            self.assertIn("does not include API quota", msg)
+            self.assertIn("Claude login / a local model", msg)
+        self.assertEqual(llm.gemini_quota_problem("K1"), llm.GEMINI_NO_QUOTA_REASON)
+        self.assertEqual(llm.gemini_quota_problem("another key"), "")
+
+    async def test_a_plain_per_minute_429_does_not_switch_models(self):
+        c = self.client(lambda name: (429, {"json": {"error": {"message": "try later"}}}))
+        with self.assertRaises(llm.LLMError) as cm:
+            await c.complete("s", "u")
+        self.assertIn("free quota is used up", str(cm.exception))
+        self.assertEqual(self.asked, ["gemini-2.5-flash"])
+
+    async def test_success_clears_the_reason(self):
+        llm.note_gemini_quota_failure("K1")
+        await self.client(lambda name: "ok").complete("s", "u")
+        self.assertEqual(llm.gemini_quota_problem("K1"), "")
+
+
+class GeminiReasonTest(unittest.TestCase):
+    def test_availability_explains_limit_zero_and_hides_gemini_and_duo(self):
+        llm.reset_gemini_state()
+        self.addCleanup(llm.reset_gemini_state)
+        config, _ = make_config(default_provider="auto")
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(providers, "gemini_key", return_value="K9"), \
+                mock.patch.object(providers, "find_claude_cli", return_value="/bin/claude"):
+            self.assertTrue(providers.availability(config)["gemini"]["ready"])
+            llm.note_gemini_quota_failure("K9")
+            a = providers.availability(config)
+            self.assertFalse(a["gemini"]["ready"])
+            self.assertEqual(a["gemini"]["reason"], "key found \u2014 no free quota on this key (limit 0)")
+            self.assertFalse(a["duo"]["ready"])
+            self.assertIn("no free quota", a["duo"]["reason"])
+            self.assertEqual(providers.resolve_default(config), "claude-login")   # falls back
 
 
 async def _drain(gen):

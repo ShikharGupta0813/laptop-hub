@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from .llm import PROVIDERS, find_claude_cli, gemini_key
+from .llm import PROVIDERS, find_claude_cli, gemini_key, gemini_quota_problem
 
 LABELS = {"local": "Local model", "claude": "Claude (API key)", "claude-login": "Claude (my login)",
           "gemini": "Gemini", "duo": "Claude + Gemini"}
@@ -23,7 +23,10 @@ def availability(config, ollama_up: bool | None = None) -> dict[str, dict]:
     """{provider: {"ready": bool, "reason": str, "label": str}}. `ollama_up` None means not checked."""
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     cli = _claude_login_cli(config)
-    gem = bool(gemini_key())
+    key = gemini_key()
+    gem_saved = bool(key)
+    no_quota = gemini_quota_problem(key) if gem_saved else ""   # the last call with this key found limit 0
+    gem = gem_saved and not no_quota
     local_ready = ollama_up is not False
     return {
         "local": {"ready": local_ready, "label": LABELS["local"],
@@ -34,10 +37,12 @@ def availability(config, ollama_up: bool | None = None) -> dict[str, dict]:
                          "reason": "Claude Code is installed (uses your Claude login)." if cli
                          else "Claude Code isn't installed. Install it and run `claude` once to log in."},
         "gemini": {"ready": gem, "label": LABELS["gemini"],
-                   "reason": "A Gemini key is saved." if gem
-                   else "No Gemini key. Run `python -m hub setup --only gemini`."},
+                   "reason": no_quota or ("A Gemini key is saved." if gem
+                                         else "No Gemini key. Run `python -m hub setup --only gemini`.")},
         "duo": {"ready": gem, "label": LABELS["duo"],
-                "reason": ("Gemini does the work; Claude (your login) plans and checks, sparingly."
+                "reason": (f"Gemini isn't usable: {no_quota}. Use Claude (my login) or the local model, or fix the key."
+                           if no_quota else
+                           "Gemini does the work; Claude (your login) plans and checks, sparingly."
                            if gem and cli else
                            "Gemini does the work. Claude supervisor not available (install Claude Code and run "
                            "`claude` once), so Gemini works alone." if gem else
@@ -56,7 +61,8 @@ def resolve_default(config) -> str:
         return choice
     if os.environ.get("ANTHROPIC_API_KEY"):
         return "claude"
-    if gemini_key():
+    key = gemini_key()
+    if key and not gemini_quota_problem(key):
         return "gemini"       # free key: routine jobs go here so the Claude subscription quota is kept
     if _claude_login_cli(config):
         return "claude-login"

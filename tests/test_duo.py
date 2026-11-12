@@ -268,6 +268,9 @@ class DuoServerTest(unittest.TestCase):
 
 
 class GeminiProPreferenceTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        llm.reset_gemini_state()
+
     def client(self, model, names):
         def handler(request):
             if request.url.path.endswith("/models") and request.method == "GET":
@@ -287,6 +290,27 @@ class GeminiProPreferenceTest(unittest.IsolatedAsyncioTestCase):
         c = self.client("gemini-1.5-pro", ["gemini-2.5-flash", "gemini-3-flash"])
         await c.complete("s", "u")
         self.assertEqual(c.model, "gemini-3-flash")
+
+
+class DuoGeminiNoQuotaTest(AssistantBase):
+    async def test_gemini_without_quota_is_reported_not_hung(self):
+        class Dead:
+            name = "gemini"
+
+            async def stream(self, system, user):
+                raise llm.LLMError(llm.GEMINI_EXHAUSTED)
+                yield ""
+
+            async def complete(self, system, user, json_mode=False):
+                raise llm.LLMError(llm.GEMINI_EXHAUSTED)
+
+        svc = self.service()
+        svc.model_for = lambda p: DuoClient(Dead(), Supervisor(FakeClaude()))
+        events = await asyncio.wait_for(collect(svc.run("s", "hello", "duo", False)), 5)
+        errors = [e for e in events if e["type"] == "error"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("free tier has no quota", errors[0]["message"])
+        self.assertIn("Claude login / a local model", errors[0]["message"])
 
 
 if __name__ == "__main__":

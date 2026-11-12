@@ -197,6 +197,22 @@ class System:
         except (urllib.error.URLError, OSError, ValueError):
             raise CheckFailed("network") from None
 
+    def http_post_json(self, url: str, body: dict, headers: dict | None = None, timeout: float = 20) -> tuple[int, bytes]:
+        """POST JSON; unlike http_get this keeps the body of an error answer (Google explains quota errors there)."""
+        data = json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(url, data=data, method="POST",
+                                         headers={"content-type": "application/json", **(headers or {})})
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                return resp.status, resp.read(1_000_000)
+        except urllib.error.HTTPError as exc:
+            try:
+                return exc.code, exc.read(100_000)
+            except OSError:
+                return exc.code, b""
+        except (urllib.error.URLError, OSError, ValueError):
+            raise CheckFailed("network") from None
+
     def count_events_today(self, ics: bytes) -> int:
         try:
             import icalendar
@@ -810,7 +826,8 @@ def check_ai(w: Wizard) -> Result:
     if cli:
         ready.append("Claude login (claude program found)")
     if _gemini_saved(w):
-        ready.append("Gemini key")
+        from . import llm
+        ready.append("Gemini key" + (" (no free quota on it, limit 0)" if llm.gemini_quota_problem() else ""))
     config = w.load_config(False)
     default = config.default_provider if config else "auto"
     status = "ok" if len(ready) > 1 else "warn"
@@ -818,9 +835,47 @@ def check_ai(w: Wizard) -> Result:
 
 
 def check_gemini(w: Wizard) -> Result:
+    from . import llm
     if not _gemini_saved(w):
         return Result("warn", "no Gemini key saved (free one: aistudio.google.com/apikey)")
+    if llm.gemini_quota_problem():
+        return Result("warn", "a Gemini key is saved, but " + llm.GEMINI_NO_QUOTA_REASON.split("\u2014", 1)[1].strip())
     return Result("ok", "a Gemini key is saved")
+
+
+def gemini_probe(w: Wizard, key: str) -> tuple[str, str]:
+    """One tiny live generate call (1 output token). ("ok" | "no_quota" | "not_found" | "error", model tried).
+    A model with no quota or no such model moves on to the next ranked candidate, like the hub does."""
+    from . import llm
+    config = w.load_config(False)
+    configured = (config.gemini_model if config else "") or "gemini-2.5-flash"
+    names = [configured]
+    try:
+        code, raw = w.system.http_get(GEMINI_CHECK_URL.replace("pageSize=1", "pageSize=200"), headers={"x-goog-api-key": key})
+        if code < 400:
+            names += [n for n in llm.rank_gemini_models(json.loads(raw).get("models") or [], configured)
+                      if n != configured][:3]
+    except (CheckFailed, ValueError):
+        pass
+    saw = ""
+    body = {"contents": [{"role": "user", "parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
+    for name in names:
+        try:
+            code, raw = w.system.http_post_json(f"{llm.GEMINI_BASE}/models/{name}:generateContent", body,
+                                                headers={"x-goog-api-key": key})
+        except CheckFailed:
+            return "error", name
+        if code < 400:
+            return "ok", name
+        if code == 404:
+            saw = saw or "not_found"
+        elif llm.gemini_no_quota(code, raw.decode("utf-8", "replace")):
+            saw = "no_quota"
+        else:
+            return "error", name
+    if saw == "no_quota":
+        llm.note_gemini_quota_failure(key)
+    return saw or "error", names[0]
 
 
 def step_gemini(w: Wizard) -> Result:
@@ -847,7 +902,22 @@ def step_gemini(w: Wizard) -> Result:
             raise RuntimeError
     except Exception:  # noqa: BLE001
         return Result("warn", "couldn't save to the keyring (pip install keyring); set GEMINI_API_KEY instead")
-    return Result("ok", "key works and is saved in the keyring" if code < 400 else "key saved in the keyring")
+    from . import llm
+    llm.reset_gemini_state()
+    llm.forget_gemini_key_cache()
+    done = Result("ok", "key works and is saved in the keyring" if code < 400 else "key saved in the keyring")
+    if w.confirm("Test the key with one tiny live request (uses about 1 token of quota)?", False):
+        outcome, model = gemini_probe(w, key)
+        if outcome == "ok":
+            w.say(w.tone("ok", f"Gemini answered on {model}: the key has quota"))
+        elif outcome == "no_quota":
+            w.say(w.tone("warn", "Google says this key's free tier has no quota (limit 0). " + llm.GEMINI_EXHAUSTED))
+            return Result("warn", "key saved, but it has no free quota; " + llm.GEMINI_EXHAUSTED)
+        elif outcome == "not_found":
+            w.say(w.tone("warn", f"Google doesn't know the model {model}. The hub will pick a current one on its own."))
+        else:
+            w.say(w.tone("warn", "The test request failed (network or a Google error); the key is saved anyway"))
+    return done
 
 
 def step_ai(w: Wizard) -> Result:
