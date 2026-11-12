@@ -79,6 +79,9 @@ flowchart TD
 | Calendar shows 503 | No Jarvis folder or calendar link. | `python -m hub setup --only jarvis` then `--only calendar` |
 | Update button did nothing | Edited code files, or no network. | Read `update.log` (page 08). Run `git status`. |
 | Update button is missing | The updater was never installed, or the hub was not restarted. | `python -m hub install-updater`, restart hub |
+| Phone app dark while you are away | Hub or Tailscale died. | Install the watchdog: `python -m hub setup --only watchdog`. Read `watchdog.log`. |
+| Push says "Tailscale is logged out" | Tailscale needs you to sign in (it needs a browser). | Open the laptop, click the Tailscale icon, sign in. |
+| Need an old file back | Backup zips are in `Documents\REDLINE-backups`. | `python -m hub backup --restore ZIP` (page 08) |
 | Council says it is not set up | `council_dir` is empty. | `python -m hub setup --only council`, restart hub |
 
 > ✅ **Check:** After any fix to `hub.json` or a new package, restart the hub.

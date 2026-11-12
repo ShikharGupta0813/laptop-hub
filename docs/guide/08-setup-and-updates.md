@@ -184,6 +184,19 @@ Back up two more things yourself:
 
 Secrets in the Windows keyring and the Asana token file are not in the zip either. You can recreate them with the wizard.
 
+## Weekly backup and watchdog
+
+Two optional scheduled tasks, set up with `python -m hub setup --only backup,watchdog`.
+
+| Task | When | What it does |
+|---|---|---|
+| `LaptopHubBackup` | Sundays 11:00 | Runs `python -m hub backup`: one zip in `Documents\REDLINE-backups`, newest 8 kept, a push "Backup done: 14 MB" |
+| `LaptopHubWatchdog` | Every 10 minutes | Starts the hub if it died, starts Tailscale if it stopped, restores the Tailscale link. Pushes to your phone only when it fixed something or needs you |
+
+The backup holds your settings (not the login token or session secret), data, `HubNotes` and `HubInbox`. Put a different folder in `backup_dir` in `hub.json` if you want it elsewhere (a synced folder is a good idea).
+To restore: `python -m hub backup --restore ZIP`, type `RESTORE`, then restart the hub. A safety copy of the current state is made first.
+The watchdog writes one line per run to `C:\Users\YOU\.laptop-hub\watchdog.log`. `python -m hub doctor` shows whether both tasks exist.
+
 ## Quick buttons
 
 Quick buttons are saved in `hub.json`. They can only be added on the laptop, never from the phone. Example:

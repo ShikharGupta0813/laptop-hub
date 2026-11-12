@@ -268,6 +268,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     # ---- login -------------------------------------------------------------------------
 
+    @app.get("/api/health")
+    def health():
+        """Unauthenticated liveness probe for `python -m hub watchdog`. Reveals nothing."""
+        return {"ok": True}
+
     @app.get("/api/session")
     def session(request: Request):
         ok = session_ok(request.cookies.get(auth.COOKIE))
