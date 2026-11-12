@@ -13,6 +13,7 @@ POST also needs `X-Hub: 1`. Errors are `{"detail": "one plain sentence"}`.
 | `autopilot_expire_hours` | `48` | untouched cards become `expired` | hand-edit |
 | `autopilot_standup_time` | `"08:30"` | weekday standup draft, made within 6 hours after this local time | hand-edit |
 | `autopilot_repos` | `[]` | absolute paths of git folders for the standup (missing ones skipped) | wizard / hand-edit |
+| `autopilot_research` | `true` | before drafting, read the mail thread / Asana comments / notes (no extra AI call) | yes |
 | `autopilot_tone` | friendly, short | one line, the voice drafts are written in | wizard / hand-edit |
 
 ## Cards
@@ -51,3 +52,9 @@ The Work routes also write their own `work_email_send` / `work_asana` entries.
 
 ## Assistant tool
 `autopilot_cards` (read-only, no approval): lists the waiting cards (titles and short drafts, marked as data). Approving is only done by the owner's tap.
+
+## Research
+Before one actionable card is drafted (and only while `autopilot_research` is true and today's AI budget is not used up) Autopilot does up to 3 read-only lookups, directly
+and not through the AI: earlier mail with the same subject (`/api/inbox/search`), the Asana task's subtasks and comments, and notes/files that match the keywords
+(`/api/search/all`). The result (at most 2500 characters, fenced as untrusted data) goes into the single drafting call. The card shows `research: thread + notes` (`research` field, also in the payload).
+A failing lookup just means less context. A second card kind, `source: today` (kind `none`), holds the Today evening review; see today.md.

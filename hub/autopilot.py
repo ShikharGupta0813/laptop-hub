@@ -42,7 +42,7 @@ from .watch import epoch, parse_when
 
 log = logging.getLogger("hub.autopilot")
 
-SOURCES = ("watch-gmail", "watch-chat", "asana", "inbox", "standup", "manual")
+SOURCES = ("watch-gmail", "watch-chat", "asana", "inbox", "standup", "manual", "today")
 ACTIONS = ("send_email", "asana_comment", "copy_text", "none")
 STATUSES = ("pending", "approved", "edited", "skipped", "executed", "failed", "expired")
 DONE = tuple(s for s in STATUSES if s != "pending")
@@ -63,6 +63,9 @@ CHAT_CHARS = 1500
 COMMENT_CHARS = 3000
 TEXT_KEEP = 2000            # how much of the original item is kept on a card
 SHOW_ORIGINAL = 600
+RESEARCH_CHARS = 2500       # most background text one card's research may feed into the single drafting call
+RESEARCH_LOOKUPS = 3        # most read-only lookups per card (they are not AI calls)
+EVENING_DEFAULT = "19:30"
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}$")
 GID_RE = re.compile(r"^[0-9]{1,30}$")
@@ -109,6 +112,47 @@ class Bad(ValueError):
 
 class ExecError(Exception):
     """The action could not be done; the message is a short sentence stored on the card."""
+
+
+# ---- git (shared with hub/today.py) ----------------------------------------------------------------------------
+
+def run_git(argv: list[str]) -> tuple[int, str]:
+    """Runs git by absolute path with no shell and a timeout; (1, "") when it cannot run."""
+    git = shutil.which("git")
+    if not git:
+        return 1, ""
+    try:
+        done = subprocess.run([git, *argv], capture_output=True, text=True, timeout=GIT_TIMEOUT,
+                              shell=False, encoding="utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+    return done.returncode, done.stdout
+
+
+def git_commits(repos: Any, since: dt.date, runner: GitRunner | None = None) -> list[dict]:
+    """The owner's own commits since `since` (local 00:00) in the configured folders:
+    [{repo, subject, at}] where `at` is the commit's ISO time. Read-only; missing folders are skipped quietly."""
+    run = runner or run_git
+    out: list[dict] = []
+    for raw in (repos or [])[:10]:
+        repo = Path(str(raw))
+        if not repo.is_absolute() or not repo.is_dir():
+            continue
+        base = ["-C", str(repo)]
+        rc, email = run([*base, "config", "user.email"])
+        argv = [*base, "log", f"--since={since.isoformat()} 00:00", "--no-merges", "--pretty=format:%cI%x09%s",
+                f"--max-count={GIT_MAX_LINES}"]
+        if rc == 0 and email.strip():
+            argv.append(f"--author={email.strip()}")
+        rc, text = run(argv)
+        if rc != 0:
+            continue
+        for line in text.splitlines():
+            when, _, subject = line.partition("\t")
+            subject = clean(subject, 140)
+            if subject:
+                out.append({"repo": repo.name, "subject": subject, "at": when.strip()})
+    return out[:GIT_MAX_LINES * 2]
 
 
 # ---- text helpers --------------------------------------------------------------------------------------------
@@ -388,16 +432,7 @@ class Autopilot:
         return await self._caller(method, path, **kwargs)
 
     def _run_git(self, argv: list[str]) -> tuple[int, str]:
-        """Runs git by absolute path with no shell and a timeout; (1, "") when it cannot run."""
-        git = shutil.which("git")
-        if not git:
-            return 1, ""
-        try:
-            done = subprocess.run([git, *argv], capture_output=True, text=True, timeout=GIT_TIMEOUT,
-                                  shell=False, encoding="utf-8", errors="replace")
-        except (OSError, subprocess.SubprocessError):
-            return 1, ""
-        return done.returncode, done.stdout
+        return run_git(argv)
 
     def now_ts(self) -> float:
         return epoch(self.clock())
@@ -443,6 +478,79 @@ class Autopilot:
             return None, "The AI wrote an empty draft."
         return text, ""
 
+    # -- research: bounded, read-only background for a draft (lookups, not AI calls)
+
+    @property
+    def research_on(self) -> bool:
+        """On by default; and only while a draft can still be written within today's AI budget."""
+        return (bool(getattr(self.config, "autopilot_research", True)) and self.budget > 0
+                and self.store.ai_calls(self.today()) < self.budget)
+
+    @staticmethod
+    def keywords(text: str, limit: int = 5) -> str:
+        words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]{3,}", re.sub(r"(?i)\b(?:re|fwd?)\s*:", " ", text or ""))
+        seen: list[str] = []
+        for w in words:
+            if w.lower() not in [x.lower() for x in seen]:
+                seen.append(w)
+        return " ".join(seen[:limit])[:100]
+
+    async def notes_lookup(self, query: str) -> str:
+        """Notes and files matching the keywords (one lookup). Empty when search is missing or finds nothing."""
+        if not query:
+            return ""
+        ok, data = await self.call("GET", "/api/search/all", params={"q": query, "limit": 8})
+        rows = data.get("results") if ok and isinstance(data, dict) else None
+        lines = [f"- {clean(r.get('title'), 80)}: {clean(r.get('snippet'), 140)}" for r in rows or []
+                 if isinstance(r, dict) and r.get("kind") in ("note", "file")][:3]
+        return "\n".join(lines)
+
+    async def research(self, kind: str, **ref: Any) -> tuple[str, str]:
+        """(background text capped at RESEARCH_CHARS, a label like 'thread + notes'). Never raises, never writes.
+
+        email: earlier mails with the same subject + notes. asana: the task's subtasks and comments (from the
+        detail the caller already fetched) + notes. chat: notes only. At most RESEARCH_LOOKUPS lookups."""
+        if not self.research_on:
+            return "", ""
+        parts: list[tuple[str, str]] = []
+        try:
+            if kind == "email":
+                query = self.keywords(str(ref.get("subject") or ""))
+                if query:
+                    ok, data = await self.call("GET", "/api/inbox/search", params={"q": query})
+                    uid = ref.get("uid")
+                    rows = [r for r in (data.get("results") if ok and isinstance(data, dict) else None) or []
+                            if isinstance(r, dict) and str((r.get("open") or {}).get("id")) != str(uid)][:4]
+                    thread = "\n".join(f"- {clean(r.get('title'), 100)}: {clean(r.get('snippet'), 160)}" for r in rows)
+                    if thread:
+                        parts.append(("thread", "Earlier mail on this subject:\n" + thread))
+                notes = await self.notes_lookup(query)
+            elif kind == "asana":
+                detail = ref.get("detail") if isinstance(ref.get("detail"), dict) else {}
+                lines = []
+                for s in (detail.get("subtasks") or [])[:8]:
+                    if isinstance(s, dict) and s.get("name"):
+                        lines.append(f"- subtask ({'done' if s.get('completed') else 'open'}): {clean(s.get('name'), 100)}")
+                for c in (detail.get("comments") or [])[-5:]:
+                    if isinstance(c, dict) and c.get("text"):
+                        lines.append(f"- comment by {clean(c.get('author'), 40)}: {clean(c.get('text'), 240)}")
+                if lines:
+                    parts.append(("task", "Task subtasks and comments:\n" + "\n".join(lines)))
+                notes = await self.notes_lookup(self.keywords(str(ref.get("name") or "")))
+            else:
+                notes = await self.notes_lookup(self.keywords(str(ref.get("subject") or "")))
+            if notes:
+                parts.append(("notes", "Your own notes and files that mention this:\n" + notes))
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - research is a bonus; a failure just means no extra context
+            log.info("autopilot research failed")
+        parts = parts[:RESEARCH_LOOKUPS]
+        if not parts:
+            return "", ""
+        text = "\n".join(t for _, t in parts)[:RESEARCH_CHARS]
+        return text, " + ".join(label for label, _ in parts)
+
     # -- sources
 
     def fresh(self, when: Any, now_ts: float) -> bool:
@@ -478,8 +586,12 @@ class Autopilot:
             payload = {"from": sender, "subject": subject, "original": text[:TEXT_KEEP], "alert_id": str(alert["id"])}
             title = f"{sender}: {subject or text}"[:160] if sender else (subject or text)
             if is_chat and verdict == "reply":
+                background, label = await self.research("chat", subject=f"{subject} {text}")
+                if label:
+                    payload["research"] = label
                 draft, note = await self.ai_draft("chat", self.fence(**{"from": sender, "space": subject,
-                                                                          "message": text}), CHAT_CHARS)
+                                                                          "message": text, "background": background}),
+                                                  CHAT_CHARS)
                 card = self.new_card(source=source, key=key, title=title, summary=text, payload=payload,
                                      action="copy_text" if draft else "none", draft=draft or "",
                                      ai_written=bool(draft), note=note)
@@ -527,11 +639,15 @@ class Autopilot:
                     reply_text = clean(detail["text"], 3000, multiline=True)
                 else:
                     reply_text = text
+                background, label = await self.research("email", uid=uid, subject=subject)
                 draft, note = await self.ai_draft("email", self.fence(**{"from": name, "subject": subject,
-                                                                          "message": reply_text}), EMAIL_CHARS)
+                                                                          "message": reply_text, "background": background}),
+                                                  EMAIL_CHARS)
                 payload = {"from": name, "from_addr": sender_addr, "to": sender_addr, "uid": uid, "subject": subject,
                            "reply_subject": subject if re.match(r"(?i)\s*re\s*:", subject) else f"Re: {subject}",
                            "original": text[:TEXT_KEEP]}
+                if label:
+                    payload["research"] = label
                 card = self.new_card(source="inbox", key=key, title=f"{name}: {subject}", summary=text[:300],
                                      payload=payload, action="send_email" if draft else "none", draft=draft or "",
                                      ai_written=bool(draft), note=note)
@@ -562,13 +678,17 @@ class Autopilot:
                 continue
             name = clean(task.get("name"), 160)
             project = clean(task.get("project"), 80)
-            notes = ""
+            notes, task_detail = "", {}
             ok2, detail = await self.call("GET", f"/api/work/asana/tasks/{gid}")
             if ok2 and isinstance(detail, dict) and isinstance(detail.get("task"), dict):
-                notes = clean(detail["task"].get("notes"), 1500, multiline=True)
+                task_detail = detail["task"]
+                notes = clean(task_detail.get("notes"), 1500, multiline=True)
+            background, label = await self.research("asana", name=name, detail=task_detail)
             draft, note = await self.ai_draft("asana", self.fence(task=name, project=project, due=due[:10],
-                                                                    notes=notes), COMMENT_CHARS)
+                                                                    notes=notes, background=background), COMMENT_CHARS)
             payload = {"gid": gid, "task": name, "project": project, "due_on": due[:10], "original": notes[:TEXT_KEEP]}
+            if label:
+                payload["research"] = label
             card = self.new_card(source="asana", key=key, title=f"Due {due[:10]}: {name}",
                                  summary=f"{project + ': ' if project else ''}{name}", payload=payload,
                                  action="asana_comment" if draft else "none", draft=draft or "",
@@ -698,6 +818,41 @@ class Autopilot:
             return {"new": len(new), "drafts": len(drafts), "expired": expired, "failed": failed,
                     "notes": dict(self.notes), "cards": [self.view(c) for c in new]}
 
+    # -- the evening summary (once per weekday at/after `today_evening_time`)
+
+    @property
+    def evening_time(self) -> str:
+        raw = getattr(self.config, "today_evening_time", EVENING_DEFAULT)
+        return raw if raw == "" or (isinstance(raw, str) and TIME_RE.match(raw)) else EVENING_DEFAULT
+
+    async def maybe_evening(self) -> bool:
+        """Pushes the evening summary and files it as an FYI card, once a day. True when it fired. Never raises."""
+        try:
+            now = self.clock()
+            at = TIME_RE.match(self.evening_time or "")
+            if (not self.enabled or not getattr(self.config, "today_enabled", True) or not at
+                    or now.weekday() >= 5):
+                return False
+            start = now.replace(hour=int(at.group(1)), minute=int(at.group(2)), second=0, microsecond=0)
+            key = f"today:{now.date().isoformat()}"
+            if now < start or self.store.meta("evening") == key:
+                return False
+            self.store.set_meta("evening", key)                      # first: a failure below never repeats the push
+            from . import today as today_mod
+            data = await today_mod.collect(self.ctx, self.call, self.clock, git_runner=self._git)
+            text = today_mod.spoken(data, "evening")
+            self.new_card(source="today", key=key, title=f"Day review for {now.strftime('%a %d %b')}", summary=text,
+                          payload={"original": text[:TEXT_KEEP]}, action="none", draft=text)
+            self.store.trim()
+            await self._notify("Your day, in short", text[:200])
+            self.ctx.audit("today_evening", chars=len(text))
+            return True
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("autopilot evening summary failed")
+            return False
+
     async def _notify(self, title: str, body: str) -> None:
         try:
             result = self.ctx.notify(title=title, body=body, level="info", link="autopilot", source="autopilot")
@@ -718,6 +873,7 @@ class Autopilot:
                         last = 0.0
                     if self.now_ts() - last >= self.interval_min * 60:
                         await self.sweep()
+                    await self.maybe_evening()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
@@ -734,6 +890,7 @@ class Autopilot:
         out["subject"] = p.get("reply_subject") if card["action_kind"] == "send_email" else None
         out["original"] = str(p.get("original") or "")[:SHOW_ORIGINAL]
         out["sender"] = p.get("from") or ""
+        out["research"] = str(p.get("research") or "")
         return out
 
     def counts(self) -> dict:

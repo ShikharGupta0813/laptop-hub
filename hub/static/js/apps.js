@@ -113,6 +113,9 @@ const ENTRIES = [
   view("autopilot", "Autopilot", "Drafts your replies and updates with a free AI, then waits for your one tap. Nothing is sent by itself.",
     "monitor", ["autopilot", "approve", "approvals", "drafts", "reply", "standup", "queue", "email", "asana", "chat"],
     { view: "autopilot" }, { icon: "zap", isNew: true }),
+  view("today", "Today", "Your whole day on one page: meetings, tasks, spending, mail and what you have done. Nothing to search.",
+    "monitor", ["today", "summary", "day", "timeline", "update", "what did i do", "expenses", "meetings", "done"],
+    { view: "today" }, { icon: "clock", isNew: true }),
   view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
     ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
 

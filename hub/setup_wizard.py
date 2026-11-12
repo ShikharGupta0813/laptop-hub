@@ -541,7 +541,7 @@ def check_autopilot(w: Wizard) -> Result:
     if missing:
         return Result("fail", f"on, but a standup folder is missing: {missing[0]}")
     return Result("ok", f"on, every {config.autopilot_sweep_min} min, {config.autopilot_daily_ai_calls} AI calls a day max, "
-                        f"{len(config.autopilot_repos)} standup folder(s)")
+                        f"{len(config.autopilot_repos)} standup folder(s), evening summary {config.today_evening_time or 'off'}")
 
 
 def step_autopilot(w: Wizard) -> Result:

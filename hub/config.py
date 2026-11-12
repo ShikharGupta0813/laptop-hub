@@ -77,6 +77,10 @@ class Config:
     autopilot_standup_time: str = "08:30"   # local time of the weekday standup draft
     autopilot_repos: list[str] = field(default_factory=list)   # local git folders read for the standup draft
     autopilot_tone: str = "Friendly but professional, short, plain text."   # the voice drafts are written in
+    autopilot_research: bool = True         # read the mail thread / Asana task / notes before drafting (no extra AI calls)
+    # Today: one read-only timeline of the day (meetings, tasks, spending, mail, what you did) plus a spoken summary.
+    today_enabled: bool = True
+    today_evening_time: str = "19:30"       # weekday time of the evening summary (needs Autopilot on); "" = off
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -148,7 +152,8 @@ def save(config: Config, path: Path) -> None:
         "autopilot_daily_ai_calls": int(config.autopilot_daily_ai_calls),
         "autopilot_expire_hours": int(config.autopilot_expire_hours),
         "autopilot_standup_time": config.autopilot_standup_time, "autopilot_repos": list(config.autopilot_repos),
-        "autopilot_tone": config.autopilot_tone,
+        "autopilot_tone": config.autopilot_tone, "autopilot_research": bool(config.autopilot_research),
+        "today_enabled": bool(config.today_enabled), "today_evening_time": config.today_evening_time,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

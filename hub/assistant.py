@@ -158,6 +158,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                 "autopilot_cards"},
                re.compile(r"\bautopilot\b|\bto approve\b|\bapprovals?\b|\bdrafts? (?:ready|waiting)\b|\bfriday\b|\bbrief(?:ing)?\b|\bupdate for today\b|\bplan (?:my|the) day\b|"
                           r"\bwhat(?:'s| is) (?:up|on) (?:for )?today\b|\blaptop ready\b|\bget ready\b", re.I)),
+    "today": ({"today_summary", "autopilot_pending", "autopilot_decide"}, re.compile(r"\bsummar(?:y|i[sz]e)\b|\bmy day\b|\bday(?:'s)? (?:end|start|summary|wrap|review|recap)\b|\b(?:end|start) of (?:the |my )?day\b|\bwhat(?:'s| is) the update\b|\bany updates?\b|\bwhat (?:did i|have i|happened)\b|\brecap\b|\bwrap(?:ping)? up\b|\bapprove\b|\bskip (?:it|the|number|card|\d)|\bpending\b|\bwhat(?:'s| is) waiting\b", re.I)),
     "notes": ({"search_notes", "read_note", "add_note"},
               re.compile(r"\bnotes?\b|\btags?\b|\bjot\b|\bwrite (?:this|that) down\b", re.I)),
     "reminders": ({"reminder_add", "reminders_list"},

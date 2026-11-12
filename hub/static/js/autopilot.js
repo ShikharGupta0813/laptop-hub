@@ -4,7 +4,7 @@ import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 
 const CSS = "/css/autopilot.css";
-const SOURCE = { "watch-gmail": "Gmail alert", "watch-chat": "Chat", asana: "Asana", inbox: "Gmail", standup: "Standup", manual: "Note" };
+const SOURCE = { "watch-gmail": "Gmail alert", "watch-chat": "Chat", asana: "Asana", inbox: "Gmail", standup: "Standup", manual: "Note", today: "Day review" };
 const KIND_HINT = {
   send_email: "Sends this reply to the sender only.",
   asana_comment: "Posts this as a comment on the task.",
@@ -81,12 +81,14 @@ export function init(container, ctx) {
     return el("article", { class: "ui-card ap-card ui-stack", "data-id": c.id },
       el("div", { class: "ap-head" }, ui.badge(SOURCE[c.source] || c.source, "accent"),
         c.ai_written ? ui.badge("AI-written draft", "warn") : null,
+        c.research ? ui.badge(`research: ${c.research}`, "accent") : null,
         el("span", { class: "ap-when" }, ui.relTime ? ui.relTime(c.created) : "")),
       el("h3", { class: "ap-title" }, c.title),
       c.summary ? el("p", { class: "ap-summary" }, c.summary) : null,
       c.note ? ui.notice(c.note, { tone: "warn" }) : null,
       sends && c.recipient ? el("p", { class: "ap-to" }, el("span", { class: "ui-caps" }, "To "), c.recipient, c.subject ? el("span", { class: "ap-subject" }, " · " + c.subject) : null) : null,
       area,
+      !area && c.action_kind === "none" && c.draft ? el("p", { class: "ap-summary", style: "white-space:pre-wrap" }, c.draft) : null,
       el("p", { class: "ui-hint" }, area ? `You can edit it first. ${KIND_HINT[c.action_kind]}` : KIND_HINT[c.action_kind]),
       el("div", { class: "ap-actions" }, approve, copy, skip));
   }

@@ -882,7 +882,8 @@ class RealHub(unittest.TestCase):
             self.assertTrue(b.json()["spoken"].endswith("Want me to plan the day?"))
             tools = {t.spec["name"]: t for t in friday_tools.build(lambda: app, config)}
             self.assertEqual(set(tools), {"friday_brief", "friday_plan", "friday_apply_plan", "friday_laptop_prep",
-                                          "friday_run_laptop_prep", "autopilot_cards"})
+                                          "friday_run_laptop_prep", "autopilot_cards", "today_summary",
+                                          "autopilot_pending", "autopilot_decide"})
             self.assertFalse(tools["autopilot_cards"].needs_approval({}))
             self.assertTrue(tools["friday_apply_plan"].needs_approval({}))
             self.assertTrue(tools["friday_run_laptop_prep"].needs_approval({"ids": []}))
