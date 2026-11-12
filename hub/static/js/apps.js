@@ -107,6 +107,9 @@ const ENTRIES = [
   // Monitoring
   view("watch", "Watch", "Get told when a page, price or file changes.", "monitor",
     ["monitor", "alerts", "track", "change", "website", "price"], { view: "watch" }, { icon: "eye", isNew: true }),
+  view("council", "Council", "Several models work on a side job in the background, without Claude.",
+    "monitor", ["council", "models", "multi-llm-lab", "side job", "gemini", "ollama", "background", "agents"],
+    { view: "council" }, { icon: "users", isNew: true }),
   view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
     ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
 

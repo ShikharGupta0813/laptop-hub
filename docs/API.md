@@ -19,6 +19,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [search.md](api/search.md): global search (`/api/search`) and the Home dashboard data
 - [settings.md](api/settings.md): settings, models, diagnostics, audit viewer, backups
 - [watch.md](api/watch.md): urgent-mail and Google Chat alerts
+- [council.md](api/council.md): background multi-model side jobs (multi-llm-lab), review packet, per-model switches
 
 **Search note:** `GET /api/search?q=` (no `root`) is global search across the whole hub, see `api/search.md`.
 With `root=` it is the older file-name search described under Files below (same response as documented there).

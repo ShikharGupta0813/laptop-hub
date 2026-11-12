@@ -108,6 +108,16 @@ const CHECKS = [
           : R("warn", sentence(c.reason) || "Not connected yet.", { fix: jarvisFix("Chat spaces are added in the Jarvis app.", "setup chat") });
       } catch (e) { return missing(e) ? R("na", "Work isn't on this laptop.") : FAIL(e, "Google Chat"); }
     } },
+  { id: "council", title: "Council (several models, side jobs)", icon: "users", tone: "teal", optional: true,
+    unlocks: "Run your multi-llm-lab council from the phone or the assistant, without using Claude.",
+    async run() {
+      try {
+        const c = await get("/api/council/status");
+        if (!c?.enabled) return R("warn", "Not set up yet. Optional.", { fix: { steps: ["Point the hub at your multi-llm-lab folder (it can download and prepare it for you)."], cmds: [cmd("python -m hub setup --only council", "Run on the laptop, then restart the hub")] } });
+        if (!c.ready) return R("bad", "The folder is set but has no lab folder in it.", { fix: { steps: ["Check the multi-llm-lab folder, or run the setup again."], cmds: [cmd("python -m hub setup --only council")] } });
+        return R("ok", `Ready (${c.folder}).`);
+      } catch (e) { return missing(e) ? R("na", "Council isn't on this laptop.") : FAIL(e, "the council"); }
+    } },
   { id: "access", title: "Phone notification access", icon: "phone", tone: "pink", optional: true, phone: true,
     unlocks: "Lets the Android app see payment, mail and chat notifications.",
     async run() {

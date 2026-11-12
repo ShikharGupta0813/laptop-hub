@@ -42,7 +42,8 @@ MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "w
 ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
-               "shells", "jarvis_dir", "session_generation")
+               "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
+               "council_allow_claude")
 SECRET_KEYS = ("ntfy_topic",)   # changes are audited without the value (the topic works like a password)
 
 MODEL_NAME = re.compile(r"\A[A-Za-z0-9._:/-]{1,80}\Z")
@@ -425,6 +426,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "display_name": config.display_name,
             "ntfy_server": config.ntfy_server, "ntfy_topic_set": bool(config.ntfy_topic),
             "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
+            "council_dir_set": bool((config.council_dir or "").strip()),
             "shells": list(config.shell_table()), "apps": list(config.apps), "scripts": list(config.scripts),
             "has_claude_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "default_provider": config.default_provider, "gemini_model": config.gemini_model,
@@ -627,6 +629,11 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             ok = (Path(config.jarvis_dir) / "jarvis.py").is_file()
             check("Jarvis folder", ok, "jarvis.py found." if ok else "jarvis.py not found in the Jarvis folder.",
                   "Point jarvis_dir in hub.json at your jarvis-voice-assistant folder.", required=False)
+        if (config.council_dir or "").strip():
+            ok = (Path(config.council_dir) / "lab").is_dir()
+            check("Council (multi-llm-lab)", ok, "multi-llm-lab found." if ok else "No 'lab' folder in the council folder.",
+                  "Run `python -m hub setup --only council`, or point council_dir in hub.json at the multi-llm-lab folder.",
+                  required=False)
         return out
 
     @router.get("/diagnostics")

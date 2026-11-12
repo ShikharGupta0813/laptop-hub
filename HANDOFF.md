@@ -94,6 +94,7 @@ Each module is `hub/<name>.py` with `make_router(ctx)` (+ optional `start(ctx)` 
 | `reminders` | Reminders/alarms/timers, natural-language quick add, scheduler | `test_reminders` |
 | `inbox` | Read-only Gmail (IMAP), summaries, reply drafts (never sends), digest, daily briefing | `test_inbox` |
 | `watch` | Monitor Gmail + Google Chat with rules and AI "urgent" detection; chat arrives from the Android listener via `POST /api/watch/ingest` | `test_watch` |
+| `council` | Background side jobs that run the separate `multi-llm-lab` CLI (`python -m lab council --json`): one at a time, timeout, jobs persisted in `<data>/council/jobs`, notify on finish, review packet + rerun with notes (stdin), per-model on/off (`lab models`), assistant tools `council_run/status/cancel` in `hub/council_tools.py`, Apps > Council (`js/council.js`), wizard step `council`. Feature is off while `council_dir` is empty. See `docs/api/council.md` | `test_council` |
 | `screen` | Live remote screen + opt-in remote control (armed for N minutes, allow-listed keys) | `test_screen` |
 | `productivity` | To-dos, focus timer, habits, journal | `test_productivity` |
 | `life` | Bookmarks, snippets/clipboard, expenses (+ UPI auto-capture), countdowns, calculator/units/world clock | `test_life`, `test_life_capture` |
@@ -121,6 +122,14 @@ Home dashboard (`js/home.js`), global search overlay (`js/omnibox.js`).
 ## 3c. Update button (2026-11-12)
 
 `python -m hub update [--restart]` (hub/updater.py) pulls `git pull --ff-only` in the repo (refuses on a dirty tree, pip only if requirements.txt changed) and restarts the `LaptopHub` task, logging to `~/.laptop-hub/update.log`. `python -m hub install-updater` (also offered by `setup --only autostart`, step `updater`) registers the on-demand task `LaptopHubUpdate` and saves the `update` quick button (`schtasks /Run /TN LaptopHubUpdate`). `/api/status` has `version` (short commit); `/api/update-log` returns the last 20 log lines. sw.js VERSION v13-update-button-2026.11. Unverified: real Windows scheduled-task behaviour (tests use fakes only).
+
+## 3d. Council (multi-llm-lab side jobs)
+Built against an interface the lab teammate is still adding, with fakes only (plus a stand-in `lab` package run by the real
+process runner in `tests/test_council.py`): `council --json [--only= --skip= --resume= --notes -]`, `review-packet`, `models
+--json|--enable=|--disable=`. **Unverified against the real lab**: flag spellings (comma-separated `--only=`, `--resume=`,
+`--enable=NAME`), the `models --json` field names, and that `run_dir` is an absolute path. Not tried on Windows or with real models.
+Claude is never used unless `council_allow_claude` is set by hand in hub.json. A crash (not a clean stop) can leave an orphan lab
+process; the job is shown as `interrupted` and a new run is allowed.
 
 ## 4. Still to do (in this order)
 

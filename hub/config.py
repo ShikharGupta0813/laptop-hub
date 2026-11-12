@@ -61,6 +61,11 @@ class Config:
     # Mixed into every session cookie's signature; POST /api/logout-all raises it to log every phone out.
     session_generation: int = 0
     display_name: str = "Chief"             # what the hub and the assistant call you (set by `python -m hub setup`)
+    # Council: side jobs that run the multi-llm-lab CLI (several models working on one task). See docs/api/council.md.
+    council_dir: str = ""                   # folder of the multi-llm-lab checkout; empty = the feature is off
+    council_python: str = ""                # interpreter for it; empty = <council_dir>/.venv if present, else the hub's own
+    council_timeout_min: float = 90         # hard wall-clock limit for one council run (minutes)
+    council_allow_claude: bool = False      # only when True may a run be started with `--escalate claude`
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -124,6 +129,8 @@ def save(config: Config, path: Path) -> None:
         "ntfy_server": config.ntfy_server, "ntfy_topic": config.ntfy_topic,
         "session_generation": int(config.session_generation or 0),
         "display_name": config.display_name,
+        "council_dir": config.council_dir, "council_python": config.council_python,
+        "council_timeout_min": config.council_timeout_min, "council_allow_claude": bool(config.council_allow_claude),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

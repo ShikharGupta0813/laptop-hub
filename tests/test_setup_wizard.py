@@ -306,6 +306,90 @@ class TestJarvis(Base):
         self.assertEqual(result.status, "fail")
 
 
+class TestCouncil(Base):
+    def lab_system(self, target):
+        """A fake machine where `git clone` of the lab puts a lab/ folder and requirements.txt there."""
+        orig = self.sys.run
+
+        def run(argv, cwd=None, timeout=900, on_line=None):
+            rc, out = orig(argv, cwd, timeout, on_line)
+            if argv[:2] == ["git", "clone"] and rc == 0:
+                self.sys.dirs.add(str(Path(argv[3]) / "lab"))
+                self.sys.files[str(Path(argv[3]) / "requirements.txt")] = ""
+            return rc, out
+        self.sys.run = run
+
+    def test_clone_and_venv_only_after_confirm_and_dir_is_saved(self):
+        target = str(self.home / "multi-llm-lab")
+        self.lab_system(target)
+        w = self.wizard(Script(asks=[target], confirms=[True, True]))
+        result = sw.step_council(w)
+        self.assertEqual(result.status, "ok", result.message)
+        self.assertEqual(self.sys.ran[0], ["git", "clone", sw.COUNCIL_CLONE_URL, str(Path(target))])
+        self.assertEqual(self.sys.ran[1][1:3], ["-m", "venv"])
+        self.assertEqual(self.sys.ran[2][1:5], ["-m", "pip", "install", "-r"])
+        self.assertEqual(cfg.load(self.path).council_dir, str(Path(target)))
+        self.assertIn("venv ready", result.message)
+
+    def test_declining_the_clone_changes_nothing(self):
+        w = self.wizard(Script(asks=[str(self.home / "lab")], confirms=[False]))
+        result = sw.step_council(w)
+        self.assertEqual(result.status, "skip")
+        self.assertEqual(self.sys.ran, [])
+        self.assertEqual(cfg.load(self.path).council_dir, "")
+
+    def test_declining_the_venv_still_saves_the_folder(self):
+        target = str(self.home / "multi-llm-lab")
+        self.lab_system(target)
+        result = sw.step_council(self.wizard(Script(asks=[target], confirms=[True, False])))
+        self.assertEqual(result.status, "ok")
+        self.assertEqual([a[0] for a in self.sys.ran], ["git"])
+        self.assertEqual(cfg.load(self.path).council_dir, str(Path(target)))
+
+    def test_existing_lab_folder_is_never_touched_and_unrelated_folder_is_refused(self):
+        target = str(self.home / "mine")
+        self.sys.dirs.add(target)
+        self.sys.dirs.add(str(Path(target) / "lab"))
+        self.sys.files[str(Path(target) / "lab" / "x.py")] = ""
+        self.sys.existing.add(str(Path(target) / ".venv"))
+        result = sw.step_council(self.wizard(Script(asks=[target])))
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(self.sys.ran, [])
+        other = str(self.home / "other")
+        self.sys.dirs.add(other)
+        self.sys.files[str(Path(other) / "readme.txt")] = ""
+        result = sw.step_council(self.wizard(Script(asks=[other])))
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(cfg.load(self.path).council_dir, str(Path(target)))
+
+    def test_clone_failure_and_missing_git(self):
+        self.sys.run_rc = 1
+        result = sw.step_council(self.wizard(Script(asks=[str(self.home / "a")], confirms=[True])))
+        self.assertEqual(result.status, "fail")
+        self.sys.which = lambda n: None
+        result = sw.step_council(self.wizard(Script(asks=[str(self.home / "b")], confirms=[True])))
+        self.assertIn("git", result.message)
+
+    def test_check_reports_each_state_and_changes_nothing(self):
+        w = self.wizard(Script())
+        w.load_config(True)
+        self.assertEqual(sw.check_council(w).status, "warn")
+        w.config.council_dir = str(self.home / "gone")
+        self.assertEqual(sw.check_council(w).status, "fail")
+        self.sys.dirs.add(str(self.home / "gone" / "lab"))
+        self.assertEqual(sw.check_council(w).status, "ok")
+        self.assertEqual(self.sys.ran, [])
+
+    def test_step_is_in_the_run_order_and_has_aliases(self):
+        self.assertIn("council", sw.STEP_IDS)
+        self.assertEqual(sw.parse_only("lab,multi-llm-lab"), ["council"])
+        self.assertLess(sw.STEP_IDS.index("ai"), sw.STEP_IDS.index("council"))
+        w = self.wizard(Script())
+        code = sw.run_wizard(w, "council", check=True)
+        self.assertIn("Council (multi-llm-lab)", self.output())
+        self.assertEqual(code, 0)
+
+
 class TestRun(Base):
     def run_all(self, only=None, check=False, script=None):
         w = self.wizard(script or Script())

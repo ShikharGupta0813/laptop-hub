@@ -16,6 +16,7 @@ First time? Run `python -m hub setup` (see docs/SETUP-WINDOWS.md, "One-command s
 | **Files** | Browse your shared folders, open and edit text files, upload, rename, move, copy, zip, and a **trash** you can restore from. Changes only work in folders you list as writable. |
 | **Spending** | Expenses with categories. On Android the app can add UPI payments **automatically** from payment-app notifications (and optional bank SMS); each shows up under "Needs a category" and the hub remembers merchant to category. |
 | **Watch** | Alerts for urgent Gmail and for Google Chat messages that match your rules. |
+| **Council** | Optional. Runs your `multi-llm-lab` project (local Ollama, Gemini and free hosted models working together) as a background side job from the phone or the assistant, without using Claude. Live log, result, per-model on/off switches, and a copy-paste review packet for when you want Claude's opinion. Set up with `python -m hub setup --only council`. |
 | **Remote screen** | See the laptop screen. Control is a separate switch you arm for a few minutes. |
 | **Routines** | Named chains of steps ("Good morning", "Leaving desk"), run by hand or on a schedule. Dangerous steps are gated. |
 | **Tools, Read-later** | Calculator, unit converter, world clock, countdowns, snippets and clipboard history; saved links to read later. |

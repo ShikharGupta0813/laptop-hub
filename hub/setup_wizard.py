@@ -33,19 +33,20 @@ GEMINI_CHECK_URL = "https://generativelanguage.googleapis.com/v1beta/models?page
 CHAT_SERVICE = "jarvis-gchat"         # gchat.py (key "_spaces" plus one entry per space)
 ASANA_TOKEN_FILE = ".claude/.asana_token"   # first file hub/work/asana.py reads
 CLONE_URL = "https://github.com/ShikharGupta0813/jarvis-voice-assistant"
+COUNCIL_CLONE_URL = "https://github.com/ShikharGupta0813/multi-llm-lab"
 WEBHOOK_PREFIX = "https://chat.googleapis.com/v1/spaces/"
 WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 TASK_NAME = "LaptopHub"
 UPDATE_TASK_NAME = "LaptopHubUpdate"
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
-STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "phone", "name", "warp", "autostart", "updater")
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "council", "phone", "name", "warp", "autostart", "updater")
 # `gemini` is part of `ai`; it can also be run alone: python -m hub setup --only gemini
-ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "phone", "name", "warp", "autostart", "updater")
+ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "council", "phone", "name", "warp", "autostart", "updater")
 ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
            "claude": "ai", "claude-key": "ai", "key": "ai", "claude-login": "ai", "startup": "autostart",
-           "auto-start": "autostart", "update": "updater", "update-button": "updater"}
+           "auto-start": "autostart", "lab": "council", "multi-llm-lab": "council", "update": "updater", "update-button": "updater"}
 TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
-          "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "phone": "Phone push", "name": "Your name",
+          "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "council": "Council (multi-llm-lab)", "phone": "Phone push", "name": "Your name",
           "warp": "Cloudflare WARP", "autostart": "Auto-start", "updater": "Update button"}
 
 TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
@@ -439,6 +440,69 @@ def step_jarvis(w: Wizard) -> Result:
     config.jarvis_dir = str(path)
     w.save_config()
     return Result("ok", msg)
+
+
+def default_council_dir(w: Wizard) -> str:
+    if w.system.platform == "win32" and w.system.isdir("D:\\"):
+        return "D:\\multi-llm-lab"
+    return str(w.system.home() / "multi-llm-lab")
+
+
+def check_council(w: Wizard) -> Result:
+    config = w.load_config(False)
+    if config is None or not config.council_dir:
+        return Result("warn", "no council folder set in hub.json (optional: side jobs that use several models)")
+    if not w.system.isdir(Path(config.council_dir) / "lab"):
+        return Result("fail", f"{config.council_dir} has no 'lab' folder (is it the multi-llm-lab checkout?)")
+    venv = Path(config.council_dir) / ".venv"
+    note = "" if (config.council_python or w.system.exists(venv)) else " (no .venv yet; the hub's Python is used)"
+    return Result("ok", f"multi-llm-lab found in {config.council_dir}{note}")
+
+
+def step_council(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    w.say("Council runs your multi-llm-lab project (local and free hosted models working together) as a "
+          "background job from the phone. It never uses Claude unless you turn that on in hub.json.")
+    folder = w.ask_path("Where is (or should I put) your multi-llm-lab folder?",
+                        config.council_dir or default_council_dir(w))
+    if folder is None:
+        return Result("skip", "no council folder chosen; the Council stays off")
+    path = Path(os.path.abspath(os.path.expanduser(folder)))
+    w.say(f"Folder: {path}")
+    s = w.system
+    if s.isdir(path) and s.listdir(path):
+        if not s.isdir(path / "lab"):
+            return Result("fail", f"{path} exists but has no 'lab' folder. I won't touch it; pick another folder.")
+        w.say(f"Found {path}; leaving its files alone.")
+    elif s.exists(path) and not s.isdir(path):
+        return Result("fail", f"{path} is a file, not a folder.")
+    else:
+        if not w.confirm(f"{path} isn't there. Download multi-llm-lab from GitHub into it?", True):
+            return Result("skip", "no council folder; the Council stays off")
+        if not s.which("git"):
+            return Result("fail", "git isn't installed (winget install --id Git.Git -e), then run setup again")
+        w.say("If git asks you to sign in to GitHub, a browser window or a prompt will appear. Finish it there.")
+        rc, _ = s.run(["git", "clone", COUNCIL_CLONE_URL, str(path)], on_line=lambda l: w.say("   " + l[:100]))
+        if rc != 0:
+            return Result("fail", "git clone failed (not signed in, or no network). Run setup again after fixing")
+    msg = f"hub will use {path}"
+    windows = s.platform == "win32"
+    py = path / ".venv" / ("Scripts" if windows else "bin") / ("python.exe" if windows else "python")
+    if s.isfile(path / "requirements.txt") and not s.exists(path / ".venv"):
+        w.say("The council needs its own Python packages. They go into a virtual environment inside the folder "
+              "(.venv), so nothing else on your laptop changes.")
+        if w.confirm("Create the .venv and install its requirements now? (takes a few minutes)", True):
+            rc, _ = s.run([sys.executable, "-m", "venv", str(path / ".venv")], on_line=lambda l: w.say("   " + l[:100]))
+            if rc == 0:
+                rc, _ = s.run([str(py), "-m", "pip", "install", "-r", "requirements.txt"], cwd=str(path),
+                              on_line=lambda l: w.say("   " + l[:100]))
+            msg += "; venv ready" if rc == 0 else "; venv install failed (run it again, or set council_python in hub.json)"
+        else:
+            msg += "; no venv (the hub's Python is used)"
+    config.council_dir = str(path)
+    w.save_config()
+    return Result("ok", msg + ". Restart the hub; the Council appears under Apps")
 
 
 def check_gmail(w: Wizard) -> Result:
@@ -983,7 +1047,7 @@ def step_updater(w: Wizard) -> Result:
 STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] = {
     "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
     "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "ai": (step_ai, check_ai),
-    "gemini": (step_gemini, check_gemini),
+    "gemini": (step_gemini, check_gemini), "council": (step_council, check_council),
     "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
     "autostart": (step_autostart, check_autostart), "updater": (step_updater, check_updater),
 }

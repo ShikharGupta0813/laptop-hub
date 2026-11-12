@@ -186,6 +186,18 @@ Then restart the hub, open Remote on the phone, tap **+ New**, **Add NiFi templa
 - If the button fails, the phone shows the error and offers **Open anyway**, which skips the buttons.
 - Control stays off until you tap **Enable control** and confirm. A workspace never turns it on by itself.
 
+## 9c. Council: side jobs without Claude (optional)
+
+Council runs your **multi-llm-lab** project from the phone: several models (local Ollama, Gemini, free hosted ones) work on a task as a background job, so you do not spend Claude on side work.
+
+1. `python -m hub setup --only council`. It asks for the multi-llm-lab folder (default `D:\multi-llm-lab`), offers to `git clone https://github.com/ShikharGupta0813/multi-llm-lab` there, and offers to create a `.venv` inside it and `pip install -r requirements.txt`. Each of those only happens if you say yes. It saves `council_dir` in hub.json.
+2. Restart the hub. **Apps, Council** appears (and a row in the Setup checklist).
+3. In the Council screen: write a task, optionally a command that checks the result (for example `pytest -q`), tap **Start**. Only one run goes at a time. You get a notification when it finishes. A run is stopped after `council_timeout_min` (90) minutes.
+4. **Models**: switch single models off or on; the list shows free or paid and why one is not ready (for example a missing Gemini key). Claude is off and locked unless you set `"council_allow_claude": true` in hub.json by hand.
+5. **Claude review (by hand, no API calls)**: on a finished run tap **Copy review packet**, paste it into Claude yourself, paste Claude's notes into **Claude's notes**, tap **Rerun with notes**. The notes are sent to the lab on stdin.
+
+The assistant can start and cancel runs too (it asks you first and shows the exact task). hub.json keys: `council_dir`, `council_python` (default: `<council_dir>\.venv\Scripts\python.exe` if it exists, else the hub's Python), `council_timeout_min`, `council_allow_claude`. Details: docs/api/council.md.
+
 ## 10. Verify each feature in 10 minutes
 
 Tick as you go. Anything that fails is worth writing down: none of this has been run on real hardware yet.
@@ -204,6 +216,7 @@ Tick as you go. Anything that fails is worth writing down: none of this has been
 - [ ] **Work**: Asana tasks and today's meetings load (needs Jarvis dir and Asana token)
 - [ ] **Inbox**: recent mail lists (needs the Jarvis Gmail app password in the keyring)
 - [ ] **Watch**: turn on mail watching, send yourself an "urgent" test mail, see an alert
+- [ ] **Council** (optional): with the lab set up, start a tiny task, see the live log, get a notification, copy the review packet
 - [ ] **Remote screen**: the picture appears; arm control for 1 minute, tap once, then it disarms itself
 - [ ] **Laptop**: take a screenshot; lock action (only if you can unlock)
 - [ ] **Terminal**: opens PowerShell and runs `dir`
