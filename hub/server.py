@@ -32,10 +32,11 @@ from pydantic import BaseModel
 from . import assistant_tools, assistant_tools_more, auth, council_tools, files, friday_tools
 from . import llm as llm_mod
 from . import updater as updater_mod
-from .assistant import AssistantService
+from .assistant import LOCAL_CTX_TOOLS, AssistantService
 from .common import Ctx
 from .config import Config
 from . import providers as providers_mod
+from .router import Router
 from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
@@ -119,6 +120,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     duo = deps.duo or DuoClient(gemini, Supervisor(claude_login, lambda: config.duo_max_claude_per_hour,
                                                     lambda: config.duo_verify))
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
+    router = Router(config)
+    ollama_seen: dict[str, bool | None] = {"up": None}   # last Ollama answer from /api/status (None = not checked)
     store = NoteStore(config.notes_dir)
     limiter = auth.LoginLimiter()
     config_lock = threading.Lock()   # logout-all's read-change-write of hub.json
@@ -160,7 +163,15 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         returns an optional `async def stop()`."""
         stops = []
         # Load the local model into memory now, so the first question is not a cold start (never raises).
-        warm = asyncio.create_task(llm_mod.warm_up(config.ollama_host, config.chat_model)) if (deps.llm is None and not os.environ.get("HUB_DEMO")) else None
+        warm = None
+        if deps.llm is None and not os.environ.get("HUB_DEMO"):
+            async def warm_all():
+                await llm_mod.warm_up(config.ollama_host, config.chat_model)
+                tool_model = (config.local_tool_model or "").strip()
+                if tool_model and tool_model != config.chat_model:
+                    # tool turns send tools, so they use the larger context; same num_ctx avoids a reload
+                    await llm_mod.warm_up(config.ollama_host, tool_model, num_ctx=LOCAL_CTX_TOOLS)
+            warm = asyncio.create_task(warm_all())
         for module in modules:
             start = getattr(module, "start", None)
             if start is not None:
@@ -334,8 +345,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             info["ollama"] = {"up": True, "models": await llm.models()}
         except LLMError:
             info["ollama"] = {"up": False, "models": []}
+        ollama_seen["up"] = info["ollama"]["up"]
         avail = await asyncio.to_thread(providers_mod.availability, config, info["ollama"]["up"])
         info["providers"] = avail
+        avail["router"] = router.status()
+        info["failovers"] = int(getattr(assistant, "failovers", 0) or 0)
         sup = getattr(duo, "supervisor", None)
         info["duo"] = sup.status() if sup else {"paused": False, "reason": "", "note": ""}
         if info["duo"]["note"] and "duo" in avail:
@@ -429,9 +443,12 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             system, user = build_prompt(body.mode, body.text, body.question)
         except LLMError as exc:
             raise HTTPException(400, str(exc))
-        model = model_for(body.provider)
+        picked, decision = router.route(body.provider, body.question or body.text, ollama_seen["up"])
+        model = model_for(picked)
 
         async def pieces():
+            if decision:
+                yield {"meta": {"routed_to": decision["routed_to"], "reason": decision["reason"]}}
             async for text in model.stream(system, user):
                 yield {"t": text}
         return sse(pieces())
@@ -531,11 +548,13 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @api.post("/assistant/message")
     async def assistant_message(body: AssistantBody):
-        provider = providers_mod.resolve(config, body.provider)
+        provider, decision = router.route(body.provider, body.text, ollama_seen["up"])
         audit("assistant_message", session=body.session_id, provider=provider,
               auto_approve=body.auto_approve, chars=len(body.text))
 
         async def events():
+            if decision:
+                yield f"data: {json.dumps({'type': 'meta', 'routed_to': decision['routed_to'], 'reason': decision['reason']})}\n\n"
             try:
                 async for event in assistant.run(body.session_id, body.text, provider,
                                                  body.auto_approve):

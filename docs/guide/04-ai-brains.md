@@ -57,6 +57,26 @@ The default is **auto**. It picks the first one that is ready, in this order:
 
 `auto` never picks the duo by itself. You choose that on purpose.
 
+### The router
+
+Since the router arrived, `auto` also looks at each message before it picks. It reads the words only. It does not ask any AI, so it costs nothing.
+
+```mermaid
+flowchart TD
+    A["Message with provider auto"] --> B{"Did you pick a brain by hand?"}
+    B -->|Yes| Z["Your pick. The router stays out."]
+    B -->|No| C{"What kind of message?"}
+    C -->|Short chit-chat| D["Local model, if Ollama is running"]
+    C -->|Tools, code, steps or long| E["Duo, if Gemini is ready"]
+    C -->|Anything else| F["The usual default"]
+    D -->|Not ready| F
+    E -->|Not ready| F
+```
+
+The reply carries a small note saying where it went (`routed_to`), and Settings status shows the last decision. Turn it off with `"router_enabled": false` in `hub.json` to get the old behaviour.
+
+If the local model fumbles a tool call twice in a row, Gemini does that one step instead and you see a note. It never switches to Claude by itself. Turn it off with `"tool_failover": false`.
+
 ## How the duo works
 
 ```mermaid

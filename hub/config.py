@@ -45,6 +45,9 @@ class Config:
     gemini_model: str = "gemini-2.5-flash"   # point at your Pro model (e.g. gemini-2.5-pro) if you have one
     duo_verify: bool = True                # "Claude + Gemini": after tools ran, Claude checks the work was really done (one more Claude call)
     duo_max_claude_per_hour: int = 20      # hard cap on Claude supervisor calls per hour (0 = never ask Claude)
+    router_enabled: bool = True            # "auto" looks at each message: chit-chat -> local, tool/code/long -> duo (Gemini)
+    tool_failover: bool = True             # the local model fumbled a tool call twice: Gemini does that one step
+    local_tool_model: str = ""             # optional sharper Ollama model for tool turns only (empty = chat_model does both)
     allowed_origins: list[str] = field(default_factory=list)
     # Host names the hub answers to besides localhost and *.ts.net (blocks DNS-rebinding pages)
     allowed_hosts: list[str] = field(default_factory=list)
@@ -123,6 +126,8 @@ def save(config: Config, path: Path) -> None:
         "default_provider": config.default_provider, "claude_cli_model": config.claude_cli_model,
         "claude_cli_path": config.claude_cli_path, "gemini_model": config.gemini_model,
         "duo_verify": bool(config.duo_verify), "duo_max_claude_per_hour": int(config.duo_max_claude_per_hour),
+        "router_enabled": bool(config.router_enabled), "tool_failover": bool(config.tool_failover),
+        "local_tool_model": config.local_tool_model,
         "allowed_origins": config.allowed_origins, "allowed_hosts": config.allowed_hosts, "shells": config.shells,
         "scripts": config.scripts, "apps": config.apps, "embed_model": config.embed_model,
         "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,

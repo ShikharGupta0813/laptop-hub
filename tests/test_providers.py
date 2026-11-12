@@ -475,6 +475,7 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(self.ask(name), name)
 
     def test_auto_and_blank_use_the_default(self):
+        self.config.router_enabled = False     # the router (tests/test_router.py) would send "hi" to the local model
         self.assertEqual(self.ask("auto"), "local")
         with mock.patch.object(providers, "gemini_key", return_value="k"):
             self.assertEqual(self.ask("auto"), "gemini")
@@ -482,7 +483,7 @@ class ServerTest(unittest.TestCase):
 
     def test_status_lists_providers_and_default(self):
         s = self.client.get("/api/status").json()
-        self.assertEqual(set(s["providers"]), {"local", "claude", "claude_login", "gemini", "duo"})
+        self.assertEqual(set(s["providers"]), {"local", "claude", "claude_login", "gemini", "duo", "router"})
         self.assertEqual(s["default_provider"], "local")
         self.assertFalse(s["claude_ready"])
         with mock.patch.object(providers, "find_claude_cli", return_value="/bin/claude"):

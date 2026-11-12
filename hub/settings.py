@@ -646,7 +646,10 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
                   "fix": "" if reachable else "Start the Ollama app (needed for Explain, Ask and tags).",
                   "level": "ok" if reachable else "fail"}]
         if reachable:
-            for label, wanted, required in (("Chat model", config.chat_model, True), ("Search model", config.embed_model, False)):
+            wanted_models = [("Chat model", config.chat_model, True), ("Search model", config.embed_model, False)]
+            if (config.local_tool_model or "").strip():
+                wanted_models.append(("Tool model", config.local_tool_model.strip(), False))
+            for label, wanted, required in wanted_models:
                 have = wanted in names or f"{wanted}:latest" in names
                 extra.append({"name": label, "ok": have, "detail": f"{wanted} is installed." if have else f"{wanted} is missing.",
                               "fix": "" if have else f"Download it in Settings, or run: ollama pull {wanted}",

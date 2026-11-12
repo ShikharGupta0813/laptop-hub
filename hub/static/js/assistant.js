@@ -578,6 +578,9 @@ export function init(container, ctx) {
           }, ui.icon("file"), el("span", { class: "as-filechip-text" }, `Open ${label}`))));
         break;
       }
+      case "note":
+        if (ev.text) showNotice(ev.text);
+        break;
       case "error": {
         closeBubble(t);
         t.hadError = true;

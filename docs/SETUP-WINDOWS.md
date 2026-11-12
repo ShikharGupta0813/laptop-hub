@@ -65,6 +65,16 @@ ollama pull nomic-embed-text
 
 `nomic-embed-text` is only for Ask my files (meaning search).
 
+### Optional: a sharper tool model
+
+The assistant's tool calls (open a file, run a command) are where a small model slips most, and a "q8" build of a model keeps more detail than the default "q4" one, so it picks tools and fills in arguments more reliably (it is bigger and a bit slower). Try it as the tool model only; plain chat stays on `qwen3:4b`:
+
+```powershell
+ollama pull qwen3:4b-instruct-q8_0    # an EXAMPLE name: run `ollama list` / check the Ollama library for the real names
+```
+
+Then put the exact name in `hub.json` as `"local_tool_model": "qwen3:4b-instruct-q8_0"` and restart. Empty (the default) means one model does everything. `python -m hub setup --check` shows whether it is installed.
+
 ## 4. Create the config and your token
 
 Choose folders to share (repeat `--root`). A `notes` and an `inbox` folder are added for you. Leave out `--jarvis-dir` if you do not use Jarvis.

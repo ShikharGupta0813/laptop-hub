@@ -128,6 +128,11 @@ def cmd_doctor(args) -> int:
         if config.chat_model not in models:
             ok = False
             line(False, f"chat model '{config.chat_model}' missing: ollama pull {config.chat_model}")
+        tool_model = (config.local_tool_model or "").strip()
+        if tool_model:
+            have = tool_model in models or f"{tool_model}:latest" in models
+            line(have, f"tool model '{tool_model}' " + ("installed (used for tool turns)" if have
+                 else f"missing: ollama pull {tool_model}"))
     except Exception:  # noqa: BLE001 - slow, down, or garbage answer: never crash the doctor
         line(None, "Ollama not reachable (start the Ollama app). Needed for Explain/Ask and tags.")
     try:
@@ -144,6 +149,8 @@ def cmd_doctor(args) -> int:
              + f" (default: {providers_mod.LABELS.get(providers_mod.resolve_default(config), 'local')})")
     else:
         line(None, "AI: only the local model. Optional: python -m hub setup --only ai (Gemini key or Claude login)")
+    line(None, f"router: {'on' if config.router_enabled else 'off'} (auto: chit-chat local, tools via Gemini); "
+               f"tool failover to Gemini: {'on' if config.tool_failover else 'off'}")
     for name, argv in config.shell_table().items():
         found = shutil.which(argv[0]) is not None
         line(found or None, f"shell {name}: {argv[0]}" + ("" if found else " (not found)"))

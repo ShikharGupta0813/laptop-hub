@@ -131,6 +131,14 @@ process runner in `tests/test_council.py`): `council --json [--only= --skip= --r
 Claude is never used unless `council_allow_claude` is set by hand in hub.json. A crash (not a clean stop) can leave an orphan lab
 process; the job is shown as `interrupted` and a new run is allowed.
 
+## 3e. Router, tool failover, tool model (2026-11-12)
+
+Goal: use Claude as little as possible; local + Gemini carry the load. Config (hub.json only, not in the phone settings allow-list): `router_enabled` (true), `tool_failover` (true), `local_tool_model` ("").
+- `hub/router.py`: `classify()` (word heuristic, no AI call) and `Router.route()`. Only when the request AND `default_provider` are auto/blank: trivial -> local (if Ollama not known down), heavy (tool group match, action verb, code, multi-step, >60 words) -> duo (if Gemini ready), else `resolve_default`. Explicit picks (also an explicit `default_provider`) are untouched. `/api/assistant/message` first emits `{"type":"meta","routed_to","reason"}`; `/api/ask` first emits `{"meta":{...}}`; `/api/status.providers.router = {enabled, last_decision}`. The UI ignores `meta` (badge not built yet). Note: duo still uses the rationed Claude supervisor (`duo_max_claude_per_hour`, set 0 to never ask Claude).
+- Failover: the `local` provider runs `_local_turns` (native Ollama tool calls), not `_text_turns`, so that is where it lives. After 2 consecutive turns with an unknown tool or invalid arguments (`_fumbled`), `_gemini_step` runs ONE turn on Gemini (text tool protocol), emits `{"type":"note"}` ("local model fumbled a tool call; asked Gemini for this step") and the local model carries on. Once per message, only to Gemini, needs `availability()["gemini"]["ready"]`. Counter `assistant.failovers` (process memory) is `/api/status.failovers`. `assistant.js` shows `note` events in the notice bar.
+- `local_tool_model`: `LocalChat.stream(..., model=)`; turns that send tools use it, plain chat keeps `chat_model`; warmed on startup too; shown by `python -m hub doctor` and Settings diagnostics. Docs: `docs/SETUP-WINDOWS.md`, `docs/guide/04-ai-brains.md`.
+- Ollama knobs were already fine (`KEEP_ALIVE` 30m, num_ctx 4096 plain / 8192 tools), unchanged. Tests: `tests/test_router.py`. Not verified on the real laptop.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
