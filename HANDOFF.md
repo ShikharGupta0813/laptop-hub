@@ -309,6 +309,24 @@ python -m unittest discover -s tests -t .           # 1,300+ tests, no models or
 python -m hub.devserver --port 8799                 # fake models and a harmless fake OS; token: devtoken
 ```
 
+
+## 10. Jarvis and Friday perfection pass: Full Control, personas, latency
+
+- **Full Control** (`full_control`, default false; settings allow-list; ON needs `full_control_confirm: "I UNDERSTAND"`):
+  `AssistantService._call_tool` skips the approval step for every gated tool, audits `assistant_tool` with
+  `full_control: true`, marks `tool_start.full_control`. `_precheck` refusals (protected hub files, credential folders) stay.
+  `/api/status` and `/api/assistant/info` show it; `js/fullcontrol.js` owns the header chip and the typed sheet; Settings row.
+  `friday_prep_run` audit also carries the marker; voice and the Friday screen run laptop prep without the readout when on.
+- **Personas**: `hub/persona.py` (`split_persona`, short prompts). The server routes ANY message (typed or spoken) with a
+  leading/trailing name; `persona`/`voice` are optional fields of `POST /api/assistant/message`. `js/speechchunk.js` ports the splitter.
+- **Fast path** (`hub/fastcmd.py`, `fast_commands`): "run/execute <cmd>", "open <configured app or link>", "type <text>" with
+  Full Control on skip the model. New tool `type_text` (needs Apps > Screen armed).
+- **Latency**: `hub/latency.py`, `GET /api/latency`, shown in Settings > Diagnostics; `POST /api/assistant/warm`
+  (chat + tool model + Whisper + Gemini connection) called by voice mode every 8 min; Gemini keeps one HTTP connection;
+  Whisper preloads and uses beam 1; voice turns skip the Claude planning/review calls; voice replies are spoken sentence by sentence.
+- Tool exceptions and model crashes become error messages; voice retries once if the stream drops before any event.
+- Tests: `tests/test_full_control.py`. Not in `sw.js` precache yet: `/js/fullcontrol.js`, `/js/speechchunk.js` (add on merge).
+
 ## 9. Related repos
 
 - `ShikharGupta0813/jarvis-voice-assistant`: the Windows desktop assistant (wake word, Claude Code as its

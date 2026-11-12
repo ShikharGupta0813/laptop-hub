@@ -33,6 +33,8 @@ from . import assistant_tools, assistant_tools_more, auth, council_tools, files,
 from . import llm as llm_mod
 from . import updater as updater_mod
 from .assistant import LOCAL_CTX_TOOLS, AssistantService
+from .latency import Latency
+from .persona import clean_persona, split_persona
 from .common import Ctx
 from .config import Config
 from . import providers as providers_mod
@@ -96,6 +98,8 @@ class AssistantBody(BaseModel):
     text: str
     provider: str = "auto"
     auto_approve: bool = False
+    persona: str = "auto"      # "jarvis" | "friday" | "auto" (a leading name in the text decides)
+    voice: bool = False        # the text came from the microphone
 
 
 class ApproveBody(BaseModel):
@@ -155,6 +159,30 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         extra_tools=assistant_tools.build(lambda: app, config) + assistant_tools_more.build(lambda: app, config)
         + friday_tools.build(lambda: app, config) + council_tools.build(lambda: app, config))
 
+    latency = getattr(assistant, "latency", None) or Latency()   # per-turn timings for GET /api/latency
+    warming = {"busy": False}
+
+    async def warm_all():
+        """Load everything a first voice turn needs: chat + tool model, Whisper, the Gemini connection. Never raises."""
+        if warming["busy"]:
+            return
+        warming["busy"] = True
+        try:
+            jobs = []
+            if deps.llm is None and not os.environ.get("HUB_DEMO"):
+                jobs.append(llm_mod.warm_up(config.ollama_host, config.chat_model))
+                tool_model = (config.local_tool_model or "").strip()
+                if tool_model and tool_model != config.chat_model:
+                    # tool turns send tools, so they use the larger context; same num_ctx avoids a reload
+                    jobs.append(llm_mod.warm_up(config.ollama_host, tool_model, num_ctx=LOCAL_CTX_TOOLS))
+            if deps.transcriber is None and hasattr(transcriber, "preload"):
+                jobs.append(asyncio.to_thread(transcriber.preload))
+            if deps.gemini is None and gemini.has_key():
+                jobs.append(gemini.warm())
+            await asyncio.gather(*jobs, return_exceptions=True)
+        finally:
+            warming["busy"] = False
+
     modules: list = []   # feature modules that were found; filled in below
 
     @contextlib.asynccontextmanager
@@ -164,13 +192,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         stops = []
         # Load the local model into memory now, so the first question is not a cold start (never raises).
         warm = None
-        if deps.llm is None and not os.environ.get("HUB_DEMO"):
-            async def warm_all():
-                await llm_mod.warm_up(config.ollama_host, config.chat_model)
-                tool_model = (config.local_tool_model or "").strip()
-                if tool_model and tool_model != config.chat_model:
-                    # tool turns send tools, so they use the larger context; same num_ctx avoids a reload
-                    await llm_mod.warm_up(config.ollama_host, tool_model, num_ctx=LOCAL_CTX_TOOLS)
+        if not os.environ.get("HUB_DEMO"):
             warm = asyncio.create_task(warm_all())
         for module in modules:
             start = getattr(module, "start", None)
@@ -339,6 +361,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "shells": list(config.shell_table()), "scripts": len(config.scripts),
             "chat_model": config.chat_model, "version": updater_mod.read_version(),
+            "full_control": config.full_control is True, "jarvis_name": config.jarvis_name,
         }
         info.update(await asyncio.to_thread(machine_numbers))
         try:
@@ -470,8 +493,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                     os.unlink(tmp.name)
                     raise HTTPException(413, "Recording is over 25 MB.")
                 tmp.write(chunk)
+        began = time.monotonic()
         try:
-            return await asyncio.to_thread(transcriber.transcribe, tmp.name)
+            text = await asyncio.to_thread(transcriber.transcribe, tmp.name)
+            latency.note_stt((time.monotonic() - began) * 1000)
+            return text
         except SpeechError as exc:
             raise HTTPException(503, str(exc))
         finally:
@@ -553,22 +579,47 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @api.post("/assistant/message")
     async def assistant_message(body: AssistantBody):
-        provider, decision = router.route(body.provider, body.text, ollama_seen["up"])
+        # A leading name routes the message (typed or spoken alike): "Jarvis, run the tests" / "Friday, my day?"
+        persona, text = clean_persona(body.persona), body.text
+        if not persona:
+            named, stripped = split_persona(body.text, config.jarvis_name)
+            if named and stripped:
+                persona, text = named, stripped
+        provider, decision = router.route(body.provider, text, ollama_seen["up"])
         audit("assistant_message", session=body.session_id, provider=provider,
-              auto_approve=body.auto_approve, chars=len(body.text))
+              auto_approve=body.auto_approve, chars=len(text), persona=persona or "jarvis",
+              **({"full_control": True} if config.full_control is True else {}))
+        extra_args = {k: v for k, v in (("persona", persona), ("voice", body.voice)) if v}
 
         async def events():
             if decision:
                 yield f"data: {json.dumps({'type': 'meta', 'routed_to': decision['routed_to'], 'reason': decision['reason']})}\n\n"
             try:
-                async for event in assistant.run(body.session_id, body.text, provider,
-                                                 body.auto_approve):
+                async for event in assistant.run(body.session_id, text, provider,
+                                                 body.auto_approve, **extra_args):
                     yield f"data: {json.dumps(event)}\n\n"
             except Exception as exc:  # the stream must always end cleanly for the phone
                 yield f"data: {json.dumps({'type': 'error', 'message': f'Assistant failed: {exc}'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+    @api.get("/latency")
+    def get_latency(n: int = 20):
+        """The last turns' timings (memory only): stt_ms, first_token_ms, total_ms."""
+        return {"spans": latency.recent(min(max(n, 1), 50)), "summary": latency.summary()}
+
+    @api.get("/assistant/info")
+    def assistant_info():
+        return {"full_control": config.full_control is True, "fast_commands": config.fast_commands is True,
+                "jarvis_name": config.jarvis_name, "display_name": config.display_name}
+
+    @api.post("/assistant/warm")
+    async def assistant_warm():
+        """Voice mode opened (or is still open): load the models and keep them loaded. Returns at once."""
+        if not warming["busy"]:
+            asyncio.create_task(warm_all())
+        return {"ok": True}
 
     @api.post("/assistant/approve")
     def assistant_approve(body: ApproveBody):

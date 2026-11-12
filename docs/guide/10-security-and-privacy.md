@@ -51,6 +51,23 @@ flowchart LR
 
 > ⚠️ **Careful:** The activity log does **not** record what you type in the Terminal. And one known gap: after you approve a command, it can still touch the hub's own settings. Approve with care.
 
+## Full Control mode
+
+Off by default, and the owner's explicit choice. When `full_control` is true in `hub.json` (or switched on in
+Settings), the assistant and Friday run every tool without an approval prompt: commands, file writes, scripts,
+sends. Safety that stays in code: the login, the phone-only Tailscale path, the protected `~/.laptop-hub` folder
+(token and audit log cannot be written by the assistant's file tool), the refusal to read credential folders,
+command timeouts (60 s default, 600 s max) and output caps. Safety that goes away: the approval tap.
+
+Be honest with yourself about it: a command run by the assistant can still change anything your user account can,
+including things the file tool refuses, and it cannot be undone. Anyone with your unlocked phone and the open app
+controls the laptop. A prompt-injected web page or file can ask the AI for something harmful and nothing will stop
+it. Use it on your own laptop, with a phone lock, and turn it off when you do not need it.
+
+Turn it on: Settings > Account and security > Full Control, then type `I UNDERSTAND` (the hub rejects the change
+without it). Turn it off: one tap on the red chip in the header, or the same Settings row, or set
+`"full_control": false` in `hub.json`. The audit log records every automatic action with `"full_control": true`.
+
 ## What never to share
 
 | Never share | Why |

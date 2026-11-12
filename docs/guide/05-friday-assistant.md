@@ -128,6 +128,26 @@ python -m hub setup --only chat
 
 > ⚠️ **Careful:** Chat webhooks can **post** into a Space. They cannot **read** Chat, and they cannot send direct messages. To read Chat, use the Android app's notification capture (Settings, Phone capture, Watch chat). 🟡 Not tested on real devices yet.
 
+## Full Control mode (optional, off by default)
+
+Normally the assistant stops and asks you to tap Approve before it runs a command, writes a file or does anything
+else that changes your laptop. **Full Control** removes that step: when you say "run git pull" (or the assistant or
+Friday decides to), it just goes. Turn it on in Settings > Account and security > Full Control.
+
+- **What it does.** Every approval is granted automatically, for every tool, including `run_command`, file writes,
+  saved scripts, email and chat sends, and Friday's "open on laptop". With `fast_commands` on (the default), clear
+  messages such as "run git status", "open Chrome" (an app in your list, or a link) or "type hello" skip the AI
+  completely and run at once. Typed messages and spoken ones behave the same.
+- **Names.** "Jarvis, ..." talks to the laptop operator, "Friday, ..." to the day assistant, by voice or typing.
+- **What it does not do.** The hub's own settings and audit log (`~/.laptop-hub`) still cannot be written by the
+  assistant, and credential folders (`.ssh`, `.aws`...) still cannot be read by it. Typing keystrokes still needs
+  remote control armed in Apps > Screen.
+- **The risk.** While it is on, anyone holding your unlocked phone with the app open controls your laptop, and a
+  confused or manipulated AI can run a harmful command with nothing to stop it. A red FULL CONTROL chip sits in the
+  header the whole time.
+- **Turning it on and off.** On needs you to type `I UNDERSTAND` (the hub checks it too). Off is one tap on the chip
+  or the Settings row. Every automatic action is written to the audit log with `"full_control": true`.
+
 ## Limits, honestly
 
 | Limit | Detail |

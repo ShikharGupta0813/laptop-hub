@@ -3,12 +3,14 @@
 // a tool approval shows big Approve / Deny buttons here and the loop simply waits for the tap.
 import { el, ApiError } from "./api.js";
 import { providerLabel } from "./providers.js";
+import { speakable, splitStream, splitName } from "./speechchunk.js";
 
 const SILENCE_MS_DEFAULT = 1200;   // quiet this long after speech ends the recording
 const MAX_UTTERANCE_MS = 30000;    // a single spoken message is cut at this length
 const MIN_SPEECH_MS = 200;         // loud for this long in total before it counts as speech (ignores clicks)
 const IDLE_ROLL_MS = 20000;        // with no speech, restart the recorder so it never grows without bound
-const SPEAK_CAP = 700;             // characters read aloud at most
+const SPEAK_CAP = 700;             // characters read aloud at most (per turn, across streamed sentences)
+const WARM_EVERY_MS = 8 * 60 * 1000; // keep the models loaded while voice mode is open
 const TICK_MS = 50;
 
 function loadCss() {
@@ -27,30 +29,7 @@ function storeSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) { /* not remembered, still works */ }
 }
 
-// Markdown to plain speakable text, capped at a sentence boundary.
-export function speakable(markdown, cap = SPEAK_CAP) {
-  let s = String(markdown || "");
-  s = s.replace(/```[\s\S]*?(```|$)/g, " (code omitted) ");
-  s = s.replace(/`([^`]*)`/g, "$1");
-  s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
-  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
-  s = s.replace(/<[^>]+>/g, " ");
-  s = s.replace(/^\s{0,3}#{1,6}\s+/gm, "");
-  s = s.replace(/^\s{0,3}>\s?/gm, "");
-  s = s.replace(/^\s*([-*+]|\d+[.)])\s+/gm, "");
-  s = s.replace(/^\s*\|?[\s:|-]{3,}\|?\s*$/gm, " ");
-  s = s.replace(/\|/g, ", ");
-  s = s.replace(/(\*\*|__|\*|_|~~)/g, "");
-  s = s.replace(/https?:\/\/\S+/g, "a link");
-  s = s.replace(/\s*\n+\s*/g, ". ").replace(/\.\s*\./g, ".").replace(/([:;,])\./g, "$1");
-  s = s.replace(/\s+/g, " ").trim();
-  if (s.length > cap) {
-    const cut = s.slice(0, cap);
-    const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
-    s = (end > cap * 0.4 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "") + "…") + " The rest is in the chat.";
-  }
-  return s;
-}
+export { speakable };
 
 function sentences(text, max = 220) {
   const parts = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
@@ -105,6 +84,11 @@ export function openVoiceMode(host) {
   let vad = null;      // set while listening: called every tick with the current level
   let wake = null;     // resolves a wait that tapping the orb or closing should end early
   let utter = null;    // current speech job {cancel}
+  const tts = { q: [], buf: "", busy: false, cancelled: false, chars: 0, capped: false, waiters: [], any: false };
+  let names = { jarvis: "Jarvis", call: "" };   // from /api/assistant/info
+  let fcMod = null;    // fullcontrol.js, once loaded: isOn() says whether nothing needs approving
+  let warmTimer = null;
+  let asking = false, lastText = "", lastAt = 0;   // double-submit guard
   let release = null;  // ui.pushLayer release
   const buf = new Float32Array(1024);
 
@@ -316,9 +300,42 @@ export function openVoiceMode(host) {
 
   // ------------------------------------------------------------------ speaking
   function cancelSpeech() {
+    tts.q.length = 0; tts.buf = ""; tts.cancelled = true;
     if (utter) { utter.cancel(); utter = null; }
     try { window.speechSynthesis?.cancel(); } catch (_) { /* ignore */ }
   }
+
+  // Streamed speech: sentences are spoken while the reply is still arriving (no waiting for the full text).
+  function ttsReset() { tts.q.length = 0; tts.buf = ""; tts.cancelled = false; tts.chars = 0; tts.capped = false; tts.any = false; }
+  function ttsFeed(chunk, final = false) {
+    if (!ttsOn || tts.cancelled || tts.capped) return;
+    tts.buf += chunk || "";
+    const { done, rest } = splitStream(tts.buf, { final });
+    tts.buf = rest;
+    for (const sentence of done) {
+      const plain = speakable(sentence, SPEAK_CAP).replace(/ The rest is in the chat\.$/, "");
+      if (!plain) continue;
+      if (tts.chars + plain.length > SPEAK_CAP) { tts.q.push("The rest is in the chat."); tts.capped = true; break; }
+      tts.chars += plain.length;
+      tts.q.push(plain);
+    }
+    ttsPump();
+  }
+  async function ttsPump() {
+    if (tts.busy) return;
+    tts.busy = true;
+    try {
+      while (alive && !tts.cancelled && tts.q.length) {
+        tts.any = true;
+        if (state === "thinking") setState("speaking");
+        await speak(tts.q.shift());
+      }
+    } finally {
+      tts.busy = false;
+      for (const w of tts.waiters.splice(0)) w();
+    }
+  }
+  function ttsIdle() { return tts.busy || tts.q.length ? new Promise((r) => tts.waiters.push(r)) : Promise.resolve(); }
 
   // Resolves when finished or cancelled. Reads sentence by sentence (long utterances stall in some browsers).
   function speak(text) {
@@ -343,7 +360,6 @@ export function openVoiceMode(host) {
         u.onerror = () => { clearTimeout(guard); finish(); };
         try { synth.speak(u); } catch (_) { finish(); }
       };
-      try { synth.cancel(); } catch (_) { /* ignore */ }
       next();
     });
   }
@@ -355,6 +371,7 @@ export function openVoiceMode(host) {
       if (ev.type === "text") {
         aiCap.textContent = (aiCap.dataset.raw = (aiCap.dataset.raw || "") + (ev.t || "")).slice(-420);
         aiCap.scrollTop = aiCap.scrollHeight;
+        ttsFeed(ev.t || "");
       } else if (ev.type === "tool_start") {
         sub.textContent = `Using ${ev.name || "a tool"}…`;
       } else if (ev.type === "tool_result") {
@@ -377,6 +394,7 @@ export function openVoiceMode(host) {
       approval.hidden = false;
       root.classList.add("has-approval");
       cancelSpeech();
+      tts.cancelled = false;
       setState("approval");
       ui.haptic("warn");
       approveBtn.focus({ preventScroll: true });
@@ -407,10 +425,10 @@ export function openVoiceMode(host) {
   const prepShown = () => !!(frOn && fr.FR.prep && fr.FR.prep.items.length && !fr.FR.prep.done);
 
   async function say(text, { raw = false } = {}) {
-    const plain = raw ? String(text) : fr.cleanSpeech(text);
+    const plain = raw || !fr ? String(text) : fr.cleanSpeech(text);
     aiCap.dataset.raw = "";
     aiCap.textContent = plain;
-    fr.FR.lastSpoken = text;
+    if (fr) fr.FR.lastSpoken = text;
     if (plain && ttsOn) { setState("speaking"); await speak(plain); }
     else if (plain) await new Promise((r) => setTimeout(r, 800));
   }
@@ -472,7 +490,10 @@ export function openVoiceMode(host) {
         const prep = await fr.loadPrep();
         renderPanel();
         if (!prep.items.length) await say("I could not find anything worth opening right now.");
-        else await say(readout(prep.items, `I would open ${prep.items.length} ${prep.items.length === 1 ? "thing" : "things"} on your laptop. Nothing opens until you say so.`) + " Say approve when you are happy, or no to leave it.", { raw: true });
+        else if (fcMod && fcMod.isOn()) {   // Full Control: no approval step, it just goes (and says what it is opening)
+          await say(readout(prep.items, `Opening ${prep.items.length} ${prep.items.length === 1 ? "thing" : "things"} on your laptop.`), { raw: true });
+          await runLaptopPrep();
+        } else await say(readout(prep.items, `I would open ${prep.items.length} ${prep.items.length === 1 ? "thing" : "things"} on your laptop. Nothing opens until you say so.`) + " Say approve when you are happy, or no to leave it.", { raw: true });
       } else if (intent === "approve") {
         const items = fr.FR.prep.items;
         confirming = true;
@@ -506,6 +527,7 @@ export function openVoiceMode(host) {
     } else if (state === "speaking") {
       cancelSpeech();
     } else if (state === "thinking" || state === "approval") {
+      cancelSpeech();
       aiCap.dataset.raw = "";
       await host.stopTurn();
     }
@@ -529,6 +551,11 @@ export function openVoiceMode(host) {
         frOn = fr.FR.available === true;
       } catch (_) { frOn = false; }
     }
+    try {
+      fcMod = await import("./fullcontrol.js");
+      const info = await fcMod.refresh();
+      if (info) names = { jarvis: info.jarvis_name || "Jarvis", call: info.display_name || "" };
+    } catch (_) { /* older hub: names stay default */ }
     if (!alive) return;
     if (frOn) {
       top.querySelector(".vm-top__mid").firstChild.textContent = `${fr.personaName()} `;
@@ -579,7 +606,15 @@ export function openVoiceMode(host) {
       if (!text) { sub.textContent = "I did not catch that."; continue; }
       sub.textContent = "";
 
-      if (frOn && await fridayHandle(text)) continue;
+      // "Jarvis, ..." goes to the laptop operator, "Friday, ..." to the day assistant; no name keeps the old behaviour.
+      const routed = splitName(text, names.jarvis);
+      let persona = host.friday ? "friday" : "";
+      if (routed.persona) {
+        persona = routed.persona;
+        text = routed.text;
+        if (!text) { userCap.textContent = `“${routed.persona === "friday" ? "Friday" : names.jarvis}”`; await say(`Yes${names.call ? ", " + names.call : ""}?`, { raw: true }); continue; }
+      }
+      if (persona !== "jarvis" && frOn && await fridayHandle(text)) continue;
       if (!alive) break;
       const cmd = commandFor(text);
       if (cmd === "stop") { confirming = false; userCap.textContent = `“${text}”`; aiCap.textContent = ""; aiCap.dataset.raw = ""; sub.textContent = "Stopped."; await host.stopTurn(); continue; }
@@ -592,11 +627,16 @@ export function openVoiceMode(host) {
       }
       if (cmd === "close") { close(); return; }
 
+      // Double-submit guard: one turn at a time, and the same words twice within 1.5 s count once (echo, double tap).
+      if (asking || (text === lastText && Date.now() - lastAt < 1500)) continue;
+      asking = true; lastText = text; lastAt = Date.now();
       userCap.textContent = `“${text}”`;
       aiCap.textContent = "";
       aiCap.dataset.raw = "";
+      ttsReset();
       setState("thinking");
-      const result = await host.ask(text, hooks);
+      let result;
+      try { result = await host.ask(text, hooks, persona || "auto"); } finally { asking = false; }
       if (!alive) break;
       pendingApproval = null;
       approval.hidden = true;
@@ -607,8 +647,9 @@ export function openVoiceMode(host) {
       const plain = speakable(result.text);
       if (plain) aiCap.textContent = plain.replace(/ The rest is in the chat\.$/, "");
       if (plain && ttsOn) {
-        setState("speaking");
-        await speak(plain);
+        if (!tts.cancelled) ttsFeed("", true);                      // speak whatever is left of the reply
+        if (!tts.any && !tts.q.length && !tts.cancelled) { tts.q.push(plain); ttsPump(); }   // nothing streamed: read it whole
+        await ttsIdle();
       } else if (plain) {
         await new Promise((r) => setTimeout(r, 600));
       }
@@ -635,6 +676,9 @@ export function openVoiceMode(host) {
     }
     if (!alive) { closeMic(); return; }
     startTick();
+    const warm = () => { ctx.api("/api/assistant/warm", { method: "POST" }).catch(() => {}); };
+    warm();
+    warmTimer = setInterval(warm, WARM_EVERY_MS);   // keep_alive for the whole voice session
     loop().catch((error) => { if (alive) fail("Something went wrong", String((error && error.message) || error)); });
   }
 
@@ -645,6 +689,7 @@ export function openVoiceMode(host) {
     alive = false;
     wake?.("cancel");
     resumeSignal?.();
+    clearInterval(warmTimer);
     cancelSpeech();
     stopTick();
     closeMic();

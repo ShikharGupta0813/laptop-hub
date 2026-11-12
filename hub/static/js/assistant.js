@@ -129,6 +129,7 @@ export function init(container, ctx) {
   let stick = true;
   let visible = false;
   let voice = null; // the open voice-mode controller, if any
+  let fullControl = false; // hub-wide Full Control: no approval prompts at all (fullcontrol.js keeps this in step)
 
   // ---------------------------------------------------------------- toolbar (no header chrome: the top bar is the header)
   const providerSeg = providerSegmented({
@@ -170,10 +171,9 @@ export function init(container, ctx) {
 
   const toolbar = el("div", { class: "as-bar" }, providerSeg, el("span", { class: "grow" }), optionsButton, newChatButton);
 
-  const autoBanner = el("div", { class: "as-autobanner", hidden: true, role: "status" },
-    ui.icon("alert"),
-    el("span", { class: "grow" }, "Commands run without asking, and files can change."),
-    ui.button({ variant: "ghost", size: "sm", label: "Turn off", onClick: () => setAutoApprove(false) }));
+  const autoBannerText = el("span", { class: "grow" }, "Commands run without asking, and files can change.");
+  const autoBannerBtn = ui.button({ variant: "ghost", size: "sm", label: "Turn off", onClick: () => setAutoApprove(false) });
+  const autoBanner = el("div", { class: "as-autobanner", hidden: true, role: "status" }, ui.icon("alert"), autoBannerText, autoBannerBtn);
 
   // ---------------------------------------------------------------- list
   const list = el("div", {
@@ -232,7 +232,9 @@ export function init(container, ctx) {
     autoApproveSwitch.input.checked = prefs.autoApprove;
     speakSwitch.input.checked = prefs.speak;
     autoSendSwitch.input.checked = prefs.autoSend;
-    autoBanner.hidden = !prefs.autoApprove;
+    autoBanner.hidden = !prefs.autoApprove && !fullControl;
+    autoBannerText.textContent = fullControl ? "FULL CONTROL is on: everything runs without asking." : "Commands run without asking, and files can change.";
+    autoBannerBtn.onclick = () => (fullControl ? import("./fullcontrol.js").then((fc) => fc.turnOff()) : setAutoApprove(false));
   }
 
   function setProvider(id) {
@@ -598,7 +600,7 @@ export function init(container, ctx) {
 
   // `vh` (optional) are the hooks voice mode passes in: {onEvent, onApproval, onApprovalDone, onApprovalError}.
   // Resolves with {text, stopped, hadError} once the turn is over.
-  async function send(raw, vh = null) {
+  async function send(raw, vh = null, persona = "auto") {
     const text = (raw || "").trim();
     if (!text || streaming) return null;
     if (micState === "recording") cancelRecording();
@@ -620,10 +622,19 @@ export function init(container, ctx) {
       el("div", { class: "as-bubble" }, el("span", { class: "as-dots", "aria-hidden": "true" }, el("i"), el("i"), el("i")))));
 
     try {
-      for await (const ev of sse("/api/assistant/message",
-        { session_id: t.sid, text, provider: prefs.provider, auto_approve: prefs.autoApprove }, signal)) {
-        t.gotEvent = true;
-        handleEvent(t, ev);
+      const payload = { session_id: t.sid, text, provider: prefs.provider, auto_approve: prefs.autoApprove, persona, voice: !!vh };
+      for (let attempt = 1; ; attempt++) {
+        try {
+          for await (const ev of sse("/api/assistant/message", payload, signal)) {
+            t.gotEvent = true;
+            handleEvent(t, ev);
+          }
+          break;
+        } catch (error) {
+          // Voice SSE dropped before a single event arrived (a phone switching networks): try once more, quietly.
+          if (!(vh && attempt === 1 && !t.gotEvent && !signal.aborted && !(error instanceof ApiError))) throw error;
+          await new Promise((r) => setTimeout(r, 700));
+        }
       }
       if (!t.gotDone && !t.stopped && !signal.aborted) {
         if (t.typing) { t.typing.remove(); t.typing = null; }
@@ -720,7 +731,7 @@ export function init(container, ctx) {
         ctx, ui, friday: !!opts.friday,
         provider: () => prefs.provider,
         isBusy: () => streaming,
-        ask: (text, hooks) => send(text, hooks),
+        ask: (text, hooks, persona) => send(text, hooks, persona || "auto"),
         stopTurn: () => stop(),
         newChat: () => newChat(),
         approvalParts,
@@ -881,6 +892,7 @@ export function init(container, ctx) {
   }
 
   // ---------------------------------------------------------------- start
+  import("./fullcontrol.js").then((fc) => { fc.refresh(); fc.onChange((on) => { fullControl = on; syncControls(); }); }).catch(() => {});
   syncControls();
   syncSend();
   if (micProblem()) micButton.classList.add("is-unavailable");

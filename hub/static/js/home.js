@@ -135,6 +135,7 @@ export function init(container, ctx) {
     return ctx.open(t.view, t.section || undefined, { id: t.id });
   };
   container.append(root);
+  import("./fullcontrol.js").then((fc) => fc.refresh()).catch(() => {});   // the header chip, on every screen
   let loadedAt = 0;
   let userName = "";
   let loading = null;

@@ -28,10 +28,21 @@ class Transcriber:
             self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
         return self._model
 
+    def preload(self) -> bool:
+        """Load the model now (called at startup and when voice mode opens) so the first sentence is not slow."""
+        try:
+            with self._lock:
+                self._load()
+            return True
+        except SpeechError:
+            return False
+
     def transcribe(self, audio_path: str) -> str:
         with self._lock:  # one recording at a time; a CPU can't do two faster anyway
             model = self._load()
-            segments, _ = model.transcribe(audio_path, vad_filter=True)
+            # beam_size=1 (greedy) is several times faster on a CPU and plenty for short spoken commands
+            segments, _ = model.transcribe(audio_path, vad_filter=True, beam_size=1,
+                                           condition_on_previous_text=False)
             return " ".join(s.text.strip() for s in segments).strip()
 
     def transcribe_detailed(self, audio_path: str) -> dict:

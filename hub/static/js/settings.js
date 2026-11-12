@@ -106,7 +106,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "inbox", tone: "accent", title: "Notifications", sub: "Everything the hub told you", chevron: true, onClick: () => ctx.open("notifications") })));
     rows.push(group("This phone",
       ui.listRow({ icon: "phone", tone: "teal", title: "Phone capture", sub: capture() ? "Spending and message capture" : "Needs the installed Android app", chevron: true, onClick: () => openSection("capture") })));
-    rows.push(group("Account & security", logoutAllRow()));
+    rows.push(group("Account & security", fullControlRow(), logoutAllRow()));
     rows.push(group("System",
       ui.listRow({ icon: "activity", tone: "good", title: "Diagnostics", sub: "Is everything set up?", chevron: true, onClick: () => openSection("diagnostics"),
         meta: diag && diag.bad ? ui.badge(`${diag.bad} to fix`, "bad") : diag && diag.warn ? ui.badge(`${diag.warn} tips`, "warn") : null }),
@@ -118,6 +118,19 @@ export function init(container, ctx) {
 
   // Log out of all devices: POST /api/logout-all kills every session cookie (this phone's too), then the
   // login screen comes back through the same event api.js raises on a 401.
+  // Full Control: no approval step anywhere. ON needs the typed phrase (sheet in fullcontrol.js); OFF is one tap.
+  function fullControlRow() {
+    const on = S && S.full_control === true;
+    return ui.listRow({ icon: "shield", tone: on ? "bad" : "gray", title: "Full Control",
+      sub: on ? "On: commands and file changes run without asking. Tap to turn off." : "Off: the assistant asks before it changes anything.",
+      meta: ui.badge(on ? "ON" : "Off", on ? "bad" : "gray"),
+      onClick: async () => {
+        const fc = await import("./fullcontrol.js");
+        if (on) await fc.turnOff(); else await fc.turnOn();
+        await load();
+      } });
+  }
+
   let loggingOut = false;
   function logoutAllRow() {
     return ui.listRow({ icon: "lock", tone: "bad", title: "Log out of all devices", sub: "Every phone and browser must log in again", chevron: true,
@@ -467,9 +480,11 @@ export function init(container, ctx) {
       paint();
       if (!list.length) return ui.emptyState({ icon: "activity", title: "No checks reported" });
       const tone = { ok: "good", warn: "warn", fail: "bad" }, icon = { ok: "check-circle", warn: "alert", fail: "alert-circle" };
+      let timing = "";
+      try { timing = (await api("/api/latency?n=5")).summary || ""; } catch (_) { /* older hub */ }
       const summary = diag.bad ? ui.notice(`${diag.bad} thing${diag.bad > 1 ? "s" : ""} need fixing.`, { tone: "bad" })
         : diag.warn ? ui.notice(`All good. ${diag.warn} optional tip${diag.warn > 1 ? "s" : ""}.`, { tone: "warn" }) : ui.notice("Everything is set up.", { tone: "good" });
-      return el("div", { class: "ui-stack ui-stack--lg" }, summary, group(null, list.map((r) => {
+      return el("div", { class: "ui-stack ui-stack--lg" }, summary, timing ? el("p", { class: "muted", "data-testid": "latency-line" }, timing) : null, group(null, list.map((r) => {
         const lvl = r.level || (r.ok ? "ok" : "fail");
         const node = ui.listRow({ icon: icon[lvl] || "info", tone: tone[lvl] || "gray", title: r.name, sub: r.detail });
         if (r.fix && lvl !== "ok") node.querySelector(".ui-row__body").append(el("span", { class: "st-fix" }, ui.icon("wand", 14), r.fix));

@@ -218,6 +218,14 @@ Autopilot reads your Gmail, the chat/Gmail alerts Watch keeps and your Asana tas
 
 Not tested on real accounts yet. Details: docs/api/autopilot.md and docs/guide/12-autopilot.md.
 
+## 9e. Full Control, Jarvis and Friday names (optional)
+
+Say or type "Jarvis, ..." for the laptop operator and "Friday, ..." for the day assistant. For hands-off use turn on
+Full Control in Settings (you must type `I UNDERSTAND`): then "run git status" or "open Chrome" runs at once with no
+approval tap. It is off by default; see `docs/guide/10-security-and-privacy.md`. `fast_commands` (default true)
+controls the AI-free shortcuts; `jarvis_name` changes the first name. A speed tip: keep Ollama running and open
+voice mode once after boot, it warms the models.
+
 ## 10. Verify each feature in 10 minutes
 
 Tick as you go. Anything that fails is worth writing down: none of this has been run on real hardware yet.

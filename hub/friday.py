@@ -1094,7 +1094,8 @@ class Engine:
                     error = clean(data, 200) or "The laptop did not open it."
             entry["status"] = "done" if error is None else "failed"
             entry["ran"] = local_iso(self.clock())
-            self.ctx.audit("friday_prep_run", id=item_id, kind=kind, target=clean(hint, 120), ok=error is None)
+            self.ctx.audit("friday_prep_run", id=item_id, kind=kind, target=clean(hint, 120), ok=error is None,
+                           **({"full_control": True} if getattr(self.ctx.config, "full_control", False) is True else {}))
             res = {"id": item_id, "kind": kind, "target": entry.get("target"), "ok": error is None}
             if error:
                 res["error"] = error

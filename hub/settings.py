@@ -40,13 +40,14 @@ from .common import Ctx
 MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model",
               "gemini_model", "claude_cli_model")
 ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name",
-               "autopilot_enabled", "autopilot_sweep_min", "autopilot_daily_ai_calls")
+               "full_control", "fast_commands", "jarvis_name", "autopilot_enabled", "autopilot_sweep_min", "autopilot_daily_ai_calls")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
                "council_allow_claude")
 SECRET_KEYS = ("ntfy_topic",)   # changes are audited without the value (the topic works like a password)
 
+FULL_CONTROL_PHRASE = "I UNDERSTAND"
 MODEL_NAME = re.compile(r"\A[A-Za-z0-9._:/-]{1,80}\Z")
 TOPIC = re.compile(r"\A[A-Za-z0-9_-]{8,64}\Z")
 BACKUP_NAME = re.compile(r"\Ahub-backup-\d{8}-\d{6}(?:-\d{1,3})?\.zip\Z")
@@ -130,7 +131,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
     if not isinstance(body, dict) or not body:
         raise HTTPException(400, "Send the settings you want to change.")
     confirm = body.get("confirm") is True
-    unknown = sorted(k for k in body if k not in ALLOWED_KEYS and k != "confirm")
+    unknown = sorted(k for k in body if k not in ALLOWED_KEYS and k not in ("confirm", "full_control_confirm"))
     if unknown:
         locked = [k for k in unknown if k in LOCKED_KEYS]
         if locked:
@@ -155,6 +156,21 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 200:
                 raise HTTPException(400, "duo_max_claude_per_hour must be a whole number from 0 to 200.")
             changes[key] = value
+        elif key == "full_control":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "full_control must be true or false.")
+            if value and body.get("full_control_confirm") != FULL_CONTROL_PHRASE:
+                raise HTTPException(400, f'Turning Full Control on needs the confirmation text "{FULL_CONTROL_PHRASE}" '
+                                         "(send it as full_control_confirm). Turning it off needs nothing.")
+            changes[key] = value
+        elif key == "fast_commands":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "fast_commands must be true or false.")
+            changes[key] = value
+        elif key == "jarvis_name":
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= 40 or not value.isprintable():
+                raise HTTPException(400, "jarvis_name must be 1 to 40 printable characters.")
+            changes[key] = value.strip()
         elif key == "autopilot_enabled":
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
@@ -436,7 +452,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "embed_model": config.embed_model,
             "kb_roots": list(config.kb_roots), "writable_roots": list(config.writable_roots),
             "roots": [{"name": n, "exists": Path(p).is_dir()} for n, p in config.roots.items()],
-            "display_name": config.display_name,
+            "display_name": config.display_name, "jarvis_name": config.jarvis_name,
+            "full_control": config.full_control is True, "fast_commands": config.fast_commands is True,
             "ntfy_server": config.ntfy_server, "ntfy_topic_set": bool(config.ntfy_topic),
             "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
             "council_dir_set": bool((config.council_dir or "").strip()),
