@@ -169,6 +169,16 @@ Owner has no Jarvis folder; calendar shows 503 until Jarvis/iCal is configured. 
   Wizard: step `ai` (alias `claude`) and `gemini`; doctor and Setup checklist report "AI ready". `tests/helpers.make_config` sets
   `default_provider="local"` so tests never reach a real AI. UNVERIFIED on a real laptop: the live `claude -p` flags/errors on Windows (`claude.cmd`),
   real Gemini calls, tool-calling quality of the text protocol.
+- **Duo provider "Claude + Gemini" (2026-11-12)**: `hub/duo.py` (`Supervisor`, `DuoClient`). Claude = `claude-login` CLI client is the planner/checker, Gemini the worker.
+  `assistant._text_turns` for provider `duo`: if `needs_plan(text)` (>12 words, a TOOL_GROUPS match or a tool verb) ONE Claude call returns a <=120 word plan, injected
+  into Gemini's system prompt ("Supervisor plan — follow it"); tools the plan names are added to the routed set. Gemini runs all turns. If `config.duo_verify` (default True)
+  and Gemini ran tools, ONE Claude review (<=80 words, `OK` or `PROBLEM: ...`) and at most ONE Gemini correction turn. Plain `complete()/stream()` go to Gemini only.
+  Quota safety in `Supervisor.ask`: `duo_max_claude_per_hour` (20; 0 = off), 25 s timeout, failures count as calls, any LLMError/timeout -> cooldown (usage limit 30 min,
+  not logged in / missing CLI 10 min, other 5 min) and the request continues with Gemini alone. `/api/status` has `duo` {paused, reason, note, calls_last_hour...} and
+  `providers.duo.note` ("Claude supervisor paused: usage limit"). Duo is ready when Gemini is. `auto` never picks duo. Settings accept `default_provider=duo`, `duo_verify`,
+  `duo_max_claude_per_hour`. Text-tool protocol tightened (JSON example, one call at a time, malformed/cut-off call -> repair reminder, max 2). GeminiClient 404 fallback
+  prefers the best Pro when the configured name contains "pro", else Flash. Wizard recommends duo when Gemini + Claude CLI are ready. Tests: `tests/test_duo.py`.
+  UNVERIFIED: real `claude -p` plan/review latency and quality, real Gemini Pro tool-call compliance, Windows CLI behaviour.
 - **Setup checklist** screen (`js/setup.js`) + Home card: live status of every integration with fix steps.
 - **Workspaces + Launcher** (`hub/workspaces.py`, `js/launcher.js`, Remote screen): typed multi-step workspaces (script/url/app/folder/file/wait),
   Start Menu app discovery, a "Whole laptop" tile, window switcher; `python -m hub add-script NAME --label L -- ARGV...` registers a

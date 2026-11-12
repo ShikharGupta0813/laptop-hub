@@ -63,9 +63,9 @@ class FakeGemini:
 class DuoAssistantTest(AssistantBase):
     def duo(self, script, claude=None, **kw):
         self.clock = Clock()
-        self.claude = claude or FakeClaude()
+        self.cl = claude or FakeClaude()
         self.gemini = FakeGemini(script)
-        self.sup = Supervisor(self.claude, clock=self.clock, **kw)
+        self.sup = Supervisor(self.cl, clock=self.clock, **kw)
         svc = self.service()
         svc.model_for = lambda p: DuoClient(self.gemini, self.sup)
         return svc
@@ -77,8 +77,8 @@ class DuoAssistantTest(AssistantBase):
         svc = self.duo([["All healthy."]])
         events = await self.go(svc, LONG)
         self.assertFalse(of(events, "error"))
-        self.assertEqual(len(self.claude.calls), 1)
-        self.assertIn(LONG, self.claude.calls[0][1])
+        self.assertEqual(len(self.cl.calls), 1)
+        self.assertIn(LONG, self.cl.calls[0][1])
         system = self.gemini.calls[0][0]
         self.assertIn("Supervisor plan", system)
         self.assertIn("Call system_status", system)
@@ -89,7 +89,7 @@ class DuoAssistantTest(AssistantBase):
         svc = self.duo([["Hi!"], ["Fine."]])
         for text in ("hi", "how are you?"):
             await self.go(svc, text)
-        self.assertEqual(self.claude.calls, [])
+        self.assertEqual(self.cl.calls, [])
         self.assertNotIn("Supervisor plan", self.gemini.calls[0][0])
         self.assertTrue(needs_plan(LONG))
         self.assertTrue(needs_plan("delete the temp folder"))
@@ -104,21 +104,21 @@ class DuoAssistantTest(AssistantBase):
         self.assertNotIn("Supervisor plan", self.gemini.calls[0][0])
         self.assertEqual(self.sup.status()["note"], "Claude supervisor paused: usage limit")
         await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 1)          # cooling down: Claude not asked again
+        self.assertEqual(len(self.cl.calls), 1)          # cooling down: Claude not asked again
         self.clock.t += 31 * 60
         self.assertEqual(self.sup.status()["note"], "")
         await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 2)
+        self.assertEqual(len(self.cl.calls), 2)
 
     async def test_hourly_cap(self):
         svc = self.duo([["a"], ["b"], ["c"], ["d"]], max_per_hour=2)
         for _ in range(3):
             await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 2)
+        self.assertEqual(len(self.cl.calls), 2)
         self.assertIn("hourly cap", self.sup.status()["note"])
         self.clock.t += 3601
         await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 3)
+        self.assertEqual(len(self.cl.calls), 3)
 
     async def test_a_slow_claude_is_cut_off_after_the_timeout(self):
         class Slow(FakeClaude):
@@ -133,26 +133,26 @@ class DuoAssistantTest(AssistantBase):
         self.assertTrue(Supervisor(FakeClaude()).verify_enabled)
         svc = self.duo([["Plain answer."]])
         await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 1)          # the plan only
+        self.assertEqual(len(self.cl.calls), 1)          # the plan only
 
     async def test_verify_off_means_no_review_call(self):
         svc = self.duo([["Checking. " + CALL], ["Done."]], verify=False)
         await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 1)
+        self.assertEqual(len(self.cl.calls), 1)
 
     async def test_verify_ok_makes_no_correction_turn(self):
         svc = self.duo([["Checking. " + CALL], ["Done."]])
         events = await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 2)
+        self.assertEqual(len(self.cl.calls), 2)
         self.assertEqual(len(self.gemini.calls), 2)
-        self.assertIn("system_status", self.claude.calls[1][1])
+        self.assertIn("system_status", self.cl.calls[1][1])
         self.assertFalse(of(events, "error"))
 
     async def test_verify_problem_gives_gemini_exactly_one_correction_turn(self):
         claude = FakeClaude(verdict="PROBLEM: you never said the disk is full.")
         svc = self.duo([["Checking. " + CALL], ["Done."], ["Also, the disk is full."]], claude=claude)
         events = await self.go(svc, LONG)
-        self.assertEqual(len(self.claude.calls), 2)          # plan + one review, no second review
+        self.assertEqual(len(self.cl.calls), 2)          # plan + one review, no second review
         self.assertEqual(len(self.gemini.calls), 3)
         self.assertIn("never said the disk is full", self.gemini.calls[2][1])
         self.assertTrue("".join(e["t"] for e in of(events, "text")).endswith("the disk is full."))
@@ -198,10 +198,10 @@ class DuoServerTest(unittest.TestCase):
         self.cli_m, self.gem_m = self.cli.start(), self.gem.start()
         self.addCleanup(self.cli.stop)
         self.addCleanup(self.gem.stop)
-        self.claude = FakeClaude()
+        self.cl = FakeClaude()
 
     def client(self, **deps):
-        deps = Deps(llm=Tagged("local"), claude=Tagged("claude"), claude_login=self.claude,
+        deps = Deps(llm=Tagged("local"), claude=Tagged("claude"), claude_login=self.cl,
                     gemini=Tagged("gemini"), transcriber=FakeTranscriber(), assistant=FakeAssistant(), **deps)
         c = TestClient(create_app(self.config, deps, audit_path=self.root / "audit.log"),
                        base_url="http://testserver", headers={"X-Hub": "1"})
@@ -216,7 +216,7 @@ class DuoServerTest(unittest.TestCase):
     def test_plain_calls_go_to_gemini_and_never_to_claude(self):
         c = self.client()
         self.assertEqual(self.ask(c, "duo"), "gemini")
-        self.assertEqual(self.claude.calls, [])
+        self.assertEqual(self.cl.calls, [])
 
     def test_model_for_duo_is_a_duo_client(self):
         from hub.server import create_app as _  # noqa: F401

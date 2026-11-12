@@ -340,7 +340,7 @@ class ServerTest(unittest.TestCase):
 
     def test_status_lists_providers_and_default(self):
         s = self.client.get("/api/status").json()
-        self.assertEqual(set(s["providers"]), {"local", "claude", "claude_login", "gemini"})
+        self.assertEqual(set(s["providers"]), {"local", "claude", "claude_login", "gemini", "duo"})
         self.assertEqual(s["default_provider"], "local")
         self.assertFalse(s["claude_ready"])
         with mock.patch.object(providers, "find_claude_cli", return_value="/bin/claude"):

@@ -95,6 +95,7 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
    ```
 
 6. **Optional: a cloud AI, no API key needed.** Skip this to use only the local model. Otherwise: install Claude Code, run `claude` once and log in (the hub then offers **Claude (my login)**, which uses your Claude subscription quota, not API billing), and/or save a free Gemini key from aistudio.google.com/apikey:
+   Best of both: choose **Claude + Gemini** (`default_provider: "duo"`, offered in the wizard when both are ready). Claude plans each non-trivial assistant request and checks the work after tools ran (a few short calls, capped by `duo_max_claude_per_hour`, default 20, and paused automatically on a usage limit); Gemini does all the work. Set `gemini_model` to your Gemini Pro model name if you have one.
 
    ```powershell
    python -m hub setup --only ai        # explains the options, checks the claude login, saves the default AI
