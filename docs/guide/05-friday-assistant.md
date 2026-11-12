@@ -1,0 +1,139 @@
+# 05 · Friday, your daily assistant
+
+**What this page is for:** what Friday does, how to use it each morning, how to connect Gmail, Asana and your calendar, and what it cannot do.
+
+> ⚠️ **Careful:** Friday works with real accounts (Asana, Gmail, calendar). That part is 🟡 not tested on real devices yet. Friday and its logic were tested with fake data only.
+
+## What Friday is
+
+Friday is a friendly voice and screen for your day. It gathers what matters, ranks it with fixed rules, and then says it out loud in about 15 to 45 seconds.
+
+| Feature | What it does |
+|---|---|
+| **Brief me** | A spoken summary: what needs you now, tasks, meetings, mail, reminders. |
+| **Plan my day** | Fits your tasks into the free time between meetings. |
+| **Get laptop ready** | Suggests what to open on the laptop for today. You approve before anything opens. |
+| **Alerts** | Optional. Tells you when you were tagged, a task turns urgent, or a meeting is about to start. |
+
+## Where you find it
+
+- **Home** has a Friday card with **Brief me** and a microphone button.
+- **Talk** has a Friday chip.
+
+## How a brief is made
+
+```mermaid
+flowchart LR
+    A["Asana, calendar, mail, reminders, alerts"] --> B["Fixed rules rank each item"]
+    B --> C["AI writes the spoken script"]
+    C --> D["Safety checks"]
+    D --> E["Your phone speaks it"]
+```
+
+Important points:
+
+- **Rules decide the order, not the AI.** An overdue task or a meeting starting soon always comes first.
+- The AI only writes the sentences. If its text fails a check, a plain template script is used instead.
+- Text from mail, Asana and chat is treated as **data**, never as instructions.
+- For mail, Friday sees only the **sender and subject**. Never the body.
+
+The brief groups items in this order, and only if something is there:
+
+1. Needs you now
+2. Tagged
+3. Tasks
+4. Meetings
+5. Mail
+6. Chat
+7. Reminders
+8. Other
+
+## Daily use
+
+1. Open **Home**.
+2. Tap **Brief me**. Listen.
+3. Say or tap **Plan my day**.
+4. Review the blocks. Tap **Add to my to-dos** if you like them.
+5. Tap **Get laptop ready** if you want things opened. Choose which items, then **Approve and open on laptop**.
+
+> ✅ **Check:** "Add to my to-dos" creates to-dos and reminders only. It never changes Asana or your calendar. Nothing is sent to anyone.
+
+> ⚠️ **Careful:** Laptop prep proposals expire after 12 hours. Only web links, files in your shared folders, and apps from your own list can be proposed.
+
+## Settings
+
+Open Friday, then its settings.
+
+| Setting | Meaning |
+|---|---|
+| Name and how to address you | Default name is Friday. If you never change the address, Friday uses the name you gave the setup wizard (default "Chief"). |
+| **Speak alerts** | Reads alerts aloud. |
+| **Keep watch for me** | Turns on background alerts. Off until you switch it on. |
+| **Brain for briefs** | Which AI writes the script. Default is "auto", your default brain (page 04). |
+| Quiet hours | No notifications in this window. Alerts are still saved. |
+| Work hours | Defaults 09:00 to 18:30. Used by the day plan. |
+| Prep apps and folders | Which apps and shared folders laptop prep may suggest. |
+
+## Alerts, when switched on
+
+The hub checks every 3 minutes.
+
+| Alert | When |
+|---|---|
+| **Tagged** | Someone @mentions you, or comments on one of your open Asana tasks. |
+| **Priority** | A task newly becomes due today, overdue or high priority. |
+| **Meeting** | A meeting starts in about 10 minutes. |
+
+At most 5 push notifications per round. The rest are batched into one "and N more".
+
+## Connect your accounts
+
+Run the wizard. Each step is optional and asks first.
+
+```powershell
+python -m hub setup
+```
+
+Or one step at a time:
+
+```powershell
+python -m hub setup --only jarvis
+```
+
+```powershell
+python -m hub setup --only asana
+```
+
+```powershell
+python -m hub setup --only gmail
+```
+
+```powershell
+python -m hub setup --only calendar
+```
+
+```powershell
+python -m hub setup --only chat
+```
+
+| Account | What you need | Where it is stored |
+|---|---|---|
+| **Jarvis folder** | The wizard can download it for you. Calendar, email sending and Chat posting use its helper files. | `jarvis_dir` in `hub.json` |
+| **Asana** | A personal access token from app.asana.com/0/my-apps | `C:\Users\YOU\.claude\.asana_token` |
+| **Gmail** | 2-Step Verification on, then an **App password** from myaccount.google.com/apppasswords | Windows keyring |
+| **Calendar** | The secret iCal link of your calendar (ends in `.ics`) | Windows keyring |
+| **Google Chat** | A webhook URL from a Space (Apps and integrations, Webhooks) | Windows keyring |
+
+> ⚠️ **Careful:** Company Google accounts often have App passwords or IMAP turned off by the admin. Then Gmail login is refused and only your admin can change it. A personal Gmail works without help. Only one mailbox can be connected at a time.
+
+> ⚠️ **Careful:** Chat webhooks can **post** into a Space. They cannot **read** Chat, and they cannot send direct messages. To read Chat, use the Android app's notification capture (Settings, Phone capture, Watch chat). 🟡 Not tested on real devices yet.
+
+## Limits, honestly
+
+| Limit | Detail |
+|---|---|
+| No "Hey Friday" | An always-listening wake word is **not built**. It needs a native Android service. Tap the mic instead. |
+| "Tagged" is narrow | It means @mentions and others' comments on your open or followed tasks. |
+| Calendar needs setup | Without the Jarvis folder or an iCal link, the calendar part shows a 503 error. The rest of Friday still works. |
+| Failed sources | If one source fails, Friday lists it and uses the rest. |
+| Voice on the phone | Hands-free voice mode is 🟡 not tested on real devices yet. |
