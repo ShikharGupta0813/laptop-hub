@@ -50,7 +50,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
-                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council")
+                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -356,6 +356,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             avail["duo"]["note"] = info["duo"]["note"]
         info["default_provider"] = await asyncio.to_thread(providers_mod.resolve_default, config)
         # "ready" for the assistant: any cloud AI (API key, Claude login or Gemini) can answer
+        try:   # Autopilot's small status block (enabled, cards waiting, today's AI calls)
+            from . import autopilot as autopilot_mod
+            info["autopilot"] = autopilot_mod.status_block(ctx)
+        except Exception:  # noqa: BLE001 - the status page must never fail because of a feature
+            info["autopilot"] = {"enabled": False, "pending": 0, "ai_calls_today": 0}
         info["claude_ready"] = any(avail[k]["ready"] for k in ("claude", "claude_login", "gemini"))
         try:
             import faster_whisper  # noqa: F401

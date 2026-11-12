@@ -21,6 +21,7 @@
 | Health check | `python -m hub doctor` |
 | Start the hub | `python -m hub serve` |
 | Setup wizard | `python -m hub setup` |
+| Turn on Autopilot (drafts for one-tap approval) | `python -m hub setup --only autopilot` |
 | One wizard step | `python -m hub setup --only gemini` |
 | Test setup, change nothing | `python -m hub setup --check` |
 | Update code | `python -m hub update --restart` |
@@ -28,7 +29,7 @@
 | New login token | `python -m hub token` |
 | Add a quick button | `python -m hub add-script NAME --label "Label" -- PROGRAM ARGS` |
 
-Wizard step names: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `phone`, `name`, `warp`, `autostart`, `updater`.
+Wizard step names: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `autopilot`, `phone`, `name`, `warp`, `autostart`, `updater`.
 
 Start and stop the background hub:
 

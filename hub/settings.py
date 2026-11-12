@@ -39,7 +39,8 @@ from .common import Ctx
 
 MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model",
               "gemini_model", "claude_cli_model")
-ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name")
+ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name",
+               "autopilot_enabled", "autopilot_sweep_min", "autopilot_daily_ai_calls")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -153,6 +154,18 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         elif key == "duo_max_claude_per_hour":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 200:
                 raise HTTPException(400, "duo_max_claude_per_hour must be a whole number from 0 to 200.")
+            changes[key] = value
+        elif key == "autopilot_enabled":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "autopilot_enabled must be true or false.")
+            changes[key] = value
+        elif key == "autopilot_sweep_min":
+            if isinstance(value, bool) or not isinstance(value, int) or not 5 <= value <= 240:
+                raise HTTPException(400, "autopilot_sweep_min must be a whole number of minutes from 5 to 240.")
+            changes[key] = value
+        elif key == "autopilot_daily_ai_calls":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 500:
+                raise HTTPException(400, "autopilot_daily_ai_calls must be a whole number from 0 to 500.")
             changes[key] = value
         elif key in ("kb_roots", "writable_roots"):
             changes[key] = _clean_roots(value, key, config.roots)
@@ -432,6 +445,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "default_provider": config.default_provider, "gemini_model": config.gemini_model,
             "duo_verify": config.duo_verify, "duo_max_claude_per_hour": config.duo_max_claude_per_hour,
             "claude_cli_model": config.claude_cli_model,
+            "autopilot_enabled": config.autopilot_enabled, "autopilot_sweep_min": config.autopilot_sweep_min,
+            "autopilot_daily_ai_calls": config.autopilot_daily_ai_calls,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

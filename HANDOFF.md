@@ -139,6 +139,25 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 - `local_tool_model`: `LocalChat.stream(..., model=)`; turns that send tools use it, plain chat keeps `chat_model`; warmed on startup too; shown by `python -m hub doctor` and Settings diagnostics. Docs: `docs/SETUP-WINDOWS.md`, `docs/guide/04-ai-brains.md`.
 - Ollama knobs were already fine (`KEEP_ALIVE` 30m, num_ctx 4096 plain / 8192 tools), unchanged. Tests: `tests/test_router.py`. Not verified on the real laptop.
 
+## 3f. Autopilot (2026-11-12): "my work goes to approvals only"
+
+`hub/autopilot.py` (feature module, `FEATURE_MODULES`), `js/autopilot.js` + `css/autopilot.css` (Apps > Autopilot, also a Setup checklist row), tool `autopilot_cards` in
+`friday_tools.py`, wizard step `autopilot` (after `council`), docs `docs/api/autopilot.md`, `docs/guide/12-autopilot.md`. sw.js VERSION v15-autopilot-2026.11.
+- Off by default (`autopilot_enabled`). A loop wakes every 30 s and sweeps when on and `autopilot_sweep_min` (15) has passed (config is read live, so Settings
+  toggles it without a restart). The sweep only READS and writes cards to `<data>/autopilot.db`: Watch alerts (`/api/watch/alerts`), unread Gmail, Asana tasks due in <= 2 days,
+  and once per weekday after `autopilot_standup_time` a standup (git log of `autopilot_repos` by absolute `git` path, no shell, 10 s timeout, filtered to the repo's `user.email`, plus
+  my Asana comments of the previous workday and tasks due today). It reuses the other features through `InProcessClient` (inbox, work, watch routes), like Watch and Friday do.
+- Classification is words first (`classify()`): one-time codes, no-reply senders, receipts/newsletters ignored; meeting invites = information; questions/requests get an AI draft.
+  AI budget `autopilot_daily_ai_calls` (30/day, counted in the db); over it, or on a model error, the card is made as information with a note. (The standup falls back to a plain list.)
+- Never Claude: `pick_provider()` = default provider, but `claude`, `claude-login` and `duo` (it asks Claude) become Gemini if ready, else local.
+- Execution only on `POST /api/autopilot/{id}/approve {confirm: true, text?, to?}`: the card is claimed (`pending` -> approved/edited) first so a double tap runs once; email goes through
+  `/api/work/email/draft` + `/send` (the existing SMTP path) to the original sender (stored `to` must equal `from_addr`, resolved recipient must equal it, `to` in the body is an explicit,
+  audited change); Asana comment via `/api/work/asana/tasks/{gid}/comment`; copy cards only return the text. Failure = `failed` + short reason, never retried. Audit has kinds/lengths only.
+- Settings may change `autopilot_enabled`, `autopilot_sweep_min` (5-240), `autopilot_daily_ai_calls` (0-500); tone/repos/expiry/standup time are wizard or hand-edit.
+- Tests: `tests/test_autopilot.py` (fakes for hub routes, model, clock, git), wizard tests in `test_setup_wizard.py`. UNVERIFIED: real Gmail/Asana/Gemini/local-model draft quality, the real
+  jarvis `mailer.resolve_recipient` accepting a bare address, real `git` on Windows, the phone UI (never opened in a browser here), Watch-captured Gmail alerts carry no address so they are information-only.
+  Known limits: Asana "yesterday" = comments I wrote on open tasks (the Work API cannot list completed tasks); only the first 8 open tasks are checked.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)

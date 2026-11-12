@@ -43,13 +43,14 @@ python -m hub setup --check
 | 5 | **Google Chat** | Saves a webhook for each Space you want to post to. | A short space name, then the webhook URL (hidden). Enter to finish. |
 | 6 | **AI** | Explains the brains, checks Claude Code, offers the Gemini key, saves your default. | Optional Gemini key (hidden), then a default: `auto`, `local`, `gemini`, `claude-login` or `duo`. |
 | 7 | **Council** | Points the hub at your `multi-llm-lab` folder. Can download it and make its `.venv`. | A folder path, then `y` or `n`. |
-| 8 | **Phone push** | Makes a long random ntfy topic. | Nothing. It prints the topic. Subscribe to it in the ntfy app. |
-| 9 | **Your name** | Sets what the app and Friday call you. | A name up to 20 characters. Enter keeps the current one. |
-| 10 | **Cloudflare WARP** | Adds a "Connect Cloudflare" quick button if WARP is installed. | `y` or `n` |
-| 11 | **Auto-start** | Makes the hub start when you log in. Offers to stop sleep while plugged in. | `y` or `n` twice |
-| 12 | **Update button** | Adds the **Update REDLINE** button. | Nothing |
+| 8 | **Autopilot** | Optional. Turns on drafts that wait for your one tap, asks which git folders feed the standup and how drafts should sound. | `y` or `n`, folders (optional), a tone line. |
+| 9 | **Phone push** | Makes a long random ntfy topic. | Nothing. It prints the topic. Subscribe to it in the ntfy app. |
+| 10 | **Your name** | Sets what the app and Friday call you. | A name up to 20 characters. Enter keeps the current one. |
+| 11 | **Cloudflare WARP** | Adds a "Connect Cloudflare" quick button if WARP is installed. | `y` or `n` |
+| 12 | **Auto-start** | Makes the hub start when you log in. Offers to stop sleep while plugged in. | `y` or `n` twice |
+| 13 | **Update button** | Adds the **Update REDLINE** button. | Nothing |
 
-Step names you can use with `--only`: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `phone`, `name`, `warp`, `autostart`, `updater`.
+Step names you can use with `--only`: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `autopilot`, `phone`, `name`, `warp`, `autostart`, `updater`.
 
 > ✅ **Check:** The `gemini` name runs only the Gemini key part of the AI step.
 

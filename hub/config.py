@@ -69,6 +69,14 @@ class Config:
     council_python: str = ""                # interpreter for it; empty = <council_dir>/.venv if present, else the hub's own
     council_timeout_min: float = 90         # hard wall-clock limit for one council run (minutes)
     council_allow_claude: bool = False      # only when True may a run be started with `--escalate claude`
+    # Autopilot: prepares drafts with a free AI and queues them as approval cards. Off until you turn it on.
+    autopilot_enabled: bool = False
+    autopilot_sweep_min: int = 15           # minutes between looks at mail, chat alerts and Asana
+    autopilot_daily_ai_calls: int = 30      # most AI calls Autopilot may make per day (then cards come without a draft)
+    autopilot_expire_hours: int = 48        # an untouched card expires after this long
+    autopilot_standup_time: str = "08:30"   # local time of the weekday standup draft
+    autopilot_repos: list[str] = field(default_factory=list)   # local git folders read for the standup draft
+    autopilot_tone: str = "Friendly but professional, short, plain text."   # the voice drafts are written in
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -136,6 +144,11 @@ def save(config: Config, path: Path) -> None:
         "display_name": config.display_name,
         "council_dir": config.council_dir, "council_python": config.council_python,
         "council_timeout_min": config.council_timeout_min, "council_allow_claude": bool(config.council_allow_claude),
+        "autopilot_enabled": bool(config.autopilot_enabled), "autopilot_sweep_min": int(config.autopilot_sweep_min),
+        "autopilot_daily_ai_calls": int(config.autopilot_daily_ai_calls),
+        "autopilot_expire_hours": int(config.autopilot_expire_hours),
+        "autopilot_standup_time": config.autopilot_standup_time, "autopilot_repos": list(config.autopilot_repos),
+        "autopilot_tone": config.autopilot_tone,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

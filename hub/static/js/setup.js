@@ -118,6 +118,15 @@ const CHECKS = [
         return R("ok", `Ready (${c.folder}).`);
       } catch (e) { return missing(e) ? R("na", "Council isn't on this laptop.") : FAIL(e, "the council"); }
     } },
+  { id: "autopilot", title: "Autopilot (drafts for one-tap approval)", icon: "zap", tone: "teal", optional: true,
+    unlocks: "The hub drafts replies and your standup with a free AI and waits for your tap. Nothing is sent by itself.",
+    async run() {
+      try {
+        const a = await get("/api/autopilot");
+        if (!a?.enabled) return R("warn", "Off. Optional.", { fix: { steps: ["Turn it on in Apps > Autopilot, or run the setup step on the laptop."], cmds: [cmd("python -m hub setup --only autopilot", "Run on the laptop, then restart the hub")] } });
+        return R("ok", `On. ${a.pending} waiting, ${a.ai_calls_today} of ${a.daily_ai_calls} AI calls used today.`);
+      } catch (e) { return missing(e) ? R("na", "Autopilot isn't on this laptop.") : FAIL(e, "Autopilot"); }
+    } },
   { id: "access", title: "Phone notification access", icon: "phone", tone: "pink", optional: true, phone: true,
     unlocks: "Lets the Android app see payment, mail and chat notifications.",
     async run() {

@@ -620,6 +620,52 @@ class TestUx(Base):
         self.assertNotIn("Laptop Hub", out)
 
 
+class TestAutopilotStep(Base):
+    def test_declining_leaves_it_off_and_saves_nothing_else(self):
+        w = self.wizard(Script(confirms=[False]))
+        result = sw.step_autopilot(w)
+        self.assertEqual(result.status, "skip")
+        self.assertFalse(cfg.load(self.path).autopilot_enabled)
+
+    def test_enabling_validates_repo_folders_and_sets_the_tone(self):
+        good, other = str(self.home / "proj"), str(self.home / "other")
+        self.sys.dirs.update({good, other})
+        missing = str(self.home / "gone")
+        w = self.wizard(Script(confirms=[True], asks=[f"{good}; {missing} , {other}", "Short and warm."]))
+        result = sw.step_autopilot(w)
+        self.assertEqual(result.status, "ok", result.message)
+        saved = cfg.load(self.path)
+        self.assertTrue(saved.autopilot_enabled)
+        self.assertEqual(saved.autopilot_repos, [good, other])
+        self.assertEqual(saved.autopilot_tone, "Short and warm.")
+        self.assertIn("1 not found", result.message)
+        self.assertIn(missing, self.output())
+        self.assertEqual(self.sys.ran, [])
+
+    def test_repos_are_optional_and_enter_keeps_the_tone(self):
+        w = self.wizard(Script(confirms=[True]))
+        result = sw.step_autopilot(w)
+        self.assertEqual(result.status, "ok")
+        saved = cfg.load(self.path)
+        self.assertEqual((saved.autopilot_enabled, saved.autopilot_repos), (True, []))
+        self.assertTrue(saved.autopilot_tone)
+
+    def test_check_reports_each_state(self):
+        w = self.wizard(Script())
+        w.load_config(True)
+        self.assertEqual(sw.check_autopilot(w).status, "warn")
+        w.config.autopilot_enabled = True
+        self.assertEqual(sw.check_autopilot(w).status, "ok")
+        w.config.autopilot_repos = [str(self.home / "gone")]
+        self.assertEqual(sw.check_autopilot(w).status, "fail")
+
+    def test_step_is_after_council_and_has_aliases(self):
+        self.assertEqual(sw.STEP_IDS.index("autopilot"), sw.STEP_IDS.index("council") + 1)
+        self.assertEqual(sw.parse_only("autopilot,approvals"), ["autopilot"])
+        code = sw.run_wizard(self.wizard(Script()), "autopilot", check=True)
+        self.assertIn("Autopilot", self.output())
+
+
 class TestDoctor(unittest.TestCase):
     def test_ollama_exception_prints_not_reachable(self):
         from unittest import mock

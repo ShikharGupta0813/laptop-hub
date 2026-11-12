@@ -39,14 +39,14 @@ WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 TASK_NAME = "LaptopHub"
 UPDATE_TASK_NAME = "LaptopHubUpdate"
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
-STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "council", "phone", "name", "warp", "autostart", "updater")
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "council", "autopilot", "phone", "name", "warp", "autostart", "updater")
 # `gemini` is part of `ai`; it can also be run alone: python -m hub setup --only gemini
-ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "council", "phone", "name", "warp", "autostart", "updater")
+ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "council", "autopilot", "phone", "name", "warp", "autostart", "updater")
 ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
            "claude": "ai", "claude-key": "ai", "key": "ai", "claude-login": "ai", "startup": "autostart",
-           "auto-start": "autostart", "lab": "council", "multi-llm-lab": "council", "update": "updater", "update-button": "updater"}
+           "auto-start": "autostart", "approvals": "autopilot", "drafts": "autopilot", "lab": "council", "multi-llm-lab": "council", "update": "updater", "update-button": "updater"}
 TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
-          "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "council": "Council (multi-llm-lab)", "phone": "Phone push", "name": "Your name",
+          "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "council": "Council (multi-llm-lab)", "autopilot": "Autopilot", "phone": "Phone push", "name": "Your name",
           "warp": "Cloudflare WARP", "autostart": "Auto-start", "updater": "Update button"}
 
 TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
@@ -519,6 +519,63 @@ def step_council(w: Wizard) -> Result:
     config.council_dir = str(path)
     w.save_config()
     return Result("ok", msg + ". Restart the hub; the Council appears under Apps")
+
+
+def split_paths(text: str) -> list[str]:
+    """Folder paths typed on one line, separated by ; or , (a Windows path has neither), quotes dropped."""
+    out: list[str] = []
+    for part in re.split(r"[;,\n]", text or ""):
+        cleaned = clean_path(part)
+        if cleaned and cleaned not in out:
+            out.append(cleaned)
+    return out
+
+
+def check_autopilot(w: Wizard) -> Result:
+    config = w.load_config(False)
+    if config is None:
+        return Result("warn", "no hub.json yet")
+    if not config.autopilot_enabled:
+        return Result("warn", "off (optional: drafts your mail, chat and Asana replies for one-tap approval)")
+    missing = [r for r in config.autopilot_repos if not w.system.isdir(r)]
+    if missing:
+        return Result("fail", f"on, but a standup folder is missing: {missing[0]}")
+    return Result("ok", f"on, every {config.autopilot_sweep_min} min, {config.autopilot_daily_ai_calls} AI calls a day max, "
+                        f"{len(config.autopilot_repos)} standup folder(s)")
+
+
+def step_autopilot(w: Wizard) -> Result:
+    config = w.load_config(True)
+    assert config is not None
+    w.say("Autopilot watches your mail, chat alerts and Asana, writes draft replies with a free AI (never Claude), "
+          "and lines them up as Approve / Edit / Skip cards on your phone. Nothing is sent until you tap.")
+    if not w.confirm("Turn Autopilot on?", bool(config.autopilot_enabled)):
+        config.autopilot_enabled = False
+        w.save_config()
+        return Result("skip", "Autopilot stays off (turn it on later in Settings or run this step again)")
+    config.autopilot_enabled = True
+    w.say("For the morning standup draft, give the folders of your git projects (full paths, separated by ;). "
+          "Press Enter to skip.")
+    current = "; ".join(config.autopilot_repos)
+    typed = w.ask("Git folders for the standup (optional)", current)
+    repos: list[str] = []
+    problems: list[str] = []
+    for path in split_paths(typed):
+        (repos if w.system.isdir(path) else problems).append(path)
+    for path in problems:
+        w.say(f"   not a folder, left out: {path}")
+    config.autopilot_repos = repos
+    tone = clean_tone(w.ask("How should your drafts sound? One line (Enter keeps the current one)", config.autopilot_tone))
+    config.autopilot_tone = tone or config.autopilot_tone
+    w.save_config()
+    note = f"{len(repos)} standup folder(s)" + (f", {len(problems)} not found" if problems else "")
+    return Result("ok", f"Autopilot is on ({note}). Restart the hub; the cards appear under Apps > Autopilot")
+
+
+def clean_tone(text: str) -> str:
+    """One printable line of at most 200 characters; angle brackets and quotes dropped."""
+    text = "".join(ch for ch in (text or "") if ch.isprintable() and ch not in "<>\"`")
+    return " ".join(text.split())[:200]
 
 
 def check_gmail(w: Wizard) -> Result:
@@ -1118,6 +1175,7 @@ STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] 
     "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
     "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "ai": (step_ai, check_ai),
     "gemini": (step_gemini, check_gemini), "council": (step_council, check_council),
+    "autopilot": (step_autopilot, check_autopilot),
     "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
     "autostart": (step_autostart, check_autostart), "updater": (step_updater, check_updater),
 }

@@ -18,6 +18,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 10. [09 · Troubleshooting](09-troubleshooting.md): symptom, cause, fix.
 11. [10 · Security and privacy](10-security-and-privacy.md): what protects you, what to never share.
 12. [11 · Cheat sheet](11-cheat-sheet.md): one printable page.
+13. [12 · Autopilot](12-autopilot.md): drafts that wait for your one tap.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).
 
@@ -37,6 +38,7 @@ flowchart TD
     G --> K["10 Security"]
     J --> L["11 Cheat sheet"]
     K --> L
+    E --> M["12 Autopilot"]
 ```
 
 ## Quick start by goal
@@ -46,7 +48,8 @@ flowchart TD
 | Understand it in five minutes | 00 |
 | Get it running | 01, then 08 |
 | Fix a problem now | 09 |
-| Know what is safe | 10 |
+| Know what is safe | 10, 12 |
+| Have drafts ready for one-tap approval | 12 |
 | Hand it to someone else | 00, 01, 11 |
 
 ## How to read the marks

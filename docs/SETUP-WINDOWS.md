@@ -208,6 +208,16 @@ Council runs your **multi-llm-lab** project from the phone: several models (loca
 
 The assistant can start and cancel runs too (it asks you first and shows the exact task). hub.json keys: `council_dir`, `council_python` (default: `<council_dir>\.venv\Scripts\python.exe` if it exists, else the hub's Python), `council_timeout_min`, `council_allow_claude`. Details: docs/api/council.md.
 
+## 9d. Autopilot: drafts that wait for your tap (optional)
+
+Autopilot reads your Gmail, the chat/Gmail alerts Watch keeps and your Asana tasks, writes draft replies with a free AI (Gemini, else the local model; **never Claude**) and lines them up as Approve / Edit / Skip cards in **Apps, Autopilot**. A weekday standup draft is made after `autopilot_standup_time` (08:30) from `git log` of your folders plus Asana. Nothing is sent, posted or changed until you tap Approve.
+
+1. `python -m hub setup --only autopilot`: confirm it, optionally list your git project folders (full paths, separated by `;`), and give a one-line tone. Restart the hub. (Or turn it on from the phone: Apps, Autopilot.)
+2. It looks every `autopilot_sweep_min` (15) minutes and uses at most `autopilot_daily_ai_calls` (30) AI calls a day; over that, cards still appear without a draft. Both can be changed in Settings. `autopilot_expire_hours` (48), `autopilot_standup_time` and `autopilot_repos` are edited by hand in hub.json.
+3. You get a notification ("Autopilot: 3 drafts ready"). An email reply goes only to the original sender unless you type another address on the card (that is audited). Gmail and Asana need their own setup steps first.
+
+Not tested on real accounts yet. Details: docs/api/autopilot.md and docs/guide/12-autopilot.md.
+
 ## 10. Verify each feature in 10 minutes
 
 Tick as you go. Anything that fails is worth writing down: none of this has been run on real hardware yet.
@@ -227,6 +237,7 @@ Tick as you go. Anything that fails is worth writing down: none of this has been
 - [ ] **Inbox**: recent mail lists (needs the Jarvis Gmail app password in the keyring)
 - [ ] **Watch**: turn on mail watching, send yourself an "urgent" test mail, see an alert
 - [ ] **Council** (optional): with the lab set up, start a tiny task, see the live log, get a notification, copy the review packet
+- [ ] **Autopilot** (optional): turn it on, tap Check now, read a draft, Edit and Approve one reply to yourself, Skip another
 - [ ] **Remote screen**: the picture appears; arm control for 1 minute, tap once, then it disarms itself
 - [ ] **Laptop**: take a screenshot; lock action (only if you can unlock)
 - [ ] **Terminal**: opens PowerShell and runs `dir`

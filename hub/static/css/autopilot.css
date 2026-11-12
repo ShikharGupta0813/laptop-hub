@@ -1,0 +1,14 @@
+/* Autopilot. Scoped under #view-autopilot; tokens only. */
+#view-autopilot .ap { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-autopilot .ap > * { min-width: 0; }
+#view-autopilot .ap-card, #view-autopilot .ap-off, #view-autopilot .ap-foot { padding: var(--sp-4); }
+#view-autopilot .ap-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+#view-autopilot .ap-when { margin-left: auto; color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-autopilot .ap-title { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+#view-autopilot .ap-summary { margin: 0; color: var(--c-text-2); overflow-wrap: anywhere; white-space: pre-wrap; max-height: 6em; overflow: auto; }
+#view-autopilot .ap-to { margin: 0; overflow-wrap: anywhere; color: var(--c-text-2); }
+#view-autopilot .ap-subject { color: var(--c-text-3); }
+#view-autopilot .ap-draft { width: 100%; min-height: 110px; }
+#view-autopilot .ap-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+#view-autopilot .ap-actions .ui-btn--primary { flex: 1 1 auto; }
+.ap-offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }

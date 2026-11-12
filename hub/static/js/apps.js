@@ -110,6 +110,9 @@ const ENTRIES = [
   view("council", "Council", "Several models work on a side job in the background, without Claude.",
     "monitor", ["council", "models", "multi-llm-lab", "side job", "gemini", "ollama", "background", "agents"],
     { view: "council" }, { icon: "users", isNew: true }),
+  view("autopilot", "Autopilot", "Drafts your replies and updates with a free AI, then waits for your one tap. Nothing is sent by itself.",
+    "monitor", ["autopilot", "approve", "approvals", "drafts", "reply", "standup", "queue", "email", "asana", "chat"],
+    { view: "autopilot" }, { icon: "zap", isNew: true }),
   view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
     ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
 

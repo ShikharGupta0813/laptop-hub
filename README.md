@@ -18,6 +18,7 @@ First time? Run `python -m hub setup` (see docs/SETUP-WINDOWS.md, "One-command s
 | **Watch** | Alerts for urgent Gmail and for Google Chat messages that match your rules. |
 | **Smart auto** | With the AI set to auto, a free word check sends chit-chat to the local model and tool or code jobs to Gemini; if the local model fumbles a tool call twice, Gemini does that step. Claude is never used automatically. Optional sharper tool model: `local_tool_model`. |
 | **Council** | Optional. Runs your `multi-llm-lab` project (local Ollama, Gemini and free hosted models working together) as a background side job from the phone or the assistant, without using Claude. Live log, result, per-model on/off switches, and a copy-paste review packet for when you want Claude's opinion. Set up with `python -m hub setup --only council`. |
+| **Autopilot** | Optional, off by default. Watches Gmail, chat alerts and Asana, writes draft replies and a weekday standup with a free AI (Gemini or local, never Claude) and queues them as Approve / Edit / Skip cards on the phone. Nothing is sent, posted or changed until you tap. Set up with `python -m hub setup --only autopilot`. |
 | **Remote screen** | See the laptop screen. Control is a separate switch you arm for a few minutes. |
 | **Routines** | Named chains of steps ("Good morning", "Leaving desk"), run by hand or on a schedule. Dangerous steps are gated. |
 | **Tools, Read-later** | Calculator, unit converter, world clock, countdowns, snippets and clipboard history; saved links to read later. |
