@@ -100,6 +100,7 @@ class AssistantBody(BaseModel):
     auto_approve: bool = False
     persona: str = "auto"      # "jarvis" | "friday" | "auto" (a leading name in the text decides)
     voice: bool = False        # the text came from the microphone
+    context: str = ""          # what the phone is showing right now; the assistant treats it as live context
 
 
 class ApproveBody(BaseModel):
@@ -595,12 +596,15 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
               auto_approve=body.auto_approve, chars=len(text), persona=persona or "jarvis",
               **({"full_control": True} if config.full_control is True else {}))
         extra_args = {k: v for k, v in (("persona", persona), ("voice", body.voice)) if v}
+        screen = (body.context or "").strip()[:6000]
+        run_text = (f"[The user is looking at this screen right now. Use it as live context, do not repeat it back.]\n"
+                    f"{screen}\n[End of screen]\n\n{text}") if screen else text
 
         async def events():
             if decision:
                 yield f"data: {json.dumps({'type': 'meta', 'routed_to': decision['routed_to'], 'reason': decision['reason']})}\n\n"
             try:
-                async for event in assistant.run(body.session_id, text, provider,
+                async for event in assistant.run(body.session_id, run_text, provider,
                                                  body.auto_approve, **extra_args):
                     yield f"data: {json.dumps(event)}\n\n"
             except Exception as exc:  # the stream must always end cleanly for the phone

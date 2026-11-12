@@ -1,6 +1,6 @@
 // Today: the whole day on one page (meetings, tasks, spending, mail, what you did). Read-only; routes: docs/api/today.md.
 // Everything shown is text (textContent). The last answer is kept in localStorage so the page opens even offline.
-import { api, ApiError, el } from "./api.js";
+import { api, ApiError, el, sse } from "./api.js";
 import * as ui from "./ui.js";
 
 const CACHE_KEY = "hub.today.v1";
@@ -84,6 +84,69 @@ export function init(container, ctx) {
     return el("section", { class: "ui-card ui-stack" }, ui.eyebrow("06", "In words"), text, btn);
   }
 
+  // ---- ask the assistant about this very screen -------------------------------------------------
+  const sid = "today-" + Math.random().toString(36).slice(2, 10);
+  let askOut = null, askNode = null;
+
+  function screenText() {
+    const d = data || {}, n = d.numbers || {}, t = d.tasks || {}, p = d.pending || {}, L = [];
+    L.push(`TODAY screen, ${d.weekday || ""} ${d.date || ""}`);
+    if (p.next_meeting) L.push(`Next meeting: ${p.next_meeting.title} at ${p.next_meeting.time}`);
+    L.push(`Autopilot drafts waiting for approval: ${p.autopilot || 0}`);
+    for (const i of d.timeline || []) L.push(`- ${i.time || ""} [${i.kind}] ${i.title}${i.sub ? " (" + i.sub + ")" : ""}`);
+    for (const x of t.overdue || []) L.push(`Overdue task: ${x.name} (since ${x.due_on})`);
+    for (const x of t.due_today || []) L.push(`Task due today: ${x.name}`);
+    for (const c of d.done?.commits || []) L.push(`Done: commit "${c.subject}" in ${c.repo}`);
+    L.push(`Spent today: ${n.spent_text}; mails handled: ${n.mails_handled}; commits: ${n.commits}; cards approved: ${n.cards_approved}`);
+    return L.join("\n");
+  }
+
+  async function sendAsk(text, input, btn) {
+    text = (text || "").trim();
+    if (!text) return;
+    input.value = "";
+    askOut.replaceChildren(el("p", { class: "ui-hint" }, "You: " + text), el("p", { class: "today-answer" }, "Thinking…"));
+    const answer = askOut.lastChild;
+    let got = "";
+    btn.disabled = true;
+    try {
+      for await (const ev of sse("/api/assistant/message", { session_id: sid, text, context: screenText(), provider: "auto", auto_approve: false, persona: "auto", voice: false })) {
+        if (ev.type === "text") { got += ev.t || ""; answer.textContent = got; }
+        else if (ev.type === "approval_needed") {
+          const row = el("div", { class: "ui-row" });
+          const done = (ok) => { api("/api/assistant/approve", { method: "POST", json: { session_id: sid, call_id: ev.id, approve: ok } }).catch((e) => ui.toast(e.message, { kind: "bad" })); row.remove(); };
+          row.append(el("span", { class: "ui-hint" }, `Wants to use “${ev.name}”.`),
+            ui.button({ label: "Approve", icon: "check", onClick: () => done(true) }),
+            ui.button({ label: "Deny", variant: "secondary", icon: "x", onClick: () => done(false) }));
+          askOut.append(row);
+        } else if (ev.type === "error") { answer.textContent = ev.message || "Something went wrong."; }
+      }
+      if (!got && answer.textContent === "Thinking…") answer.textContent = "Done.";
+      else if (got) { try { ctx?.speak?.(got.replace(/[*_`#>]/g, "").slice(0, 600)); } catch (_) { /* silent */ } }
+      load({ quiet: true });
+    } catch (error) { answer.textContent = error.message; }
+    btn.disabled = false;
+  }
+
+  function askBar() {
+    const input = el("input", { class: "ui-input", type: "text", placeholder: "Ask or tell me anything about today…", enterkeyhint: "send", "aria-label": "Ask about this screen" });
+    const send = ui.button({ label: "Send", icon: "send", onClick: () => sendAsk(input.value, input, send) });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendAsk(input.value, input, send); } });
+    const row = el("div", { class: "ui-row" }, input, send);
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      const mic = ui.button({ icon: "mic", iconOnly: true, variant: "tonal", "aria-label": "Talk", onClick: () => {
+        const r = new SR(); r.lang = "en-IN"; r.interimResults = false;
+        r.onresult = (e) => sendAsk(e.results[0][0].transcript, input, send);
+        r.onerror = () => ui.toast("Couldn't hear you. Try again or type.", { kind: "warn" });
+        try { r.start(); ui.toast("Listening…", { kind: "info" }); } catch (_) { /* already listening */ }
+      } });
+      row.insertBefore(mic, send);
+    }
+    askOut = el("div", { class: "ui-stack" });
+    return el("section", { class: "ui-card ui-stack today-ask" }, ui.eyebrow("AI", "Talk about today"), row, askOut);
+  }
+
   function paint() {
     if (loadError === "off" && !data) { root.replaceChildren(ui.emptyState({ icon: "clock", title: "Today is switched off", body: "Set today_enabled to true in Settings." })); return; }
     if (!data) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load Today", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
@@ -92,7 +155,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), refresh),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
-      now(), timeline(), doneToday(), numbers(), tasks(), summary(),
+      (askNode ||= askBar()), now(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
   }
 
