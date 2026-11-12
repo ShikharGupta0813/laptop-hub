@@ -87,6 +87,8 @@ class Config:
     today_enabled: bool = True
     today_evening_time: str = "19:30"       # weekday time of the evening summary (needs Autopilot on); "" = off
 
+    backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
@@ -160,6 +162,7 @@ def save(config: Config, path: Path) -> None:
         "autopilot_standup_time": config.autopilot_standup_time, "autopilot_repos": list(config.autopilot_repos),
         "autopilot_tone": config.autopilot_tone, "autopilot_research": bool(config.autopilot_research),
         "today_enabled": bool(config.today_enabled), "today_evening_time": config.today_evening_time,
+        "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

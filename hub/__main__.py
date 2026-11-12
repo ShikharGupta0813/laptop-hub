@@ -1,4 +1,4 @@
-"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater"""
+"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater | backup | watchdog"""
 from __future__ import annotations
 
 import argparse
@@ -164,6 +164,13 @@ def cmd_doctor(args) -> int:
     line(shutil.which("tailscale") is not None or None,
          "tailscale found" if shutil.which("tailscale")
          else "tailscale not found: needed for HTTPS and remote access (tailscale.com/download)")
+    for label, check in (("watchdog", "check_watchdog"), ("weekly backup", "check_backup")):
+        try:
+            from . import setup_wizard
+            result = getattr(setup_wizard, check)(setup_wizard.Wizard(path))
+            line(True if result.status == "ok" else None, f"{label}: {result.message}")
+        except Exception:  # noqa: BLE001 - never crash the doctor
+            line(None, f"{label}: could not check")
     return 0 if ok else 1
 
 
@@ -179,6 +186,16 @@ def cmd_install_updater(args) -> int:
     w = Wizard(path)
     result = w.report("updater", step_updater(w))
     return 1 if result.status == "fail" else 0
+
+
+def cmd_backup(args) -> int:
+    from . import backup
+    return backup.run(args)
+
+
+def cmd_watchdog(args) -> int:
+    from . import watchdog
+    return watchdog.run(args)
 
 
 def cmd_setup(args) -> int:
@@ -197,12 +214,17 @@ def main(argv=None) -> int:
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
     setup = sub.add_parser("setup", help="interactive one-command setup: Jarvis, Gmail, Asana, calendar, push, auto-start")
-    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart,updater "
+    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart,updater,backup,watchdog "
                        "(e.g. --only gmail,calendar)")
     setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
     upd = sub.add_parser("update", help="pull the latest code from GitHub (and restart the hub with --restart)")
     upd.add_argument("--restart", action="store_true", help="after a successful pull, restart the LaptopHub scheduled task")
     sub.add_parser("install-updater", help="Windows: add the 'Update REDLINE' phone button (scheduled task LaptopHubUpdate)")
+    bk = sub.add_parser("backup", help="zip settings, data, notes and inbox (keeps the last 8); --restore ZIP puts one back")
+    bk.add_argument("--to", metavar="DIR", help="folder for the zip (default: backup_dir or Documents\\REDLINE-backups)")
+    bk.add_argument("--restore", metavar="ZIP", help="restore a backup zip (asks you to type RESTORE first)")
+    wd = sub.add_parser("watchdog", help="check the hub and Tailscale, repair them, push to the phone if needed")
+    wd.add_argument("--once", action="store_true", help="one pass then exit (what the scheduled task uses)")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -220,7 +242,7 @@ def main(argv=None) -> int:
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
             "add-script": cmd_add_script, "setup": cmd_setup, "update": cmd_update,
-            "install-updater": cmd_install_updater}[args.command](args)
+            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog}[args.command](args)
 
 
 if __name__ == "__main__":

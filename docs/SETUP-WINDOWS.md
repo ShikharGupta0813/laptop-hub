@@ -226,6 +226,16 @@ approval tap. It is off by default; see `docs/guide/10-security-and-privacy.md`.
 controls the AI-free shortcuts; `jarvis_name` changes the first name. A speed tip: keep Ollama running and open
 voice mode once after boot, it warms the models.
 
+## 9f. Never worry: watchdog and backups
+
+Run `python -m hub setup --only backup,watchdog` and answer yes to both.
+
+- **Watchdog** (task `LaptopHubWatchdog`, every 10 minutes): if the hub is not answering it starts the `LaptopHub` task again. If Tailscale stopped it starts it, and if the Tailscale link to the hub is gone it puts it back. If Tailscale is logged out it cannot fix that (it needs a browser), so it pushes "Tailscale is logged out - open the laptop" to your phone. It never kills anything. When all is well it is silent. Log: `C:\Users\YOU\.laptop-hub\watchdog.log`. Try it by hand: `python -m hub watchdog --once`. It needs your ntfy topic (`python -m hub setup --only phone`) to push.
+- **Backup** (task `LaptopHubBackup`, Sundays 11:00): `python -m hub backup` zips your settings (without the login token), data, `HubNotes` and `HubInbox` into `Documents\REDLINE-backups`, keeps the newest 8 and pushes "Backup done: 14 MB". Another folder: set `backup_dir` in `hub.json` or use `--to`.
+- **Restore**: `python -m hub backup --restore ZIP`, type `RESTORE`, restart the hub. A safety copy of what you had is made first.
+
+`python -m hub doctor` shows whether both tasks are registered.
+
 ## 10. Verify each feature in 10 minutes
 
 Tick as you go. Anything that fails is worth writing down: none of this has been run on real hardware yet.

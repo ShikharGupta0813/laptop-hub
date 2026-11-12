@@ -38,16 +38,18 @@ WEBHOOK_PREFIX = "https://chat.googleapis.com/v1/spaces/"
 WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 TASK_NAME = "LaptopHub"
 UPDATE_TASK_NAME = "LaptopHubUpdate"
+BACKUP_TASK_NAME = "LaptopHubBackup"
+WATCHDOG_TASK_NAME = "LaptopHubWatchdog"
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
-STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "council", "autopilot", "phone", "name", "warp", "autostart", "updater")
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "council", "autopilot", "phone", "name", "warp", "autostart", "updater", "backup", "watchdog")
 # `gemini` is part of `ai`; it can also be run alone: python -m hub setup --only gemini
-ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "council", "autopilot", "phone", "name", "warp", "autostart", "updater")
+ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "council", "autopilot", "phone", "name", "warp", "autostart", "updater", "backup", "watchdog")
 ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
            "claude": "ai", "claude-key": "ai", "key": "ai", "claude-login": "ai", "startup": "autostart",
-           "auto-start": "autostart", "approvals": "autopilot", "drafts": "autopilot", "lab": "council", "multi-llm-lab": "council", "update": "updater", "update-button": "updater"}
+           "auto-start": "autostart", "approvals": "autopilot", "drafts": "autopilot", "lab": "council", "multi-llm-lab": "council", "update": "updater", "update-button": "updater", "backups": "backup", "guard": "watchdog"}
 TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
           "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "council": "Council (multi-llm-lab)", "autopilot": "Autopilot", "phone": "Phone push", "name": "Your name",
-          "warp": "Cloudflare WARP", "autostart": "Auto-start", "updater": "Update button"}
+          "warp": "Cloudflare WARP", "autostart": "Auto-start", "updater": "Update button", "backup": "Weekly backup", "watchdog": "Watchdog"}
 
 TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
 
@@ -1171,6 +1173,60 @@ def step_updater(w: Wizard) -> Result:
                         "Restart the hub once so the button appears (log out and in, or: schtasks /End /TN LaptopHub, then /Run)")
 
 
+def _register_task(w: Wizard, task_name: str, module_args: str, trigger_ps: str, what: str) -> Result:
+    """Register a hidden scheduled task running `python -m hub <module_args>` (same pattern as the updater)."""
+    s = w.system
+    pythonw = s.python_dir() / "pythonw.exe"
+    exe = str(pythonw if s.exists(pythonw) else s.python_dir() / "python.exe")
+    arguments = f"-m hub {module_args}"
+    if w.config_path != cfg.default_path():
+        arguments = f'-m hub --config "{w.config_path}" {module_args}'
+    script = (
+        f"$a = New-ScheduledTaskAction -Execute {_ps_quote(exe)} -Argument {_ps_quote(arguments)} "
+        f"-WorkingDirectory {_ps_quote(str(repo_root()))}; {trigger_ps} "
+        "$p = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable "
+        "-ExecutionTimeLimit (New-TimeSpan -Hours 2); "
+        f"Register-ScheduledTask -TaskName {_ps_quote(task_name)} -Action $a -Trigger $t -Settings $p -Force | Out-Null")
+    rc, _ = s.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=60)
+    if rc != 0:
+        return Result("fail", f"couldn't register the {task_name} task (try an administrator PowerShell)")
+    return Result("ok", f"task {task_name} registered: {what}")
+
+
+def _check_task(w: Wizard, task_name: str, fix: str) -> Result:
+    if w.system.platform != "win32":
+        return Result("skip", "Windows only")
+    rc, _ = w.system.run(["schtasks", "/Query", "/TN", task_name])
+    return Result("ok", f"scheduled task {task_name} exists") if rc == 0 else \
+        Result("warn", f"no scheduled task {task_name} ({fix})")
+
+
+def check_backup(w: Wizard) -> Result:
+    return _check_task(w, BACKUP_TASK_NAME, "python -m hub setup --only backup")
+
+
+def step_backup(w: Wizard) -> Result:
+    """Optional weekly backup (Sunday 11:00) into Documents/REDLINE-backups. The wizard already asked "Set up Weekly backup?"."""
+    if w.system.platform != "win32":
+        return Result("skip", "scheduled tasks are Windows only")
+    return _register_task(w, BACKUP_TASK_NAME, "backup", "$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 11:00;",
+                          "every Sunday 11:00, zips go to Documents\\REDLINE-backups. Run now: python -m hub backup")
+
+
+def check_watchdog(w: Wizard) -> Result:
+    return _check_task(w, WATCHDOG_TASK_NAME, "python -m hub setup --only watchdog")
+
+
+def step_watchdog(w: Wizard) -> Result:
+    """Every 10 minutes: restart the hub / Tailscale if they died, and push to the phone when it did something."""
+    if w.system.platform != "win32":
+        return Result("skip", "scheduled tasks are Windows only")
+    return _register_task(
+        w, WATCHDOG_TASK_NAME, "watchdog --once",
+        "$t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 10);",
+        "checks every 10 minutes and pushes to your phone only when something was fixed or needs you")
+
+
 STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] = {
     "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
     "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "ai": (step_ai, check_ai),
@@ -1178,6 +1234,7 @@ STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] 
     "autopilot": (step_autopilot, check_autopilot),
     "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
     "autostart": (step_autostart, check_autostart), "updater": (step_updater, check_updater),
+    "backup": (step_backup, check_backup), "watchdog": (step_watchdog, check_watchdog),
 }
 
 

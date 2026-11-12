@@ -28,10 +28,14 @@
 | Test setup, change nothing | `python -m hub setup --check` |
 | Update code | `python -m hub update --restart` |
 | Add the update button | `python -m hub install-updater` |
+| Back up now (zip, keeps last 8) | `python -m hub backup` |
+| Put a backup back | `python -m hub backup --restore C:\path\redline-backup-DATE.zip` |
+| Check and repair hub and Tailscale now | `python -m hub watchdog --once` |
+| Set up weekly backup / 10-minute watchdog | `python -m hub setup --only backup,watchdog` |
 | New login token | `python -m hub token` |
 | Add a quick button | `python -m hub add-script NAME --label "Label" -- PROGRAM ARGS` |
 
-Wizard step names: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `autopilot`, `phone`, `name`, `warp`, `autostart`, `updater`.
+Wizard step names: `jarvis`, `gmail`, `asana`, `calendar`, `chat`, `ai`, `gemini`, `council`, `autopilot`, `phone`, `name`, `warp`, `autostart`, `updater`, `backup`, `watchdog`.
 
 Start and stop the background hub:
 
