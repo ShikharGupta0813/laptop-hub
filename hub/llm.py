@@ -333,7 +333,8 @@ def forget_gemini_key_cache() -> None:
 
 # ---- Gemini model picking and "no free quota" memory (in this process only, never on disk) -----------
 
-GEMINI_BAD_TTL = 24 * 3600
+GEMINI_BAD_TTL = 24 * 3600      # a model with no quota is skipped for a day
+GEMINI_REASON_TTL = 3600        # the 'no free quota' note on the pickers is re-checked hourly (billing may have been enabled)
 GEMINI_MODEL_RE = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash|pro)(-lite)?(-\d+|-latest)?$")
 GEMINI_EXHAUSTED = ("This key's free tier has no quota for the available models. Options: a new key from a fresh "
                     "AI Studio project (aistudio.google.com/apikey), enable billing on the Google Cloud project "
@@ -392,7 +393,7 @@ def gemini_worked(key: str) -> None:
 def gemini_quota_problem(key: str | None = None) -> str:
     """Non-empty when the last Gemini call with this key found no free quota (kept in memory for this process only)."""
     last = _GEMINI["last_error"]
-    if not last or time.time() - last["at"] > GEMINI_BAD_TTL:
+    if not last or time.time() - last["at"] > GEMINI_REASON_TTL:
         return ""
     if _key_fp(key if key is not None else gemini_key()) != last["fp"]:
         return ""

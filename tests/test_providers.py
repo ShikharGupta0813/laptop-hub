@@ -345,6 +345,19 @@ class GeminiFailoverTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("free quota is used up", str(cm.exception))
         self.assertEqual(self.asked, ["gemini-2.5-flash"])
 
+    async def test_reason_expires_after_an_hour(self):
+        llm.note_gemini_quota_failure("K1")
+        with mock.patch.object(llm.time, "time", return_value=llm.time.time() + llm.GEMINI_REASON_TTL + 5):
+            self.assertEqual(llm.gemini_quota_problem("K1"), "")
+
+    async def test_stream_walks_past_a_missing_model_and_a_dead_one(self):
+        def behaviour(name):
+            return {"gemini-2.5-flash": (404, {"json": {}}), "gemini-3-flash": (429, {"json": LIMIT0})}.get(name, "ok")
+        c = self.client(behaviour)
+        self.assertEqual(await _drain(c.stream("s", "u")), ["fine"])
+        self.assertEqual(self.asked[:3], ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-flash-lite"])
+        self.assertNotIn("gemini-4-argon", self.asked)
+
     async def test_success_clears_the_reason(self):
         llm.note_gemini_quota_failure("K1")
         await self.client(lambda name: "ok").complete("s", "u")
@@ -477,6 +490,23 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(s["providers"]["claude_login"]["ready"])
         self.assertTrue(s["claude_ready"])
         self.assertEqual(s["default_provider"], "claude-login")
+
+    def test_status_shows_no_free_quota_reason_for_the_phone(self):
+        llm.reset_gemini_state()
+        self.addCleanup(llm.reset_gemini_state)
+        with mock.patch.object(providers, "gemini_key", return_value="KQ"), \
+                mock.patch.object(providers, "find_claude_cli", return_value="/bin/claude"):
+            s = self.client.get("/api/status").json()
+            self.assertTrue(s["providers"]["gemini"]["ready"])
+            self.assertEqual(s["default_provider"], "gemini")
+            llm.note_gemini_quota_failure("KQ")
+            s = self.client.get("/api/status").json()
+            self.assertFalse(s["providers"]["gemini"]["ready"])
+            self.assertEqual(s["providers"]["gemini"]["reason"], "key found \u2014 no free quota on this key (limit 0)")
+            self.assertFalse(s["providers"]["duo"]["ready"])
+            self.assertIn("no free quota", s["providers"]["duo"]["reason"])
+            self.assertEqual(s["default_provider"], "claude-login")
+            self.assertTrue(s["providers"]["claude_login"]["ready"])
 
     def test_settings_expose_and_validate_default_provider(self):
         data = self.client.get("/api/settings").json()

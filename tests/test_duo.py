@@ -312,6 +312,28 @@ class DuoGeminiNoQuotaTest(AssistantBase):
         self.assertIn("free tier has no quota", errors[0]["message"])
         self.assertIn("Claude login / a local model", errors[0]["message"])
 
+    async def test_real_gemini_client_with_limit_zero_ends_with_the_options_message(self):
+        llm.reset_gemini_state()
+        self.addCleanup(llm.reset_gemini_state)
+        limit0 = {"error": {"code": 429, "message": "Quota exceeded, limit: 0, model: gemini-2.5-flash"}}
+
+        def handler(request):
+            if request.url.path.endswith("/models") and request.method == "GET":
+                return httpx.Response(200, json={"models": [
+                    {"name": "models/gemini-4-argon", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-3-flash", "supportedGenerationMethods": ["generateContent"]}]})
+            return httpx.Response(429, json=limit0)
+
+        gem = llm.GeminiClient("gemini-2.5-flash", api_key="KD", transport=httpx.MockTransport(handler))
+        svc = self.service()
+        svc.model_for = lambda p: DuoClient(gem, Supervisor(FakeClaude()))
+        events = await asyncio.wait_for(collect(svc.run("s", "hello", "duo", False)), 10)
+        errors = [e for e in events if e["type"] == "error"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("free tier has no quota", errors[0]["message"])
+        self.assertIn("aistudio.google.com/apikey", errors[0]["message"])
+        self.assertEqual(llm.gemini_quota_problem("KD"), llm.GEMINI_NO_QUOTA_REASON)
+
 
 if __name__ == "__main__":
     unittest.main()
