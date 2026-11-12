@@ -118,6 +118,10 @@ accents), `js/ui.js` (sheet, toast, confirm, segmented, ring, ...), `js/icons.js
 (bottom nav Home|Talk|Work|Learn|Apps, top bar with search/bell/settings, view registry `VIEWS`), new login,
 Home dashboard (`js/home.js`), global search overlay (`js/omnibox.js`).
 
+## 3c. Update button (2026-11-12)
+
+`python -m hub update [--restart]` (hub/updater.py) pulls `git pull --ff-only` in the repo (refuses on a dirty tree, pip only if requirements.txt changed) and restarts the `LaptopHub` task, logging to `~/.laptop-hub/update.log`. `python -m hub install-updater` (also offered by `setup --only autostart`, step `updater`) registers the on-demand task `LaptopHubUpdate` and saves the `update` quick button (`schtasks /Run /TN LaptopHubUpdate`). `/api/status` has `version` (short commit); `/api/update-log` returns the last 20 log lines. sw.js VERSION v13-update-button-2026.11. Unverified: real Windows scheduled-task behaviour (tests use fakes only).
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)

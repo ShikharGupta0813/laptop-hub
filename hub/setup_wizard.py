@@ -36,16 +36,17 @@ CLONE_URL = "https://github.com/ShikharGupta0813/jarvis-voice-assistant"
 WEBHOOK_PREFIX = "https://chat.googleapis.com/v1/spaces/"
 WARP_PATH = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 TASK_NAME = "LaptopHub"
+UPDATE_TASK_NAME = "LaptopHubUpdate"
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
-STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "phone", "name", "warp", "autostart")
+STEP_IDS = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "phone", "name", "warp", "autostart", "updater")
 # `gemini` is part of `ai`; it can also be run alone: python -m hub setup --only gemini
-ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "phone", "name", "warp", "autostart")
+ONLY_ORDER = ("jarvis", "gmail", "asana", "calendar", "chat", "ai", "gemini", "phone", "name", "warp", "autostart", "updater")
 ALIASES = {"ntfy": "phone", "push": "phone", "email": "gmail", "mail": "gmail", "cal": "calendar",
            "claude": "ai", "claude-key": "ai", "key": "ai", "claude-login": "ai", "startup": "autostart",
-           "auto-start": "autostart"}
+           "auto-start": "autostart", "update": "updater", "update-button": "updater"}
 TITLES = {"jarvis": "Jarvis folder", "gmail": "Gmail", "asana": "Asana", "calendar": "Calendar",
           "chat": "Google Chat", "ai": "AI", "gemini": "Gemini key", "phone": "Phone push", "name": "Your name",
-          "warp": "Cloudflare WARP", "autostart": "Auto-start"}
+          "warp": "Cloudflare WARP", "autostart": "Auto-start", "updater": "Update button"}
 
 TOKENISH = re.compile(r"https?://\S+|sk-ant-\S+|[A-Za-z0-9_\-]{24,}")
 
@@ -939,12 +940,52 @@ def step_autostart(w: Wizard) -> Result:
     return Result("ok", msg)
 
 
+def check_updater(w: Wizard) -> Result:
+    if w.system.platform != "win32":
+        return Result("skip", "Windows only")
+    rc, _ = w.system.run(["schtasks", "/Query", "/TN", UPDATE_TASK_NAME])
+    config = w.load_config(False)
+    has_button = bool(config and "update" in config.scripts)
+    if rc == 0 and has_button:
+        return Result("ok", f"task {UPDATE_TASK_NAME} and the 'Update REDLINE' button exist")
+    missing = [n for n, ok in ((f"scheduled task {UPDATE_TASK_NAME}", rc == 0), ("'update' button", has_button)) if not ok]
+    return Result("warn", "missing " + " and ".join(missing) + " (python -m hub install-updater)")
+
+
+def step_updater(w: Wizard) -> Result:
+    """Register the on-demand task that runs `hub update --restart`, then add the Launcher button for it.
+    It is a task of its own so that stopping the hub's task cannot kill the updater."""
+    s = w.system
+    if s.platform != "win32":
+        return Result("skip", "scheduled tasks are Windows only")
+    config = w.load_config(True)
+    assert config is not None
+    pythonw = s.python_dir() / "pythonw.exe"
+    exe = str(pythonw if s.exists(pythonw) else s.python_dir() / "python.exe")
+    arguments = "-m hub update --restart"
+    if w.config_path != cfg.default_path():
+        arguments = f'-m hub --config "{w.config_path}" update --restart'
+    script = (
+        f"$a = New-ScheduledTaskAction -Execute {_ps_quote(exe)} -Argument {_ps_quote(arguments)} "
+        f"-WorkingDirectory {_ps_quote(str(repo_root()))}; "
+        "$p = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero); "
+        f"Register-ScheduledTask -TaskName {_ps_quote(UPDATE_TASK_NAME)} -Action $a -Settings $p -Force | Out-Null")
+    rc, _ = s.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=60)
+    if rc != 0:
+        return Result("fail", "couldn't register the update task (try an administrator PowerShell)")
+    cfg.set_script(config, "update", "Update REDLINE", ["schtasks", "/Run", "/TN", UPDATE_TASK_NAME])
+    w.save_config()
+    return Result("ok", f"task {UPDATE_TASK_NAME} registered and 'Update REDLINE' button saved. "
+                        "Restart the hub once so the button appears (log out and in, or: schtasks /End /TN LaptopHub, then /Run)")
+
+
 STEPS: dict[str, tuple[Callable[[Wizard], Result], Callable[[Wizard], Result]]] = {
     "jarvis": (step_jarvis, check_jarvis), "gmail": (step_gmail, check_gmail), "asana": (step_asana, check_asana),
     "calendar": (step_calendar, check_calendar), "chat": (step_chat, check_chat), "ai": (step_ai, check_ai),
     "gemini": (step_gemini, check_gemini),
     "phone": (step_phone, check_phone), "name": (step_name, check_name), "warp": (step_warp, check_warp),
-    "autostart": (step_autostart, check_autostart),
+    "autostart": (step_autostart, check_autostart), "updater": (step_updater, check_updater),
 }
 
 
@@ -958,6 +999,8 @@ def parse_only(text: str | None) -> list[str]:
             raise ValueError(f"Unknown step '{raw.strip()[:30]}'. Steps: {', '.join(ONLY_ORDER)}")
         if key not in chosen:
             chosen.append(key)
+    if "autostart" in chosen and "updater" not in chosen:
+        chosen.append("updater")   # `--only autostart` also offers the update button
     return [s for s in ONLY_ORDER if s in chosen]
 
 

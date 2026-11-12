@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from . import assistant_tools, assistant_tools_more, auth, files, friday_tools
 from . import llm as llm_mod
+from . import updater as updater_mod
 from .assistant import AssistantService
 from .common import Ctx
 from .config import Config
@@ -107,7 +108,7 @@ class ResetBody(BaseModel):
 
 
 def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None = None,
-               config_path: Path | None = None) -> FastAPI:
+               config_path: Path | None = None, update_log: Path | None = None) -> FastAPI:
     deps = deps or Deps()
     llm = deps.llm or OllamaClient(config.ollama_host, config.chat_model)
     claude = deps.claude or ClaudeClient(config.claude_model)
@@ -123,6 +124,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     config_lock = threading.Lock()   # logout-all's read-change-write of hub.json
     pool = ThreadPoolExecutor(max_workers=16, thread_name_prefix="hub-term")
     audit_file = audit_path or Path.home() / ".laptop-hub" / "audit.log"
+    update_log_file = update_log or updater_mod.log_path_for(config_path)
 
     async def label(text: str):
         if deps.label:
@@ -325,7 +327,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             "hostname": socket.gethostname(), "platform": platform.platform(),
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "shells": list(config.shell_table()), "scripts": len(config.scripts),
-            "chat_model": config.chat_model,
+            "chat_model": config.chat_model, "version": updater_mod.read_version(),
         }
         info.update(await asyncio.to_thread(machine_numbers))
         try:
@@ -347,6 +349,12 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         except ImportError:
             info["voice_ready"] = deps.transcriber is not None
         return info
+
+    @api.get("/update-log")
+    def update_log_tail():
+        """Read-only: the last lines of update.log (20 at most, 200 characters each) and nothing else."""
+        lines = updater_mod.tail_log(update_log_file, 20, 200)
+        return {"version": updater_mod.read_version(), "lines": lines, "last_update": lines[-1] if lines else ""}
 
     # ---- files -------------------------------------------------------------------------
 

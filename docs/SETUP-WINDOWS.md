@@ -17,7 +17,7 @@ It sets up, in order: the Jarvis folder (clones it if missing), Gmail (App passw
 - Secrets are typed hidden and saved only on this laptop: Gmail, calendar and Chat in the Windows keyring, Asana in `~\.claude\.asana_token` (locked to your user), the Gemini key in the keyring (service `jarvis-gemini`). No Claude API key is asked for (see "AI without an API key" below). They are never printed or written to `hub.json`, and each is tested against its own service only.
 - Ctrl+C stops the whole setup cleanly and lists the steps already done. Prompts accept only y/yes/n/no/Enter.
 - Company Google Workspace accounts (like `@onestack.in`) often have App passwords or IMAP disabled by the admin; a personal Gmail works without admin help. Only one mailbox can be connected at a time (re-run with `--only gmail` for the other).
-- `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, ai, gemini, phone, name, warp, autostart; `claude` still works as an alias of `ai`).
+- `python -m hub setup --only gmail,asana` runs chosen steps (jarvis, gmail, asana, calendar, chat, ai, gemini, phone, name, warp, autostart, updater; `claude` still works as an alias of `ai`).
 - `python -m hub setup --check` changes nothing and just tests what is configured.
 - The Jarvis `.venv` is optional: the hub only loads Jarvis's helper files with its own Python.
 - Open a new terminal and restart the hub afterwards (a new `GEMINI_API_KEY` variable would show up in new terminals only; keyring keys need no restart of the terminal).
@@ -153,6 +153,23 @@ Start-ScheduledTask -TaskName "LaptopHub"
 ```
 
 Your config, notes and data live in `C:\Users\YOU\.laptop-hub` and are not touched. Reload the app on the phone afterwards (the service worker updates itself). A new APK is only needed when `mobile/` changed.
+
+### Update from your phone
+
+One time, on the laptop (needs a terminal once):
+
+```powershell
+cd D:\laptop-hub
+git pull
+python -m hub setup --only autostart     # or just: python -m hub install-updater
+```
+
+This registers a second on-demand scheduled task, `LaptopHubUpdate`, and adds an **Update REDLINE** quick button. Restart the hub once so the button appears. After that, open **Launcher > Update REDLINE** (also under Hub > Quick buttons) on the phone and tap it. The laptop runs `python -m hub update --restart`: it checks the tree has no local changes, runs `git fetch` and `git pull --ff-only`, runs `pip install -r requirements.txt` only if that file changed, then stops and starts the `LaptopHub` task. The app reconnects after about 20 seconds; the running build (`build abc1234`) shows in Hub and Setup.
+
+- It is a separate task so that stopping the hub cannot kill the updater.
+- Log: `~/.laptop-hub/update.log` (timestamped, old and new commit). The last lines are also at `/api/update-log` when logged in.
+- If tracked files on the laptop were edited (dirty tree), nothing is pulled and the hub keeps running; the log says so. Commit or discard the changes (`git status`) and tap again. Any failure (no network, non-fast-forward, pip error) leaves the running hub untouched.
+- Manual run without restart: `python -m hub update`.
 
 ## 9b. Remote workspace (company VPN + NiFi from the phone)
 

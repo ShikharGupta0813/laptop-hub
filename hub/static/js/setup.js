@@ -32,7 +32,7 @@ const CHECKS = [
       try {
         const s = await get("/api/status");
         return s?.online === false ? R("bad", "The hub answers, but the laptop reports offline.", { fix: laptopFix })
-          : R("ok", [s?.hostname || s?.name, "Connected"].filter(Boolean).join(" · "));
+          : R("ok", [s?.hostname || s?.name, "Connected", s?.version ? `build ${s.version}` : ""].filter(Boolean).join(" · "));
       } catch (e) { return R("bad", unreachable(e) ? "Can't reach your laptop. Is it awake and the hub running?" : e.message, { fix: laptopFix }); }
     } },
   { id: "model", title: "Local AI model", icon: "cpu", tone: "info", required: true,

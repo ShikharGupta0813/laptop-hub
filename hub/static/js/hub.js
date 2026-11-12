@@ -103,6 +103,7 @@ export function init(container, ctx) {
         el("div", {}, el("dt", {}, "Name"), el("dd", {}, s.hostname || "unknown")),
         el("div", {}, el("dt", {}, "Time"), el("dd", {}, s.time || "unknown")),
         el("div", {}, el("dt", {}, "System"), el("dd", {}, s.platform || "unknown")),
+        s.version ? el("div", {}, el("dt", {}, "Build"), el("dd", { class: "mono" }, `build ${s.version}`)) : null,
       ),
       el("div", { class: "hub-gauges" }, ...items),
     );
@@ -151,7 +152,7 @@ export function init(container, ctx) {
       check(shells.length > 0, "Terminal shells available", shells.length ? shells.join(", ") : "",
         "No shell was found. Check the \"shells\" setting in hub.json."),
     );
-    setupBody.replaceChildren(list);
+    setupBody.replaceChildren(list, s.version ? el("p", { class: "muted mono" }, `build ${s.version}`) : null);
   }
 
   function tickUpdated() {
@@ -213,6 +214,7 @@ export function init(container, ctx) {
       if (ok) run(item);
     }
     async function run(item) {
+      if (item.name === "update") ui.toast("Updating… the app will reconnect in ~20 seconds", { kind: "info" });
       setBusy(true);
       result.replaceChildren(el("div", { class: "hub-running" }, el("span", { class: "ui-spinner", "aria-hidden": "true" }), `Running '${item.label}'…`));
       try {

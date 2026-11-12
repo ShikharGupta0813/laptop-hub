@@ -192,6 +192,23 @@ Install the app from `mobile/` (see `mobile/README.md`), then:
 - Routines need your explicit confirmation before dangerous steps can run.
 - Voice is processed on the laptop. The first recording downloads the Whisper model once.
 
+## Update from your phone
+
+One time, on the laptop (needs a terminal once):
+
+```powershell
+cd D:\laptop-hub
+git pull
+python -m hub setup --only autostart     # or just: python -m hub install-updater
+```
+
+This registers a second on-demand scheduled task, `LaptopHubUpdate`, and adds an **Update REDLINE** quick button. Restart the hub once so the button appears. After that, open **Launcher > Update REDLINE** (also under Hub > Quick buttons) on the phone and tap it. The laptop runs `python -m hub update --restart`: it checks the tree has no local changes, runs `git fetch` and `git pull --ff-only`, runs `pip install -r requirements.txt` only if that file changed, then stops and starts the `LaptopHub` task. The app reconnects after about 20 seconds; the running build (`build abc1234`) shows in Hub and Setup.
+
+- It is a separate task so that stopping the hub cannot kill the updater.
+- Log: `~/.laptop-hub/update.log` (timestamped, old and new commit). The last lines are also at `/api/update-log` when logged in.
+- If tracked files on the laptop were edited (dirty tree), nothing is pulled and the hub keeps running; the log says so. Commit or discard the changes (`git status`) and tap again. Any failure (no network, non-fast-forward, pip error) leaves the running hub untouched.
+- Manual run without restart: `python -m hub update`.
+
 ## Troubleshooting
 
 | Problem | Fix |

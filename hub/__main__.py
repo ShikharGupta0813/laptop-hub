@@ -1,4 +1,4 @@
-"""Command line: python -m hub setup | init | serve | token | doctor | add-script"""
+"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater"""
 from __future__ import annotations
 
 import argparse
@@ -63,7 +63,7 @@ def cmd_token(args) -> int:
     return 0
 
 
-SCRIPT_NAME_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
+SCRIPT_NAME_RE = cfg.SCRIPT_NAME_RE
 
 
 def cmd_add_script(args) -> int:
@@ -83,8 +83,7 @@ def cmd_add_script(args) -> int:
         print(exc)
         return 1
     label = (args.label or args.name).strip() or args.name
-    replaced = args.name in config.scripts
-    config.scripts[args.name] = {"label": label, "argv": argv}
+    replaced = cfg.set_script(config, args.name, label, argv)
     cfg.save(config, path)
     print(f"{'Replaced' if replaced else 'Saved'} quick button '{args.name}' in {path}:")
     print(f"    label: {label}")
@@ -161,6 +160,20 @@ def cmd_doctor(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_update(args) -> int:
+    from . import updater
+    path = Path(args.config) if args.config else cfg.default_path()
+    return updater.Updater(updater.repo_root(), updater.log_path_for(path)).run(restart=args.restart)
+
+
+def cmd_install_updater(args) -> int:
+    from .setup_wizard import Wizard, step_updater
+    path = Path(args.config) if args.config else cfg.default_path()
+    w = Wizard(path)
+    result = w.report("updater", step_updater(w))
+    return 1 if result.status == "fail" else 0
+
+
 def cmd_setup(args) -> int:
     from .setup_wizard import run_setup
     return run_setup(args)
@@ -177,9 +190,12 @@ def main(argv=None) -> int:
     init.add_argument("--model", help="local chat model for Explain/Ask (default qwen3:4b)")
     init.add_argument("--force", action="store_true")
     setup = sub.add_parser("setup", help="interactive one-command setup: Jarvis, Gmail, Asana, calendar, push, auto-start")
-    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart "
+    setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart,updater "
                        "(e.g. --only gmail,calendar)")
     setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
+    upd = sub.add_parser("update", help="pull the latest code from GitHub (and restart the hub with --restart)")
+    upd.add_argument("--restart", action="store_true", help="after a successful pull, restart the LaptopHub scheduled task")
+    sub.add_parser("install-updater", help="Windows: add the 'Update REDLINE' phone button (scheduled task LaptopHubUpdate)")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -196,7 +212,8 @@ def main(argv=None) -> int:
     if args.command == "add-script":
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
-            "add-script": cmd_add_script, "setup": cmd_setup}[args.command](args)
+            "add-script": cmd_add_script, "setup": cmd_setup, "update": cmd_update,
+            "install-updater": cmd_install_updater}[args.command](args)
 
 
 if __name__ == "__main__":

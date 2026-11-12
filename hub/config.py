@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sys
 from dataclasses import dataclass, field
@@ -74,6 +75,16 @@ def default_shells() -> dict[str, list[str]]:
         return {"powershell": ["powershell.exe", "-NoLogo"], "wsl": ["wsl.exe"],
                 "cmd": ["cmd.exe"]}
     return {"bash": [os.environ.get("SHELL") or "/bin/bash"]}
+
+
+SCRIPT_NAME_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
+
+
+def set_script(config: "Config", name: str, label: str, argv: list[str]) -> bool:
+    """Put a quick button into `config.scripts` (caller saves). True if it replaced an existing one."""
+    replaced = name in config.scripts
+    config.scripts[name] = {"label": label, "argv": list(argv)}
+    return replaced
 
 
 def default_path() -> Path:

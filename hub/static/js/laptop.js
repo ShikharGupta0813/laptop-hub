@@ -2,7 +2,7 @@
 // one into a form, asks first when it is risky, runs it and shows the result by `kind`.
 // Also exports the small helpers shared by apps.js and jarvis.js (icons, spinner, copy to clipboard).
 import { api, ApiError, el } from "./api.js";
-import { icon as uiIcon, confirm as uiConfirm, switchControl } from "./ui.js";
+import { icon as uiIcon, confirm as uiConfirm, switchControl, toast as uiToast } from "./ui.js";
 
 // ---- shared helpers -----------------------------------------------------------------------
 // Directory-category and glyph names used by this module, mapped to the shared icon set in icons.js.
@@ -258,6 +258,7 @@ export function createRunner(container, ctx, { getAction } = {}) {
       try {
         const body = { action: action.id, params: values };
         if (confirmed) body.confirm = true;
+        if (action.id === "script:update") uiToast("Updating… the app will reconnect in ~20 seconds", { kind: "info" });
         const data = await api("/api/laptop/run", { method: "POST", json: body, signal: abort.signal });
         if (id !== runId) return;
         setBusy(false);
