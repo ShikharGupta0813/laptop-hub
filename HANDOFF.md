@@ -158,6 +158,20 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
   jarvis `mailer.resolve_recipient` accepting a bare address, real `git` on Windows, the phone UI (never opened in a browser here), Watch-captured Gmail alerts carry no address so they are information-only.
   Known limits: Asana "yesterday" = comments I wrote on open tasks (the Work API cannot list completed tasks); only the first 8 open tasks are checked.
 
+
+## 3g. Today + voice approvals + Autopilot research (2026-11-12): "never search for anything"
+
+`hub/today.py` (feature module `today`, last in `FEATURE_MODULES`), `js/today.js` (Apps > Today; the Home "Today" card action opens it), docs `docs/api/today.md`, `docs/guide/13-today.md`. sw.js VERSION v16-today-2026.11.
+- `GET /api/today` aggregates calendar, Asana, expenses, inbox, Autopilot and Council through `InProcessClient` plus git via `autopilot.git_commits` (new module-level helper; `run_git` too). One failing source goes to
+  `sources_failed`. `GET /api/today/text?style=morning|evening` is a template (no AI, deterministic, <= 180 words). Config `today_enabled` (true), `today_evening_time` ("19:30"), `autopilot_research` (true); all three editable in Settings.
+- Friday tools (friday_tools.py): `today_summary`, `autopilot_pending`, `autopilot_decide`. Routing: ONE new `"today"` group line in `TOOL_GROUPS` (hub/assistant.py; summary words + approve/skip words), the same path for typed and voice.
+  The `friday_brief` TOOL appends the day summary (the `/api/friday/brief` route is untouched: friday.py belongs to the persona work, so the day-start hook lives in the tool).
+- decide: the number map is per app (closure), expires after 1 hour, needs a prior `autopilot_pending`; ids must be in that listing too; descriptions ("the mail one") must fit exactly one card; stale/handled cards are refused;
+  it calls the normal approve/skip routes with `confirm: true`, so the recipient guard and audit apply. The tool is NOT behind the assistant's approval prompt (the owner's command is the approval).
+- Evening: `Autopilot.maybe_evening()` in the sweep loop: weekdays, at/after `today_evening_time`, once per day (meta key set BEFORE sending), needs autopilot + today enabled; push (first 200 chars) + FYI card (`source: today`, kind none, full text in `draft`, shown as plain text by autopilot.js).
+- Research: `Autopilot.research()`; up to 3 read-only lookups (inbox search by subject keywords, Asana subtasks/comments from the detail already fetched, `/api/search/all` notes/files), 2500 chars cap, only while budget remains; payload `research` label -> badge. 0 extra AI calls.
+- Tests: `tests/test_today.py`. UNVERIFIED: real calendar/inbox/Council data shapes (written from the route code), the phone UI (never opened in a browser), `/api/search/all` quality for research, git commit-time parsing on Windows, "mails replied" counts only Autopilot-sent replies (the Sent folder is not read).
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)

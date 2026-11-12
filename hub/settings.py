@@ -40,7 +40,8 @@ from .common import Ctx
 MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "whisper_model",
               "gemini_model", "claude_cli_model")
 ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name",
-               "full_control", "fast_commands", "jarvis_name", "autopilot_enabled", "autopilot_sweep_min", "autopilot_daily_ai_calls")
+               "full_control", "fast_commands", "jarvis_name", "autopilot_enabled", "autopilot_sweep_min",
+               "autopilot_daily_ai_calls", "autopilot_research", "today_enabled", "today_evening_time")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -174,6 +175,14 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         elif key == "autopilot_enabled":
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
+            changes[key] = value
+        elif key in ("autopilot_research", "today_enabled"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "today_evening_time":
+            if not isinstance(value, str) or not (value == "" or re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value)):
+                raise HTTPException(400, "today_evening_time must look like 19:30 (or be empty to turn it off).")
             changes[key] = value
         elif key == "autopilot_sweep_min":
             if isinstance(value, bool) or not isinstance(value, int) or not 5 <= value <= 240:
@@ -464,6 +473,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "claude_cli_model": config.claude_cli_model,
             "autopilot_enabled": config.autopilot_enabled, "autopilot_sweep_min": config.autopilot_sweep_min,
             "autopilot_daily_ai_calls": config.autopilot_daily_ai_calls,
+            "autopilot_research": config.autopilot_research, "today_enabled": config.today_enabled,
+            "today_evening_time": config.today_evening_time,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

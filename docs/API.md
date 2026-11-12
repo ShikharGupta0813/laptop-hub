@@ -20,6 +20,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [settings.md](api/settings.md): settings, models, diagnostics, audit viewer, backups
 - [watch.md](api/watch.md): urgent-mail and Google Chat alerts
 - [council.md](api/council.md): background multi-model side jobs (multi-llm-lab), review packet, per-model switches
+- [today.md](api/today.md): the whole day on one page + spoken summary, evening review, approve by voice or text
 - [autopilot.md](api/autopilot.md): drafts queued as approval cards (mail, chat, Asana, standup); nothing runs without a tap
 
 **Search note:** `GET /api/search?q=` (no `root`) is global search across the whole hub, see `api/search.md`.

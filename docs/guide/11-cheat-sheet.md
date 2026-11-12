@@ -8,6 +8,8 @@
 |---|---|
 | Open the app | Turn on Tailscale on the phone, open REDLINE |
 | Morning brief | Home, **Brief me** |
+| My whole day | Say or type "summary" or "my day", or Apps, **Today** |
+| Approve a draft by voice | "What is pending?", then "approve 1" |
 | Update REDLINE | Apps, Laptop, Quick buttons, **Update REDLINE** |
 | Check the laptop is fine | Home, **Setup** checklist |
 | Make a backup | Settings, Backups |

@@ -170,7 +170,7 @@ export function init(container, ctx) {
     QUICK_ACTIONS.map((a) => el("button", { type: "button", class: "hm-qa", role: "listitem", onclick: () => runQuickAction(a, ctx) },
       ui.tile(a.icon, a.tone, "lg"), el("span", { class: "hm-qa-label" }, a.label))));
 
-  const todayCard = card("Today", { n: "01", action: { label: "Work", onClick: () => ctx.open("work") } });
+  const todayCard = card("Today", { n: "01", action: { label: "Whole day", onClick: () => ctx.open("today") } });
   const ringsCard = card("Streaks", { n: "03", cls: "hm-rings-card" });
   const learnCard = el("div", { class: "ui-window__body hm-learn" }, ui.skeleton("lines", 3));
   const learnSec = el("section", { class: "hm-sec", "aria-label": "Continue learning" },

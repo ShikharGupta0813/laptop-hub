@@ -19,6 +19,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 11. [10 · Security and privacy](10-security-and-privacy.md): what protects you, what to never share.
 12. [11 · Cheat sheet](11-cheat-sheet.md): one printable page.
 13. [12 · Autopilot](12-autopilot.md): drafts that wait for your one tap.
+14. [13 · Today](13-today.md): your whole day on one page.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).
 

@@ -24,6 +24,12 @@ Autopilot is a helper that **prepares** things and then **waits for you**. It lo
 6. A bank one-time code is **ignored**. It never becomes a card.
 7. A card you did not touch for two days quietly **expires**.
 
+## It can research
+
+Before it writes a draft, Autopilot quietly reads background: earlier mails with the same subject, the comments on the Asana task, and your own notes. It only **reads** (no extra AI use) and the card shows a small **research: thread + notes** badge. Turn it off with `autopilot_research: false`.
+
+You can also approve by voice or typing: say "what is pending", then "approve 2" or "skip the mail one". See [13 · Today](13-today.md).
+
 ## What it looks at
 
 | Input | What becomes a card |
