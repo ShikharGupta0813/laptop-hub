@@ -64,6 +64,11 @@ class Config:
     # Mixed into every session cookie's signature; POST /api/logout-all raises it to log every phone out.
     session_generation: int = 0
     display_name: str = "Chief"             # what the hub and the assistant call you (set by `python -m hub setup`)
+    jarvis_name: str = "Jarvis"             # the laptop-operator persona's name (voice: "Jarvis, ..." routes to it)
+    # FULL CONTROL: every assistant/Friday tool approval is granted automatically (run_command and file writes
+    # included). Off by default. The phone can only turn it ON with the typed confirmation "I UNDERSTAND".
+    full_control: bool = False
+    fast_commands: bool = True              # with full_control: "run <cmd>" / "open <app>" / "type <text>" skip the AI
     # Council: side jobs that run the multi-llm-lab CLI (several models working on one task). See docs/api/council.md.
     council_dir: str = ""                   # folder of the multi-llm-lab checkout; empty = the feature is off
     council_python: str = ""                # interpreter for it; empty = <council_dir>/.venv if present, else the hub's own
@@ -141,7 +146,8 @@ def save(config: Config, path: Path) -> None:
         "kb_roots": config.kb_roots, "writable_roots": config.writable_roots,
         "ntfy_server": config.ntfy_server, "ntfy_topic": config.ntfy_topic,
         "session_generation": int(config.session_generation or 0),
-        "display_name": config.display_name,
+        "display_name": config.display_name, "jarvis_name": config.jarvis_name,
+        "full_control": bool(config.full_control), "fast_commands": bool(config.fast_commands),
         "council_dir": config.council_dir, "council_python": config.council_python,
         "council_timeout_min": config.council_timeout_min, "council_allow_claude": bool(config.council_allow_claude),
         "autopilot_enabled": bool(config.autopilot_enabled), "autopilot_sweep_min": int(config.autopilot_sweep_min),
@@ -168,6 +174,9 @@ def load(path: Path) -> Config:
         known = Config.__dataclass_fields__
         config = Config(**{k: v for k, v in data.items() if k in known})
         config.session_generation = int(config.session_generation or 0)
+        config.full_control = config.full_control is True       # only a real JSON true counts, never "false" or 1
+        config.fast_commands = config.fast_commands is not False
+        config.jarvis_name = str(config.jarvis_name or "Jarvis").strip()[:40] or "Jarvis"
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise ConfigError(f"{path} is damaged ({exc}). Run `python -m hub init --force`.") from None
     if config.host not in ("127.0.0.1", "localhost", "::1"):

@@ -574,6 +574,31 @@ class GeminiClient:
         self._api_key = api_key
         self._transport = transport
         self._key_loader = key_loader or gemini_key
+        self._shared: "httpx.AsyncClient | None" = None   # one kept-alive connection: no TLS handshake per turn
+        self._shared_loop = None
+
+    def _http(self) -> "httpx.AsyncClient":
+        loop = asyncio.get_running_loop()
+        if self._shared is None or self._shared_loop is not loop or self._shared.is_closed:
+            self._shared = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=120.0), transport=self._transport)
+            self._shared_loop = loop
+        return self._shared
+
+    def has_key(self) -> bool:
+        try:
+            return bool(self._api_key or self._key_loader())
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def warm(self) -> bool:
+        """Open the connection (DNS + TLS) before the first question. Never raises."""
+        try:
+            key = self._key()
+            resp = await self._http().get(f"{GEMINI_BASE}/models", params={"pageSize": 1},
+                                          headers={"x-goog-api-key": key})
+            return resp.status_code < 400
+        except Exception:  # noqa: BLE001
+            return False
 
     def _key(self) -> str:
         key = self._api_key or self._key_loader()
@@ -673,9 +698,9 @@ class GeminiClient:
 
     async def stream(self, system: str, user: str) -> AsyncIterator[str]:
         key = self._key()
-        timeout = httpx.Timeout(10.0, read=120.0)
         try:
-            async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
+            if True:
+                client = self._http()
                 await self._ensure_model(client, key)
                 while True:
                     async with client.stream("POST", self._url("streamGenerateContent"), params={"alt": "sse"},
@@ -709,8 +734,8 @@ class GeminiClient:
     async def complete(self, system: str, user: str, json_mode: bool = False) -> str:
         key = self._key()
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=120.0),
-                                         transport=self._transport) as client:
+            if True:
+                client = self._http()
                 await self._ensure_model(client, key)
                 while True:
                     resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key},

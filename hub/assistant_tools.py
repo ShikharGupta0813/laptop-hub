@@ -175,6 +175,11 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         ok, d = await hub.call("POST", "/api/laptop/run", body={"action": action, "params": params, "confirm": True})
         return ok, fmt_result(d) if ok else d
 
+    async def type_text(a):
+        # The screen module only types while the owner has armed remote control; its refusal is the answer.
+        ok, d = await hub.call("POST", "/api/screen/input", body={"action": "type", "text": a["text"]})
+        return ok, f"Typed {len(a['text'])} characters." if ok else d
+
     async def jarvis(a):
         act = a["action"]
         route = {"status": ("GET", "/api/jarvis/status", None), "start": ("POST", "/api/jarvis/start", None),
@@ -224,6 +229,9 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
                               "Reading status is free; anything that changes the laptop asks the owner first.",
              {"action": _s("An action id, or 'list'."), "params": {"type": "object"}}, ["action"], laptop_action,
              needs_approval=lambda a: a.get("action") not in FREE_LAPTOP_ACTIONS),
+        tool("type_text", "Type text on the laptop as keystrokes into the window that has focus. Works only while "
+                          "remote control is armed in Apps > Screen. Asks the owner first.",
+             {"text": _s("What to type.")}, ["text"], type_text, needs_approval=True),
         tool("jarvis", "Control the owner's Jarvis voice assistant on the laptop: status (free), start, stop, or say "
                        "(send it a text command). Start, stop and say ask the owner first.",
              {"action": {"type": "string", "enum": ["status", "start", "stop", "say"]}, "text": _s()}, ["action"], jarvis,
