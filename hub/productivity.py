@@ -254,7 +254,7 @@ def clean_tags(value: Any) -> list[str]:
 
 def clean_model(value: Any) -> str:
     if value not in MODELS:
-        raise bad('The model must be "local", "claude", "claude-login" or "gemini".')
+        raise bad('The model must be "local", "claude", "claude-login", "gemini" or "duo".')
     return value
 
 

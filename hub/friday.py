@@ -1305,7 +1305,7 @@ def validate_settings(raw: Any, base: dict, config) -> dict:
             out[key] = raw[key]
     if "brief_model" in raw:
         if raw["brief_model"] not in BRIEF_CHOICES:
-            raise Bad("The model must be auto, local, claude, claude-login or gemini.")
+            raise Bad("The model must be auto, local, claude, claude-login, gemini or duo.")
         out["brief_model"] = raw["brief_model"]
     for key in ("work_start", "work_end"):
         if key in raw:
@@ -1358,7 +1358,7 @@ def _model_param(value: Any) -> str | None:
     if value in (None, ""):
         return None
     if value not in BRIEF_CHOICES:
-        raise HTTPException(400, "The model must be auto, local, claude, claude-login or gemini.")
+        raise HTTPException(400, "The model must be auto, local, claude, claude-login, gemini or duo.")
     return value
 
 

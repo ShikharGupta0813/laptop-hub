@@ -809,10 +809,17 @@ def step_ai(w: Wizard) -> Result:
             notes.append("Gemini key saved")
     ready = ["local"] + (["claude"] if w.system.env("ANTHROPIC_API_KEY") else []) \
         + (["claude-login"] if cli else []) + (["gemini"] if _gemini_saved(w) or "Gemini key saved" in notes else [])
+    gem_ok = "gemini" in ready
+    if gem_ok:
+        ready.append("duo")
     config = w.load_config(True)
     options = ["auto", *ready]
     w.say("Default AI for everyday jobs: auto picks Claude API key if set, else Gemini, else your Claude login, else local.")
-    choice = w.ask(f"Default AI ({'/'.join(options)})", config.default_provider if config.default_provider in options else "auto").lower()
+    suggest = config.default_provider if config.default_provider in options else "auto"
+    if "duo" in ready and cli and config.default_provider in ("auto", ""):
+        w.say("Recommended: duo. Claude (your login) plans and checks, sparingly; Gemini does the work, so your Claude quota lasts.")
+        suggest = "duo"
+    choice = w.ask(f"Default AI ({'/'.join(options)})", suggest).lower()
     if choice not in options:
         w.say(w.tone("warn", f"'{choice[:20]}' isn't one of {', '.join(options)}; keeping auto"))
         choice = "auto"

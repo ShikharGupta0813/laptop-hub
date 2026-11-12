@@ -1,7 +1,7 @@
 """Which AI providers this laptop can use right now, and which one is the default.
 
 Providers: "local" (Ollama), "claude" (Anthropic API key), "claude-login" (the `claude` program logged in
-with a Claude subscription) and "gemini" (Google API key). `default_provider` in hub.json is "auto" or one
+with a Claude subscription), "gemini" (Google API key) and "duo" (Claude login plans, Gemini does the work). `default_provider` in hub.json is "auto" or one
 of those names; "auto" picks claude if ANTHROPIC_API_KEY is set, else gemini if a key is saved, else claude-login if the
 `claude` program is installed, else local. Heavy jobs can pick claude-login explicitly.
 """
@@ -12,7 +12,7 @@ import os
 from .llm import PROVIDERS, find_claude_cli, gemini_key
 
 LABELS = {"local": "Local model", "claude": "Claude (API key)", "claude-login": "Claude (my login)",
-          "gemini": "Gemini"}
+          "gemini": "Gemini", "duo": "Claude + Gemini"}
 
 
 def _claude_login_cli(config) -> str | None:
@@ -36,6 +36,13 @@ def availability(config, ollama_up: bool | None = None) -> dict[str, dict]:
         "gemini": {"ready": gem, "label": LABELS["gemini"],
                    "reason": "A Gemini key is saved." if gem
                    else "No Gemini key. Run `python -m hub setup --only gemini`."},
+        "duo": {"ready": gem, "label": LABELS["duo"],
+                "reason": ("Gemini does the work; Claude (your login) plans and checks, sparingly."
+                           if gem and cli else
+                           "Gemini does the work. Claude supervisor not available (install Claude Code and run "
+                           "`claude` once), so Gemini works alone." if gem else
+                           "Needs a Gemini key (and optionally Claude Code for the supervisor). "
+                           "Run `python -m hub setup --only ai`.")},
     }
 
 

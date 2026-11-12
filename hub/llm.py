@@ -285,8 +285,8 @@ async def warm_up(host: str, model: str, transport=None, num_ctx: int = 4096,
 
 # ---- the other two providers: Claude through the `claude` CLI login, and Gemini -----------------
 
-PROVIDERS = ("local", "claude", "claude-login", "gemini")
-ProviderName = Literal["local", "claude", "claude-login", "gemini"]
+PROVIDERS = ("local", "claude", "claude-login", "gemini", "duo")
+ProviderName = Literal["local", "claude", "claude-login", "gemini", "duo"]
 GEMINI_SERVICE = "jarvis-gemini"   # keyring service; the secret is stored under the name GEMINI_KEY_NAME
 GEMINI_KEY_NAME = "api_key"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -521,7 +521,7 @@ class GeminiClient:
         return f"{GEMINI_BASE}/models/{self.model}:{method}"
 
     async def _resolve_model(self, client: "httpx.AsyncClient", key: str) -> bool:
-        """The configured model is gone (404): ask Google which models exist and pick a current Flash one."""
+        """The configured model is gone (404): ask Google which models exist and pick a current one (Pro if the configured name had 'pro', else Flash)."""
         try:
             resp = await client.get(f"{GEMINI_BASE}/models", params={"pageSize": 200},
                                     headers={"x-goog-api-key": key})
@@ -530,13 +530,24 @@ class GeminiClient:
             models = resp.json().get("models") or []
         except (httpx.HTTPError, ValueError):
             return False
+        want_pro = "pro" in self.model.lower()      # a configured Pro model falls back to the best Pro, else Flash
+        best = (self._best(models, "pro") if want_pro else None) or self._best(models, "flash")
+        if not best or best == self.model:
+            return False
+        self.model = best
+        return True
+
+
+    @staticmethod
+    def _best(models: list, family: str) -> str | None:
+        """The newest stable (else preview) gemini-<version>-<family> model that can generate text."""
         best, best_rank = None, None
         for m in models:
             name = str(m.get("name", "")).removeprefix("models/")
             low = name.lower()
             if "generateContent" not in (m.get("supportedGenerationMethods") or []):
                 continue
-            if not low.startswith("gemini-") or "flash" not in low:
+            if not low.startswith("gemini-") or family not in low:
                 continue
             if any(bad in low for bad in ("image", "tts", "live", "audio", "lite", "embedding", "robotics", "computer")):
                 continue
@@ -545,11 +556,7 @@ class GeminiClient:
                     float(ver.group(1)) if ver else 0.0, -len(name))
             if best_rank is None or rank > best_rank:
                 best, best_rank = name, rank
-        if not best or best == self.model:
-            return False
-        self.model = best
-        return True
-
+        return best
 
     @staticmethod
     def _problem(status: int, detail: str) -> LLMError:

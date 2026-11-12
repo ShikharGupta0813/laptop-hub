@@ -192,7 +192,7 @@ export function init(container, ctx) {
           onClick: () => pickModel(slot, installed, m.reachable, s) });
       });
       const P = S.providers || {};
-      const names = [P.claude?.ready && "Claude (API key)", P.claude_login?.ready && "Claude (my login)", P.gemini?.ready && "Gemini"].filter(Boolean);
+      const names = [P.claude?.ready && "Claude (API key)", P.claude_login?.ready && "Claude (my login)", P.gemini?.ready && "Gemini", P.duo?.ready && "Claude + Gemini"].filter(Boolean);
       const claude = names.length || S.has_claude_key
         ? ui.notice(`Cloud AI ready: ${names.join(", ") || "Claude"}. Default for everyday jobs: ${S.resolved_provider || "local"}. Keys are never shown here.`, { tone: "good", icon: "key" })
         : ui.notice("No cloud AI yet. On the laptop, run python -m hub setup --only ai to use Gemini (free key) or your Claude login.", { icon: "key" });

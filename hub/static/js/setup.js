@@ -54,7 +54,7 @@ const CHECKS = [
       try {
         const s = await get("/api/settings");
         const p = s?.providers || {};
-        const ready = [p.claude?.ready && "Claude (API key)", p.claude_login?.ready && "Claude (my login)", p.gemini?.ready && "Gemini"].filter(Boolean);
+        const ready = [p.claude?.ready && "Claude (API key)", p.claude_login?.ready && "Claude (my login)", p.gemini?.ready && "Gemini", p.duo?.ready && "Claude + Gemini"].filter(Boolean);
         if (!p.claude && s?.has_claude_key) ready.push("Claude (API key)");
         return ready.length ? R("ok", `Ready: ${ready.join(", ")}.`)
           : R("warn", "Not set up yet. Optional; the local model works without it.", { fix: { steps: ["On the laptop, either install Claude Code and run `claude` once to log in (uses your Claude subscription), or save a free Gemini key from aistudio.google.com/apikey."],

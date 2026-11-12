@@ -35,6 +35,7 @@ from .assistant import AssistantService
 from .common import Ctx
 from .config import Config
 from . import providers as providers_mod
+from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
 from .notes import NoteError, NoteStore, clean_spoken
@@ -58,6 +59,7 @@ class Deps:
     claude: Any = None
     claude_login: Any = None
     gemini: Any = None
+    duo: Any = None
     transcriber: Any = None
     label: Callable | None = None
     terminal: Callable = open_terminal
@@ -112,6 +114,9 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     claude_login = deps.claude_login or ClaudeCliClient(config.claude_cli_model or "sonnet",
                                                         path=config.claude_cli_path)
     gemini = deps.gemini or GeminiClient(config.gemini_model)
+    # Claude only supervises (plans, optionally reviews) and is rationed; Gemini does the work.
+    duo = deps.duo or DuoClient(gemini, Supervisor(claude_login, lambda: config.duo_max_claude_per_hour,
+                                                    lambda: config.duo_verify))
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
     store = NoteStore(config.notes_dir)
     limiter = auth.LoginLimiter()
@@ -329,6 +334,10 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             info["ollama"] = {"up": False, "models": []}
         avail = await asyncio.to_thread(providers_mod.availability, config, info["ollama"]["up"])
         info["providers"] = avail
+        sup = getattr(duo, "supervisor", None)
+        info["duo"] = sup.status() if sup else {"paused": False, "reason": "", "note": ""}
+        if info["duo"]["note"] and "duo" in avail:
+            avail["duo"]["note"] = info["duo"]["note"]
         info["default_provider"] = await asyncio.to_thread(providers_mod.resolve_default, config)
         # "ready" for the assistant: any cloud AI (API key, Claude login or Gemini) can answer
         info["claude_ready"] = any(avail[k]["ready"] for k in ("claude", "claude_login", "gemini"))
@@ -553,6 +562,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             return claude_login
         if choice == "gemini":
             return gemini
+        if choice == "duo":
+            return duo
         return llm
 
     if hasattr(assistant, "model_for"):
