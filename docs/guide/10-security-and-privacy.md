@@ -148,3 +148,14 @@ python -m hub setup --only asana
 - **Phone push** uses the public ntfy.sh server. Keep secrets out of reminder and note titles.
 - **Payment, Gmail and Chat capture** reads only listed apps' notifications, and sends them only to your own hub. 🟡 Not tested on real devices yet.
 - **SMS** permission, if you grant it, is receive-only. The app cannot read your inbox.
+
+## Three safety levels (read this once)
+Every action the assistant takes has a level. **Level 1** only looks (list a folder, read a file): it just runs.
+**Level 2** changes something (save a file, run a normal command): you get the Approve card, or it runs by itself
+if Full Control is on. On a Level 2 card you can tap "Allow this for 1 hour" so the same kind of thing does not
+ask again; Settings > Account and security > Active permissions lists what you allowed, each with a Revoke button
+(they vanish by themselves, and when Full Control changes). **Level 3 is critical**: shutting down or restarting,
+formatting, deleting folders or many files, killing programs, changing the registry or the hub's own settings,
+force-pushing code, switching off the firewall, Tailscale or Defender, installing software, or touching password
+files. Level 3 never runs on its own, not even in Full Control, and a spoken "yes" does not count. The card turns
+red and shows the exact command; you must type CONFIRM, then watch a 10 second countdown where Cancel stops it.

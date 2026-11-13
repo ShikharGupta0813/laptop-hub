@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision
 from . import llm as llm_mod
 from . import updater as updater_mod
-from .assistant import LOCAL_CTX_TOOLS, AssistantService
+from .assistant import LOCAL_CTX_TOOLS, ApprovalError, AssistantService
 from .latency import Latency
 from .persona import clean_persona, split_persona
 from .common import Ctx
@@ -107,6 +107,19 @@ class ApproveBody(BaseModel):
     session_id: str
     call_id: str
     approve: bool
+    confirm_text: str = ""       # critical (N3) calls: the word CONFIRM typed on the card
+    remember: str | None = None  # N2 only: "hour" | "session" (Allow this for 1 hour / this session)
+    voice: bool = False          # the answer was spoken: refused for critical calls
+
+
+class CancelBody(BaseModel):
+    session_id: str
+    call_id: str
+
+
+class RevokeBody(BaseModel):
+    id: str = ""
+    all: bool = False
 
 
 class ResetBody(BaseModel):
@@ -215,6 +228,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                 await stop()
 
     app = FastAPI(title="Laptop Hub", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.state.assistant = assistant      # settings.py wipes remembered approvals when Full Control changes
 
     def hostname_of(value: str | None) -> str:
         value = (value or "").strip().lower()
@@ -664,10 +678,43 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     @api.post("/assistant/approve")
     def assistant_approve(body: ApproveBody):
-        audit("assistant_approval", session=body.session_id, call=body.call_id, approve=body.approve)
-        if not assistant.resolve(body.session_id, body.call_id, body.approve):
+        audit("assistant_approval", session=body.session_id, call=body.call_id, approve=body.approve,
+              confirm=bool(body.confirm_text), remember=body.remember, voice=body.voice)
+        try:
+            if body.remember not in (None, "", "hour", "session"):
+                raise HTTPException(400, "remember must be hour or session.")
+            try:
+                found = assistant.resolve(body.session_id, body.call_id, body.approve, confirm_text=body.confirm_text,
+                                          remember=body.remember or None, voice=body.voice)
+            except TypeError:       # an assistant double without the safety arguments
+                found = assistant.resolve(body.session_id, body.call_id, body.approve)
+        except ApprovalError as exc:
+            raise HTTPException(exc.status, exc.message)
+        if not found:
             raise HTTPException(404, "Nothing is waiting for that approval.")
         return {"ok": True}
+
+    @api.post("/assistant/cancel")
+    def assistant_cancel(body: CancelBody):
+        """Cancel a critical (N3) call during its countdown. The only way to stop it besides Stop."""
+        cancelled = bool(assistant.cancel_critical(body.session_id, body.call_id))
+        audit("assistant_cancel", session=body.session_id, call=body.call_id, cancelled=cancelled)
+        if not cancelled:
+            raise HTTPException(404, "Nothing is counting down for that call.")
+        return {"ok": True}
+
+    @api.get("/assistant/permissions")
+    def assistant_permissions():
+        """Remembered approvals (memory only): Settings > Active permissions."""
+        return {"grants": assistant.grants(), "full_control": config.full_control is True}
+
+    @api.post("/assistant/permissions/revoke")
+    def assistant_revoke(body: RevokeBody):
+        if body.all:
+            return {"ok": True, "revoked": assistant.revoke_all()}
+        if not body.id or not assistant.revoke(body.id):
+            raise HTTPException(404, "No such permission.")
+        return {"ok": True, "revoked": 1}
 
     @api.post("/assistant/stop")
     async def assistant_stop(body: StopBody):
