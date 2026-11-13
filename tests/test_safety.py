@@ -825,3 +825,33 @@ class UiSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AlwaysAskTest(Base):
+    """Tools that send things to other people ask every time, even in Full Control or with auto-approve."""
+
+    def tools(self):
+        async def send(a):
+            self.ran.append(("send", time.monotonic()))
+            return True, "sent (fake)"
+        spec = {"name": "send_application", "description": "send",
+                "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}}
+        return [A.ExtraTool(spec, send, needs_approval=True)]
+
+    async def test_full_control_and_auto_approve_still_ask(self):
+        self.config.full_control = True
+        svc = self.service([reply(tool_block("t1", "send_application", {}), stop="tool_use"), reply("done")])
+        asked = []
+
+        def answers(e):
+            asked.append(e["name"])
+            svc.resolve("s", e["id"], False)
+        events = await self.drive(svc, answers, auto=True)
+        self.assertEqual(asked, ["send_application"])
+        self.assertEqual(self.ran, [])                       # declined, so nothing went out
+        self.assertTrue(of(events, "tool_start")[0]["needs_approval"])
+
+    async def test_approved_send_runs_once(self):
+        svc = self.service([reply(tool_block("t1", "send_application", {}), stop="tool_use"), reply("done")])
+        await self.drive(svc, lambda e: svc.resolve("s", e["id"], True))
+        self.assertEqual(len(self.ran), 1)
