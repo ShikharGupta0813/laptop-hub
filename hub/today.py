@@ -30,7 +30,7 @@ from .common import Ctx, InProcessClient
 
 log = logging.getLogger("hub.today")
 
-SOURCES = ("calendar", "asana", "expenses", "mail", "autopilot", "git", "council")
+SOURCES = ("calendar", "asana", "expenses", "mail", "autopilot", "git", "council", "brain")
 MAX_WORDS = 180
 AUDIT_TAIL_BYTES = 600_000
 ASANA_DETAIL_LIMIT = 8       # open tasks whose comments are read to see what was written today
@@ -262,10 +262,16 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
                             "start": when.isoformat(timespec="minutes")})
         return sorted(out, key=lambda x: x["start"])
 
+    # -- Brain: follow-ups due today (Friday's list) and open tasks, read from the memory file
+    async def src_brain() -> dict:
+        from . import brain
+        return await asyncio.to_thread(brain.today_view, config, now)
+
     results = await asyncio.gather(*(guard(n, f()) for n, f in (
         ("calendar", src_calendar), ("asana", src_asana), ("expenses", src_expenses), ("mail", src_mail),
-        ("autopilot", src_autopilot), ("git", src_git), ("council", src_council))))
-    meetings, tasks, expenses, mail, ap, commits, council = results
+        ("autopilot", src_autopilot), ("git", src_git), ("council", src_council), ("brain", src_brain))))
+    meetings, tasks, expenses, mail, ap, commits, council, memory = results
+    memory = memory or {"due": [], "tasks": []}
     meetings = meetings or []
     tasks = tasks or {"due_today": [], "overdue": [], "updated": [], "commented": [], "completed": 0}
     expenses = expenses or {"by_currency": {}, "items": [], "count": 0}
@@ -313,6 +319,9 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             add(c["start"], c["at"], "card", c["title"], c["status"])
     for j in council:
         add(j["start"], j["at"], "council", "Council: " + j["task"], j["status"])
+    for f in memory["due"]:
+        if f["date"] == iso_day:
+            add(f["start"], f["time"], "followup", "Follow up: " + f["title"], f["who"] and "from " + f["who"])
     timeline.sort(key=lambda x: x["start"])
     for e in expenses["items"]:
         timeline.append({"start": "", "time": "", "kind": "expense",
@@ -327,11 +336,13 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
                "commits": len(commits), "cards_approved": approved, "cards_pending": ap["pending"],
                "meetings": len([m for m in meetings if not m["all_day"]]), "meetings_left": len(upcoming),
                "tasks_due": len(tasks["due_today"]), "tasks_overdue": len(tasks["overdue"]),
-               "tasks_completed": tasks["completed"], "council_runs": len(council), "handled": handled}
+               "tasks_completed": tasks["completed"], "council_runs": len(council), "handled": handled,
+               "followups_due": len(memory["due"]), "memory_tasks": len(memory["tasks"])}
     return {"date": iso_day, "weekday": now.strftime("%A"), "generated_at": now.isoformat(timespec="seconds"),
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
+            "brain": memory,
             "numbers": numbers, "sources_failed": sorted(set(failed))}
 
 
@@ -387,6 +398,9 @@ def spoken(data: dict, style: str = "morning") -> str:
             parts.append((1, f"Still open in Asana: {plural(open_now, 'task')} due today or overdue."))
         if pending.get("autopilot"):
             parts.append((1, f"{plural(pending['autopilot'], 'draft')} still waiting for your approval."))
+        fu = (data.get("brain") or {}).get("due") or []
+        if fu:
+            parts.append((2, f"{plural(len(fu), 'follow-up')} still open, starting with {fu[0]['title']}."))
     else:
         parts.append((1, f"Here is your {data.get('weekday', 'day')}."))
         if meetings:
@@ -417,6 +431,10 @@ def spoken(data: dict, style: str = "morning") -> str:
             parts.append((2, f"You have {plural(int(mail['unread']), 'unread mail')}."))
         if pending.get("autopilot"):
             parts.append((1, f"{plural(pending['autopilot'], 'draft')} waiting for your approval."))
+        fu = (data.get("brain") or {}).get("due") or []
+        if fu:
+            parts.append((1, f"Follow-ups due: {len(fu)}, starting with {fu[0]['title']}" +
+                          (f" for {fu[0]['who']}." if fu[0].get("who") else ".")))
         so_far = []
         if n.get("commits"):
             so_far.append(plural(n["commits"], "commit"))

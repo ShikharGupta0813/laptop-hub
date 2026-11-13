@@ -1,0 +1,27 @@
+/* Memory (Brain). Scoped under #view-brain; tokens only. */
+#view-brain .bn { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-brain .bn > * { min-width: 0; }
+#view-brain .bn-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+#view-brain .bn-count { margin-left: auto; color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-brain .bn-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+#view-brain .bn-chip { min-height: 36px; padding: 0 var(--sp-3); border-radius: 999px; border: 1px solid var(--c-line); background: var(--c-surface-2);
+  color: var(--c-text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+#view-brain .bn-chip[aria-pressed="true"] { background: var(--c-accent-soft); color: var(--c-accent-text); border-color: var(--c-accent-line); }
+#view-brain .bn-chip--friday[aria-pressed="true"] { color: var(--friday); border-color: var(--friday); background: var(--c-warn-soft); }
+#view-brain .bn-chip--jarvis[aria-pressed="true"] { color: var(--jarvis); border-color: var(--jarvis); }
+#view-brain .bn-add, #view-brain .bn-intake, #view-brain .bn-ask, #view-brain .bn-item { padding: var(--sp-4); }
+#view-brain .bn-add textarea, #view-brain .bn-intake textarea { width: 100%; min-height: 72px; }
+#view-brain .bn-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-2); }
+#view-brain .bn-item-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+#view-brain .bn-title { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; flex: 1 1 12em; }
+#view-brain .bn-when { color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-brain .bn-body { margin: 0; color: var(--c-text-2); overflow-wrap: anywhere; white-space: pre-wrap; max-height: 5.2em; overflow: hidden; cursor: pointer; }
+#view-brain .bn-item.is-open .bn-body { max-height: none; }
+#view-brain .bn-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-brain .bn-list { margin: 0; padding-left: 1.2em; color: var(--c-text-2); overflow-wrap: anywhere; }
+#view-brain .bn-label { margin: 0; }
+#view-brain .bn-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+#view-brain .bn-item.is-done { opacity: .65; }
+#view-brain .bn-verdict { text-transform: uppercase; letter-spacing: .12em; }
+#view-brain .bn-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#view-brain .bn-spoken { margin: 0; color: var(--c-text); overflow-wrap: anywhere; }

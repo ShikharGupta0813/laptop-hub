@@ -86,6 +86,9 @@ class Config:
     # Today: one read-only timeline of the day (meetings, tasks, spending, mail, what you did) plus a spoken summary.
     today_enabled: bool = True
     today_evening_time: str = "19:30"       # weekday time of the evening summary (needs Autopilot on); "" = off
+    # Brain: long-term memory and task desk (RCAs, decisions, follow-ups). See docs/api/brain.md.
+    brain_enabled: bool = True
+    brain_context: bool = True              # add the best matching memories to question-like assistant turns
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
@@ -162,6 +165,7 @@ def save(config: Config, path: Path) -> None:
         "autopilot_standup_time": config.autopilot_standup_time, "autopilot_repos": list(config.autopilot_repos),
         "autopilot_tone": config.autopilot_tone, "autopilot_research": bool(config.autopilot_research),
         "today_enabled": bool(config.today_enabled), "today_evening_time": config.today_evening_time,
+        "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")

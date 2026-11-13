@@ -176,6 +176,15 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 - Research: `Autopilot.research()`; up to 3 read-only lookups (inbox search by subject keywords, Asana subtasks/comments from the detail already fetched, `/api/search/all` notes/files), 2500 chars cap, only while budget remains; payload `research` label -> badge. 0 extra AI calls.
 - Tests: `tests/test_today.py`. UNVERIFIED: real calendar/inbox/Council data shapes (written from the route code), the phone UI (never opened in a browser), `/api/search/all` quality for research, git commit-time parsing on Windows, "mails replied" counts only Autopilot-sent replies (the Sent folder is not read).
 
+## 3h. Brain: long-term memory + task desk (2026-11-13), both personas
+
+`hub/brain.py` (module `brain`, last in `FEATURE_MODULES`), `hub/brain_tools.py` (5 assistant tools, registered in server.py `extra_tools`), `js/brain.js` + `css/brain.css` (Apps > Memory), docs `docs/api/brain.md`, `docs/guide/14-memory.md`.
+- SQLite `brain.sqlite` in the data dir, FTS5 with LIKE fallback; items carry a `persona` (jarvis = technical kinds, friday = people/time, both = notes). Time phrases go through the Reminders parser/service (real push) and the reminder id is stored.
+- Hooks in `hub/assistant.py` (kept tiny): ONE `"brain"` TOOL_GROUPS entry; `_brain_save` ("remember ..."/"note ..." answered "Saved." with no model; not for questions or text naming a time); `_brain_memory` -> `brain.context_for` (question-like text, score >= 0.6, <= 600 chars) injected by `_framed` via `session.memory`.
+- `persona.py`: one sentence each (Jarvis: recall for technical questions; Friday: recall + follow-ups, mention due follow-ups). Today: `brain` source, `followup` timeline rows, a Follow-ups section, a "Follow-ups due" sentence in the brief text.
+- Intake uses `autopilot.pick_provider` (Gemini or local, never the paid Claude API). Config `brain_enabled`, `brain_context` (Settings).
+- Tests: `tests/test_brain.py` (fakes only). sw.js: files added to SHELL, VERSION NOT bumped (orchestrator). UNVERIFIED: the Memory screen in a real browser, real AI verdict quality, real ntfy push from a brain reminder, FTS5 on the laptop's SQLite build, Windows.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
