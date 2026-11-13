@@ -193,6 +193,14 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Tool `deep_research` (no approval, read-only; the model has no tools): waits ~25 s, else "I'm on it, the report will be in Research" + ntfy push when done. One `TOOL_GROUPS` line `research`.
 - AI: Autopilot's `pick_provider` (Gemini/local, never Claude, never duo), daily call budget; degrades to sources + snippets.
 - Tests: `tests/test_research.py` (fakes only). UNVERIFIED: real DuckDuckGo HTML shape (it changes; Wikipedia is the fallback), DNS-rebinding between the check and the connect (the host is resolved and checked, then httpx resolves again), real local-model JSON quality, the phone UI (never opened in a browser), the tool with a real model deciding when to pass `style`.
+## 3h. Brain: long-term memory + task desk (2026-11-13), both personas
+
+`hub/brain.py` (module `brain`, last in `FEATURE_MODULES`), `hub/brain_tools.py` (5 assistant tools, registered in server.py `extra_tools`), `js/brain.js` + `css/brain.css` (Apps > Memory), docs `docs/api/brain.md`, `docs/guide/14-memory.md`.
+- SQLite `brain.sqlite` in the data dir, FTS5 with LIKE fallback; items carry a `persona` (jarvis = technical kinds, friday = people/time, both = notes). Time phrases go through the Reminders parser/service (real push) and the reminder id is stored.
+- Hooks in `hub/assistant.py` (kept tiny): ONE `"brain"` TOOL_GROUPS entry; `_brain_save` ("remember ..."/"note ..." answered "Saved." with no model; not for questions or text naming a time); `_brain_memory` -> `brain.context_for` (question-like text, score >= 0.6, <= 600 chars) injected by `_framed` via `session.memory`.
+- `persona.py`: one sentence each (Jarvis: recall for technical questions; Friday: recall + follow-ups, mention due follow-ups). Today: `brain` source, `followup` timeline rows, a Follow-ups section, a "Follow-ups due" sentence in the brief text.
+- Intake uses `autopilot.pick_provider` (Gemini or local, never the paid Claude API). Config `brain_enabled`, `brain_context` (Settings).
+- Tests: `tests/test_brain.py` (fakes only). sw.js: files added to SHELL, VERSION NOT bumped (orchestrator). UNVERIFIED: the Memory screen in a real browser, real AI verdict quality, real ntfy push from a brain reminder, FTS5 on the laptop's SQLite build, Windows.
 
 ## 4. Still to do (in this order)
 

@@ -4,7 +4,7 @@ import { api, ApiError, el, sse } from "./api.js";
 import * as ui from "./ui.js";
 
 const CACHE_KEY = "hub.today.v1";
-const KIND_ICON = { meeting: "calendar", commit: "code", mail: "mail", task: "check-circle", card: "zap", council: "users", expense: "chart" };
+const KIND_ICON = { meeting: "calendar", commit: "code", mail: "mail", task: "check-circle", card: "zap", council: "users", expense: "chart", followup: "bell" };
 
 function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (_) { return null; } }
 function writeCache(data) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch (_) { /* private mode: fine */ } }
@@ -36,6 +36,14 @@ export function init(container, ctx) {
     rows.push(ui.listRow({ icon: "zap", tone: p.autopilot ? "warn" : "gray", title: p.autopilot ? `${p.autopilot} draft${p.autopilot === 1 ? "" : "s"} to approve` : "Nothing to approve",
       sub: p.autopilot ? "Open Autopilot" : "", chevron: !!p.autopilot, onClick: p.autopilot ? () => ctx?.open?.("autopilot") : undefined }));
     return el("section", { class: "ui-stack" }, ui.eyebrow("01", "Now"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
+  }
+
+  // Friday's list: follow-ups due today (and late ones) from the Memory screen's store
+  function followups() {
+    const rows = (data.brain?.due || []).map((f) => ui.listRow({ icon: "bell", tone: f.overdue ? "warn" : "accent", title: f.title,
+      sub: (f.who ? `from ${f.who} · ` : "") + (f.date === data.date ? "due today" : `since ${f.date}`), meta: f.time || "", chevron: true, onClick: () => ctx?.open?.("brain") }));
+    if (!rows.length) return null;
+    return el("section", { class: "ui-stack" }, ui.eyebrow("FU", "Follow-ups"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
   }
 
   function timeline() {
@@ -157,7 +165,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), refresh),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
-      (askNode ||= askBar()), now(), timeline(), doneToday(), numbers(), tasks(), summary(),
+      (askNode ||= askBar()), now(), followups(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
   }
 

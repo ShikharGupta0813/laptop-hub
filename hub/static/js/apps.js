@@ -116,6 +116,9 @@ const ENTRIES = [
   view("today", "Today", "Your whole day on one page: meetings, tasks, spending, mail and what you have done. Nothing to search.",
     "monitor", ["today", "summary", "day", "timeline", "update", "what did i do", "expenses", "meetings", "done"],
     { view: "today" }, { icon: "clock", isNew: true }),
+  view("brain", "Memory", "Jarvis and Friday remember RCAs, decisions and what people asked you, and judge new tasks.",
+    "monitor", ["memory", "remember", "rca", "decision", "recall", "task", "follow up", "brain", "who asked"],
+    { view: "brain" }, { icon: "book-open", isNew: true }),
   view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
     ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
 

@@ -95,6 +95,9 @@ class Config:
     # Skills: community skills (markdown instructions) installed from GitHub. See docs/api/skills.md.
     skills_enabled: bool = True
     skills_sources: list[str] = field(default_factory=lambda: ["NousResearch/hermes-agent/skills", "openclaw/skills"])
+    # Brain: long-term memory and task desk (RCAs, decisions, follow-ups). See docs/api/brain.md.
+    brain_enabled: bool = True
+    brain_context: bool = True              # add the best matching memories to question-like assistant turns
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
@@ -175,6 +178,7 @@ def save(config: Config, path: Path) -> None:
         "research_enabled": bool(config.research_enabled), "research_max_hops": int(config.research_max_hops),
         "research_max_sources": int(config.research_max_sources),
         "research_daily_ai_calls": int(config.research_daily_ai_calls),
+        "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")
