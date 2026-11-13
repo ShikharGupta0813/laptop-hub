@@ -131,6 +131,8 @@ html[data-motion="reduce"] .sh .sh-title h1 { animation: none !important; }
 }
 .sh-logo .ui-icon { width: 18px; height: 18px; stroke-width: 2.4; stroke-linecap: square; stroke-linejoin: miter; }
 .sh-actions { display: flex; align-items: center; gap: 0; }
+/* The right-most top-bar button keeps focus/hover after voice mode closes; a centred tooltip there stuck out ~7px past the screen. */
+.sh-actions [data-tip]::after { left: auto !important; right: 0; transform: none !important; }
 .sh-iconbtn {
   position: relative; width: var(--tap); height: var(--tap); border-radius: 50%; border: 1px solid transparent; background: none;
   color: var(--c-text); display: grid; place-items: center; cursor: pointer; transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);

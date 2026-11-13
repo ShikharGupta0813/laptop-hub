@@ -1,4 +1,4 @@
-# 14 · Memory: Jarvis and Friday remember for you
+# 16 · Memory: Jarvis and Friday remember for you
 
 **What this page is for:** how to hand things to your assistants and get them back later, by voice, text or the Memory screen.
 

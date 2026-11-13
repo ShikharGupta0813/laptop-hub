@@ -1,4 +1,4 @@
-# 15 · Build flow: tell Jarvis what to build
+# 17 · Build flow: tell Jarvis what to build
 
 **What this page is for:** how to get a small project built from a sentence, without writing the plan yourself.
 

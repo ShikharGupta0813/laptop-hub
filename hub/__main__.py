@@ -1,4 +1,4 @@
-"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater | backup | watchdog"""
+"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater | backup | watchdog | fix-deps"""
 from __future__ import annotations
 
 import argparse
@@ -140,7 +140,7 @@ def cmd_doctor(args) -> int:
         line(True, "faster-whisper installed (voice notes)")
     except ImportError:
         ok = False
-        line(False, "faster-whisper missing: pip install -r requirements-voice.txt (voice)")
+        line(False, "faster-whisper missing: python -m hub fix-deps (voice)")
     from . import providers as providers_mod
     avail = providers_mod.availability(config)
     ready = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
@@ -164,20 +164,51 @@ def cmd_doctor(args) -> int:
     line(shutil.which("tailscale") is not None or None,
          "tailscale found" if shutil.which("tailscale")
          else "tailscale not found: needed for HTTPS and remote access (tailscale.com/download)")
-    for label, check in (("watchdog", "check_watchdog"), ("weekly backup", "check_backup")):
+    from . import doctor_checks as dc
+    probe = dc.Probe()
+    extra: list[tuple] = []
+    for fn in (lambda: dc.check_git(probe), lambda: dc.check_hub_running(probe, config.port),
+               lambda: dc.check_tailscale_serve(probe), lambda: dc.check_pip(probe)):
         try:
-            from . import setup_wizard
-            result = getattr(setup_wizard, check)(setup_wizard.Wizard(path))
-            line(True if result.status == "ok" else None, f"{label}: {result.message}")
+            extra.append(fn())
         except Exception:  # noqa: BLE001 - never crash the doctor
-            line(None, f"{label}: could not check")
+            extra.append((None, "a check could not run"))
+    try:
+        extra += dc.check_requirements(probe)
+    except Exception:  # noqa: BLE001
+        extra.append((None, "requirements: could not check"))
+    extra += dc.wizard_lines(path)
+    extra += dc.check_wake(config)
+    for good, text in extra:
+        if good is False:
+            ok = False
+        line(good, text)
     return 0 if ok else 1
+
+
+def cmd_fix_deps(args) -> int:
+    """Install the requirements through this interpreter (never pip.exe, which Windows Application Control may block)."""
+    import subprocess
+    from . import updater
+    root = updater.repo_root()
+    argv = [sys.executable, "-m", "pip", "install"]
+    for name in ("requirements.txt", "requirements-voice.txt"):
+        if (root / name).is_file():
+            argv += ["-r", name]
+    print("Running: " + " ".join(argv))
+    try:
+        rc = subprocess.run(argv, cwd=str(root)).returncode
+    except OSError as exc:
+        print(f"Could not start Python's pip ({type(exc).__name__}).")
+        return 1
+    print("Dependencies are installed." if rc == 0 else "pip failed. If Windows blocked it, ask for the Application Control rule, or try: python -m pip --version")
+    return rc
 
 
 def cmd_update(args) -> int:
     from . import updater
     path = Path(args.config) if args.config else cfg.default_path()
-    return updater.Updater(updater.repo_root(), updater.log_path_for(path)).run(restart=args.restart)
+    return updater.Updater(updater.repo_root(), updater.log_path_for(path), config_path=path).run(restart=args.restart)
 
 
 def cmd_install_updater(args) -> int:
@@ -217,6 +248,7 @@ def main(argv=None) -> int:
     setup.add_argument("--only", metavar="STEPS", help="comma list of steps: jarvis,gmail,asana,calendar,chat,ai,gemini,phone,name,warp,autostart,updater,backup,watchdog "
                        "(e.g. --only gmail,calendar)")
     setup.add_argument("--check", action="store_true", help="only test what is already configured; change nothing")
+    setup.add_argument("--all", action="store_true", help="no questions: set up the updater, watchdog and backup tasks in one go")
     upd = sub.add_parser("update", help="pull the latest code from GitHub (and restart the hub with --restart)")
     upd.add_argument("--restart", action="store_true", help="after a successful pull, restart the LaptopHub scheduled task")
     sub.add_parser("install-updater", help="Windows: add the 'Update REDLINE' phone button (scheduled task LaptopHubUpdate)")
@@ -225,6 +257,7 @@ def main(argv=None) -> int:
     bk.add_argument("--restore", metavar="ZIP", help="restore a backup zip (asks you to type RESTORE first)")
     wd = sub.add_parser("watchdog", help="check the hub and Tailscale, repair them, push to the phone if needed")
     wd.add_argument("--once", action="store_true", help="one pass then exit (what the scheduled task uses)")
+    sub.add_parser("fix-deps", help="install requirements.txt and requirements-voice.txt through python -m pip")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -242,7 +275,7 @@ def main(argv=None) -> int:
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
             "add-script": cmd_add_script, "setup": cmd_setup, "update": cmd_update,
-            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog}[args.command](args)
+            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog, "fix-deps": cmd_fix_deps}[args.command](args)
 
 
 if __name__ == "__main__":

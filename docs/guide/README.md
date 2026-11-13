@@ -21,9 +21,11 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 13. [12 · Autopilot](12-autopilot.md): drafts that wait for your one tap.
 14. [13 · Today](13-today.md): your whole day on one page.
 15. [14 · Skills](14-skills.md): add community skills for Jarvis and Friday.
-15. [14 · Research](14-research.md): ask once, get a report with numbered sources.
-15. [14 · Memory](14-memory.md): Jarvis and Friday remember RCAs, decisions and follow-ups.
-16. [15 · Build flow](15-build-flow.md): tell Jarvis what to build; spec, plan, then step by step.
+16. [15 · Research](15-research.md): ask once, get a report with numbered sources.
+17. [16 · Memory](16-memory.md): Jarvis and Friday remember RCAs, decisions and follow-ups.
+18. [17 · Build flow](17-build-flow.md): tell Jarvis what to build; spec, plan, then step by step.
+19. [18 · Claude sessions](18-claude-sessions.md): watch Claude Code on your laptop from your phone.
+20. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).
 

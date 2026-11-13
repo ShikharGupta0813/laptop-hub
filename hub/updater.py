@@ -81,16 +81,35 @@ def tail_log(path: Path, lines: int = 20, width: int = 200) -> list[str]:
     return out[-lines:] if lines else []
 
 
-def spawn_detached(argv: list, cwd: str) -> None:
-    """Start argv in its own session/process group so it outlives the hub (which the update restarts). No shell."""
+def detach_flags(platform: str, breakaway: bool = True) -> int:
+    """Windows creationflags that let a child outlive the hub's task (and its job object). 0 elsewhere."""
+    if platform != "win32":
+        return 0
+    flags = (getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+             | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+    if breakaway:
+        flags |= getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+    return flags
+
+
+def spawn_detached(argv: list, cwd: str, *, platform: str | None = None, popen: Callable | None = None) -> None:
+    """Start argv in its own session/process group so it outlives the hub (which the update restarts). No shell.
+    On Windows it asks to break away from the task's job object; if the job forbids that (PermissionError/OSError
+    with access denied) it retries without the breakaway flag."""
+    platform = platform or sys.platform
+    popen = popen or subprocess.Popen
     kw: dict = {"cwd": cwd, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
                 "close_fds": True}
-    if sys.platform == "win32":
-        kw["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-                               | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    else:
+    if platform != "win32":
         kw["start_new_session"] = True
-    subprocess.Popen(argv, **kw)  # noqa: S603 - argv list, never a shell
+        popen(argv, **kw)  # noqa: S603 - argv list, never a shell
+        return
+    kw["creationflags"] = detach_flags(platform, True)
+    try:
+        popen(argv, **kw)  # noqa: S603
+    except PermissionError:
+        kw["creationflags"] = detach_flags(platform, False)
+        popen(argv, **kw)  # noqa: S603
 
 
 def start_update(config_path: Path | None = None, *, root: Path | None = None, runner: Runner | None = None,
@@ -117,8 +136,11 @@ def start_update(config_path: Path | None = None, *, root: Path | None = None, r
 class Updater:
     def __init__(self, root: Path, log_path: Path, *, runner: Runner = real_runner,
                  sleep: Callable[[float], None] = time.sleep, python: str | None = None,
-                 now: Callable[[], dt.datetime] = dt.datetime.now):
+                 now: Callable[[], dt.datetime] = dt.datetime.now,
+                 spawner: Callable[[list, str], None] | None = None, config_path: Path | None = None):
         self.root, self.log_path, self.runner, self.sleep = Path(root), Path(log_path), runner, sleep
+        self.spawner = spawner or spawn_detached
+        self.config_path = config_path
         self.python = python or sys.executable
         self.now = now
 
@@ -191,14 +213,28 @@ class Updater:
             return EXIT_OK
         return self.restart_hub(new)
 
+    def serve_argv(self) -> list:
+        argv = [self.python, "-m", "hub"]
+        if self.config_path:
+            argv += ["--config", str(self.config_path)]
+        return argv + ["serve"]
+
     def restart_hub(self, new: str) -> int:
+        """Stop and start the LaptopHub task. If the hub is not a task here (or the task will not start), launch
+        `python -m hub serve` detached instead. The outcome is always written to update.log for the phone."""
         rc, _ = self.runner(["schtasks", "/End", "/TN", TASK_NAME], str(self.root), 60)
         if rc != 0:
             self.log(f"note: schtasks /End {TASK_NAME} returned {rc} (it may not have been running)")
         self.sleep(3)
         rc, out = self.runner(["schtasks", "/Run", "/TN", TASK_NAME], str(self.root), 60)
-        if rc != 0:
-            self.log(f"FAILED: could not start {TASK_NAME} again ({out[-150:]}). Start the hub by hand: python -m hub serve")
+        if rc == 0:
+            self.log(f"hub restarted on {new[:7]}")
+            return EXIT_OK
+        self.log(f"note: task {TASK_NAME} would not start ({out[-100:]}); starting the hub directly")
+        try:
+            self.spawner(self.serve_argv(), str(self.root))
+        except OSError as exc:
+            self.log(f"FAILED: could not start the hub ({type(exc).__name__}). Start it by hand: python -m hub serve")
             return EXIT_FAILED
-        self.log(f"hub restarted on {new[:7]}")
+        self.log(f"hub started directly on {new[:7]} (no {TASK_NAME} task; run: python -m hub setup --only autostart)")
         return EXIT_OK

@@ -113,10 +113,49 @@ class UpdaterTest(unittest.TestCase):
         self.assertEqual(self.run_update(r, restart=False), 0)
         self.assertEqual(r.ran("schtasks"), [])
 
-    def test_run_failure_after_stop_is_reported(self):
-        r = FakeRunner(run_rc=1)
-        self.assertEqual(self.run_update(r), updater.EXIT_FAILED)
-        self.assertIn("could not start", self.log.read_text())
+    def test_run_failure_falls_back_to_serve_detached(self):
+        r, spawned = FakeRunner(run_rc=1), []
+        u = updater.Updater(self.root, self.log, runner=r, sleep=lambda s: None, python="PY",
+                            spawner=lambda a, c: spawned.append(a), config_path=Path("/c/hub.json"))
+        self.assertEqual(u.run(restart=True), 0)
+        self.assertEqual(spawned, [["PY", "-m", "hub", "--config", str(Path("/c/hub.json")), "serve"]])
+        self.assertIn("started directly", self.log.read_text())
+
+    def test_run_failure_and_spawn_failure_is_reported(self):
+        def boom(a, c):
+            raise OSError("nope")
+        u = updater.Updater(self.root, self.log, runner=FakeRunner(run_rc=1), sleep=lambda s: None, python="PY", spawner=boom)
+        self.assertEqual(u.run(restart=True), updater.EXIT_FAILED)
+        self.assertIn("could not start the hub", self.log.read_text())
+
+
+class SpawnDetachedTest(unittest.TestCase):
+    def test_windows_uses_breakaway_flags(self):
+        calls = []
+        updater.spawn_detached(["x"], "c", platform="win32", popen=lambda a, **kw: calls.append(kw))
+        flags = calls[0]["creationflags"]
+        self.assertEqual(flags, updater.detach_flags("win32", True))
+        self.assertTrue(flags & 0x8 and flags & 0x200 and flags & 0x01000000)
+        self.assertNotIn("start_new_session", calls[0])
+
+    def test_windows_retries_without_breakaway_on_permission_error(self):
+        calls = []
+
+        def popen(a, **kw):
+            calls.append(kw["creationflags"])
+            if len(calls) == 1:
+                raise PermissionError("job forbids breakaway")
+        updater.spawn_detached(["x"], "c", platform="win32", popen=popen)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0] & 0x01000000)
+        self.assertFalse(calls[1] & 0x01000000)
+        self.assertTrue(calls[1] & 0x8)
+
+    def test_posix_uses_new_session(self):
+        calls = []
+        updater.spawn_detached(["x"], "c", platform="linux", popen=lambda a, **kw: calls.append(kw))
+        self.assertTrue(calls[0]["start_new_session"])
+        self.assertNotIn("creationflags", calls[0])
 
 
 class VersionTest(unittest.TestCase):

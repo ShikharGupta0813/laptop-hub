@@ -1,4 +1,4 @@
-# 15 · Claude sessions: watch Claude Code from your phone
+# 18 · Claude sessions: watch Claude Code from your phone
 
 **What this page is for:** see what Claude Code is doing on your laptop and nudge it, without walking to the desk.
 
