@@ -350,6 +350,7 @@ function buildChrome() {
   nav.replaceChildren(dock);
   mountWheel($("views"), ctx);   // the floating assistant wheel, above the tab bar
   mountWake(ctx, { bar });       // "Hey Jarvis" / "Hey Friday" (off until switched on in Settings)
+  import("./wakebridge.js").then((m) => m.mountWakeBridge(ctx)).catch(() => {});   // Android app only: background wake word
 
   // "/" or Ctrl+K opens search on a keyboard.
   document.addEventListener("keydown", (e) => {

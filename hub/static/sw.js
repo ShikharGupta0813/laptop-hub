@@ -16,7 +16,7 @@ const SHELL = [
   "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js", "/js/jarvis.js", "/js/journal.js",
   "/js/kb.js", "/js/laptop.js", "/js/learn.js", "/js/main.js", "/css/setup.css", "/js/setup.js", "/vendor/fonts/jetbrains-mono-var-latin.woff2", "/css/launcher.css", "/js/launcher.js", "/css/friday.css", "/js/friday.js", "/js/notes.js", "/js/notifications.js",
   "/js/omnibox.js", "/js/providers.js", "/js/quiz.js", "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js",
-  "/js/studychat.js", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js", "/js/voicemode.js",
+  "/js/studychat.js", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js", "/js/voicemode.js", "/js/wakebridge.js",
   "/js/watch.js", "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js",
   "/vendor/xterm.css", "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg",
   "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",

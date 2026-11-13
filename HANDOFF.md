@@ -413,3 +413,13 @@ python -m hub.devserver --port 8799                 # fake models and a harmless
 - Skills catalog: hermes-agent is `skills/<category>/<skill>/SKILL.md`, openclaw/openclaw is `skills/<skill>/SKILL.md`; `openclaw/skills` is not public. Defaults are now `NousResearch/hermes-agent/skills/*` (trailing `/*` = categories, `kind: category`) and `openclaw/openclaw/skills`. Verified by clone into temp dirs.
 - Research: `research_search_backend` (auto|ddg|wikipedia). DDG parser now pairs title/snippet per block. UNVERIFIED: the real DDG page (html.duckduckgo.com is blocked from the agent sandbox; the test fixture is hand-written from the known shape, not a saved live response). No second backend added (nothing else reachable).
 - Update button: Settings card + `POST /api/update {confirm:true}` -> `updater.start_update` (task LaptopHubUpdate if it exists, else detached `python -m hub [--config X] update --restart`). Audited `update_start`. UNVERIFIED on real Windows (a detached child may still die when `schtasks /End LaptopHub` kills the task's process tree).
+
+## 3k. Background wake word, Android (2026-11-13)
+- Native: `mobile/android/app/src/main/java/dev/shikhar/laptophub/wake/` (`WakeService` microphone foreground service + Vosk
+  grammar spotting, `ModelManager` model download, `HubWakePlugin` = Capacitor plugin `HubWake`, pure `WakeMatcher` / `WakeLaunch` /
+  `SafeUnzip` / `ModelStateMachine` with JVM tests in `app/src/test/.../wake/WakeLogicTest.java`). Dependency `com.alphacephei:vosk-android:0.3.75`.
+  Manifest: FOREGROUND_SERVICE(+_MICROPHONE), POST_NOTIFICATIONS, WAKE_LOCK, VIBRATE, USE_FULL_SCREEN_INTENT, service type microphone. No boot receiver (Android 14 forbids it).
+- Web: `hub/static/js/wakebridge.js` (loaded by one line in `main.js`, in `sw.js` SHELL, VERSION not bumped): Settings card, model download progress, switch, and
+  opening voice mode from `HubWake.consumePending()`. No-op outside the Android app. Docs: `mobile/README.md` "Hey Jarvis in the background".
+- **Unverified:** a real Gradle build (not possible in the sandbox; only javac against android-all API 36 + real Vosk classes, with hand-written Capacitor/androidx stubs), a real phone,
+  the Android 10+ background activity launch rule (fallback is the full-screen-intent notification), Android 14/15 FGS behaviour, model SHA (only a size range check, the alphacephei list was not reachable), battery.

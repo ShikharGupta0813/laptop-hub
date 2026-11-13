@@ -170,3 +170,16 @@ It is **off by default**, because it keeps the microphone open (privacy and batt
 recognition, so it only works while the app is open and the screen is on; Android stops it in the background. It needs
 the secure (https) address and the microphone permission. Under the hood: `js/wakephrase.js` (matching, tested with
 node), `js/wake.js` (the listener, chip and chime), `voicemode.js` `setPreload()` (hands over the words).
+
+### Always-on, even with the screen off (Android app only)
+
+The browser version above only works while the app is open. The Android app can do more: open **Settings** and find
+**Always-on Hey Jarvis (background)**. Press the download button once (about 40 MB, best on Wi-Fi), then switch it on and
+say yes to the microphone and notification questions. From then on the phone listens quietly, even with the screen off, and
+when you say "Hey Jarvis" or "Hey Friday" it buzzes and opens voice mode. A notification tells you it is listening, with a
+**Stop** button.
+
+Your voice is recognised on the phone itself. Nothing you say is recorded or sent anywhere; only the words after "Hey
+Jarvis" reach your hub, just like typing them. It uses some battery, so switch it off if you do not need it. After a restart
+of the phone you have to open the app and switch it on again (Android does not allow it to start by itself). If the app
+does not pop open on its own, tap the notification. Details: `mobile/README.md`, "Hey Jarvis in the background".

@@ -5,12 +5,14 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 import dev.shikhar.laptophub.capture.HubCapturePlugin;
+import dev.shikhar.laptophub.wake.HubWakePlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Custom (non-npm) plugins must be registered before super.onCreate.
         registerPlugin(HubCapturePlugin.class);
+        registerPlugin(HubWakePlugin.class);   // background "Hey Jarvis" (off until switched on)
         super.onCreate(savedInstanceState);
     }
 
