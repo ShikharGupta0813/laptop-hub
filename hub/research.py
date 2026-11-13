@@ -728,6 +728,11 @@ class Researcher:
     def push(self, job: dict) -> None:
         try:
             title = "Research ready" if job["status"] == "done" else "Research failed"
+            engine = getattr(self.ctx, "proactive", None)
+            if job["status"] == "done" and engine is not None and engine.enabled:
+                engine.submit({"type": "research_done", "title": title, "link": "research",
+                               "body": clean(job["answer_short"] or job["question"], 200)})
+                return
             self.ctx.notify(title, clean(job["answer_short"] or job["error"] or job["question"], 200), "info",
                             "research", "research")
         except Exception:  # noqa: BLE001

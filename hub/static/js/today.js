@@ -38,6 +38,13 @@ export function init(container, ctx) {
     return el("section", { class: "ui-stack" }, ui.eyebrow("01", "Now"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
   }
 
+  // Things Friday held back during quiet hours (hub/proactive.py)
+  function held() {
+    const rows = (data.proactive?.held || []).map((h) => ui.listRow({ icon: "bell", tone: "gray", title: h.title, sub: "Held back (quiet hours)", meta: h.at || "" }));
+    if (!rows.length) return null;
+    return el("section", { class: "ui-stack" }, ui.eyebrow("QH", "While you were away"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
+  }
+
   // Friday's list: follow-ups due today (and late ones) from the Memory screen's store
   function followups() {
     const rows = (data.brain?.due || []).map((f) => ui.listRow({ icon: "bell", tone: f.overdue ? "warn" : "accent", title: f.title,
@@ -161,11 +168,12 @@ export function init(container, ctx) {
     if (loadError === "off" && !data) { root.replaceChildren(ui.emptyState({ icon: "clock", title: "Today is switched off", body: "Set today_enabled to true in Settings." })); return; }
     if (!data) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load Today", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
     const refresh = ui.button({ label: "Refresh", icon: "refresh", variant: "ghost", onClick: () => ui.busy(refresh, () => load({ quiet: true })) });
+    const front = ui.button({ label: "Front page", icon: "file", variant: "tonal", onClick: () => window.open("/api/today/front-page", "_blank", "noopener") });
     root.replaceChildren(...[
-      el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), refresh),
+      el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), front, refresh),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
-      (askNode ||= askBar()), now(), followups(), timeline(), doneToday(), numbers(), tasks(), summary(),
+      (askNode ||= askBar()), now(), held(), followups(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
   }
 

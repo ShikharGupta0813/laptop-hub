@@ -43,7 +43,8 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "full_control", "fast_commands", "jarvis_name", "autopilot_enabled", "autopilot_sweep_min",
                "autopilot_daily_ai_calls", "autopilot_research", "today_enabled", "today_evening_time", "skills_enabled",
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
-               "brain_enabled", "brain_context")
+               "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
+               "proactive_quiet_end", "proactive_batch_minutes")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -178,13 +179,25 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
         elif key == "today_evening_time":
             if not isinstance(value, str) or not (value == "" or re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value)):
                 raise HTTPException(400, "today_evening_time must look like 19:30 (or be empty to turn it off).")
+            changes[key] = value
+        elif key == "today_morning_time":
+            if not isinstance(value, str) or not (value == "" or re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value)):
+                raise HTTPException(400, "today_morning_time must look like 08:30 (or be empty to turn it off).")
+            changes[key] = value
+        elif key in ("proactive_quiet_start", "proactive_quiet_end"):
+            if not isinstance(value, str) or not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value):
+                raise HTTPException(400, f"{key} must look like 22:00.")
+            changes[key] = value
+        elif key == "proactive_batch_minutes":
+            if isinstance(value, bool) or not isinstance(value, int) or not 5 <= value <= 720:
+                raise HTTPException(400, "proactive_batch_minutes must be a whole number of minutes from 5 to 720.")
             changes[key] = value
         elif key == "autopilot_sweep_min":
             if isinstance(value, bool) or not isinstance(value, int) or not 5 <= value <= 240:
@@ -486,6 +499,9 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "research_max_sources": config.research_max_sources,
             "research_daily_ai_calls": config.research_daily_ai_calls,
             "brain_enabled": config.brain_enabled, "brain_context": config.brain_context,
+            "today_morning_time": config.today_morning_time, "proactive_enabled": config.proactive_enabled,
+            "proactive_quiet_start": config.proactive_quiet_start, "proactive_quiet_end": config.proactive_quiet_end,
+            "proactive_batch_minutes": config.proactive_batch_minutes,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

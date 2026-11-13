@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 
 from . import autopilot as autopilot_mod
 from .common import Ctx, InProcessClient
@@ -342,8 +343,22 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
-            "brain": memory,
+            "brain": memory, "proactive": _proactive_view(ctx),
             "numbers": numbers, "sources_failed": sorted(set(failed))}
+
+
+def _proactive_view(ctx: Ctx) -> dict:
+    """What Friday held back (quiet hours) or has queued, for the Today screen. Empty when proactive is not running."""
+    engine = getattr(ctx, "proactive", None)
+    try:
+        view = engine.view() if engine is not None else None
+    except Exception:  # noqa: BLE001
+        view = None
+    if not view:
+        return {"held": [], "pending": 0}
+    return {"held": [{"title": clean(x.get("title"), 120), "at": str(x.get("at") or "")[11:16]}
+                     for x in view["events"] if x.get("decision") == "quiet" and x.get("title")][:5],
+            "pending": len(view["pending"])}
 
 
 # ---- the spoken summary (a template: no AI, deterministic) --------------------------------------------------------
@@ -505,5 +520,16 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
         said = spoken(data, style)
         return {"text": said, "words": len(said.split()), "style": style, "numbers": key_numbers(data),
                 "sources_failed": data["sources_failed"]}
+
+    @router.get("/front-page", response_class=HTMLResponse)
+    async def front_page():
+        """Printable one-pager of the day (inline CSS, no external assets), from the same data as GET /api/today."""
+        from . import frontpage
+        need_on()
+        data = await build()
+        call = str(getattr(ctx.config, "display_name", "") or "Chief").strip() or "Chief"
+        return HTMLResponse(frontpage.render(data, call), headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 
     return router

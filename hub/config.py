@@ -86,6 +86,12 @@ class Config:
     # Today: one read-only timeline of the day (meetings, tasks, spending, mail, what you did) plus a spoken summary.
     today_enabled: bool = True
     today_evening_time: str = "19:30"       # weekday time of the evening summary (needs Autopilot on); "" = off
+    today_morning_time: str = "08:30"       # daily "your day is ready" push with the front-page link; "" = off
+    # Proactive: interrupt-vs-batch rule (hub/proactive.py). Urgent things push now; finished things are batched.
+    proactive_enabled: bool = True
+    proactive_quiet_start: str = "22:00"
+    proactive_quiet_end: str = "07:00"
+    proactive_batch_minutes: int = 30
     # Deep research with citations (hub/research.py): multi-hop web investigation, free AI only, daily AI-call budget.
     research_enabled: bool = True
     research_max_hops: int = 3
@@ -174,6 +180,9 @@ def save(config: Config, path: Path) -> None:
         "autopilot_standup_time": config.autopilot_standup_time, "autopilot_repos": list(config.autopilot_repos),
         "autopilot_tone": config.autopilot_tone, "autopilot_research": bool(config.autopilot_research),
         "today_enabled": bool(config.today_enabled), "today_evening_time": config.today_evening_time,
+        "today_morning_time": config.today_morning_time, "proactive_enabled": bool(config.proactive_enabled),
+        "proactive_quiet_start": config.proactive_quiet_start, "proactive_quiet_end": config.proactive_quiet_end,
+        "proactive_batch_minutes": int(config.proactive_batch_minutes),
         "skills_enabled": bool(config.skills_enabled), "skills_sources": list(config.skills_sources),
         "research_enabled": bool(config.research_enabled), "research_max_hops": int(config.research_max_hops),
         "research_max_sources": int(config.research_max_sources),

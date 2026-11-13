@@ -6,6 +6,7 @@ persona and the name is removed from the text. The prompts stay short on purpose
 """
 from __future__ import annotations
 
+import datetime
 import re
 
 PERSONAS = ("jarvis", "friday")
@@ -60,7 +61,12 @@ _GREETING = re.compile(
     r"(?:{names})?[\s,!.?]*(?:are\s+you\s+there|you\s+there|wake\s+up|thanks?|thank\s+you)?[\s,!.?]*$", re.I)
 
 
-def greeting_reply(text: str, persona: str = "", call_sign: str = "Chief", jarvis_name: str = "Jarvis") -> str:
+def day_part(now: datetime.datetime) -> str:
+    return "morning" if 5 <= now.hour < 12 else "afternoon" if 12 <= now.hour < 17 else "evening"
+
+
+def greeting_reply(text: str, persona: str = "", call_sign: str = "Chief", jarvis_name: str = "Jarvis",
+                   clock=None) -> str:
     """A short fixed answer when the whole message is just a hello (or only a name). "" when it is anything else.
 
     No model and no tools are involved, so a greeting can never open files or ask for approvals."""
@@ -75,5 +81,6 @@ def greeting_reply(text: str, persona: str = "", call_sign: str = "Chief", jarvi
     if re.search(r"thank", raw, re.I):
         return "Any time."
     if who == "friday":
-        return f"Hi {call}! Want a look at your day, or shall I get something done?"
+        now = (clock or datetime.datetime.now)()
+        return f"Good {day_part(now)}, {call}! Want a look at your day, or shall I get something done?"
     return f"At your service, {call}. What do you need?"

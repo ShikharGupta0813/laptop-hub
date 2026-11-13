@@ -814,7 +814,8 @@ class Autopilot:
                            ai_calls_today=self.ai_used(), failed=failed)
             if drafts:
                 await self._notify(f"Autopilot: {len(drafts)} draft{'s' if len(drafts) != 1 else ''} ready",
-                                   "; ".join(c["title"] for c in drafts[:3])[:300])
+                                   "; ".join(c["title"] for c in drafts[:3])[:300],
+                                   event={"type": "autopilot_ready", "count": len(drafts)})
             return {"new": len(new), "drafts": len(drafts), "expired": expired, "failed": failed,
                     "notes": dict(self.notes), "cards": [self.view(c) for c in new]}
 
@@ -844,7 +845,7 @@ class Autopilot:
             self.new_card(source="today", key=key, title=f"Day review for {now.strftime('%a %d %b')}", summary=text,
                           payload={"original": text[:TEXT_KEEP]}, action="none", draft=text)
             self.store.trim()
-            await self._notify("Your day, in short", text[:200])
+            await self._notify("Your day, in short", text[:200], event={"type": "evening_summary"})
             self.ctx.audit("today_evening", chars=len(text))
             return True
         except asyncio.CancelledError:
@@ -853,8 +854,12 @@ class Autopilot:
             log.exception("autopilot evening summary failed")
             return False
 
-    async def _notify(self, title: str, body: str) -> None:
+    async def _notify(self, title: str, body: str, event: dict | None = None) -> None:
         try:
+            engine = getattr(self.ctx, "proactive", None)
+            if event and engine is not None and engine.enabled:   # the interrupt-vs-batch rule (hub/proactive.py)
+                engine.submit({**event, "title": title, "body": body, "link": "autopilot"})
+                return
             result = self.ctx.notify(title=title, body=body, level="info", link="autopilot", source="autopilot")
             if inspect.isawaitable(result):
                 await result
