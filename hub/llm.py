@@ -731,6 +731,32 @@ class GeminiClient:
         except httpx.HTTPError as exc:
             raise self._network(exc) from None
 
+    async def ask_image(self, system: str, question: str, image: bytes, mime: str = "image/jpeg") -> str:
+        """Ask about one picture (an inline image part). The image bytes are never logged or stored here."""
+        import base64
+        key = self._key()
+        body = self._body(system, question, False)
+        body["contents"][0]["parts"].append({"inline_data": {"mime_type": mime,
+                                                             "data": base64.b64encode(image).decode("ascii")}})
+        try:
+            client = self._http()
+            await self._ensure_model(client, key)
+            while True:
+                resp = await client.post(self._url("generateContent"), headers={"x-goog-api-key": key}, json=body)
+                if resp.status_code >= 400 and await self._failover(client, key, resp.status_code, resp.text):
+                    continue
+                break
+        except httpx.HTTPError as exc:
+            raise self._network(exc) from None
+        if resp.status_code >= 400:
+            raise self._problem(resp.status_code, resp.text)
+        try:
+            text = self._texts(resp.json()).strip()
+        except ValueError:
+            raise LLMError("Gemini sent an answer that could not be read.") from None
+        gemini_worked(key)
+        return text
+
     async def complete(self, system: str, user: str, json_mode: bool = False) -> str:
         key = self._key()
         try:

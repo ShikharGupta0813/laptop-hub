@@ -498,15 +498,36 @@ export function init(container, ctx) {
     const askCard = el("div", { class: "ui-card ui-card--glass sc-card" },
       el("div", { class: "ui-card__head" }, ui.tile("sparkles", "violet"), el("div", {}, el("div", { class: "ui-card__title" }, "Ask about my screen"), el("div", { class: "ui-card__sub" }, "Claude looks at a screenshot and answers."))),
       el("div", { class: "sc-actions" }, ui.button({ label: "Ask Claude", icon: "sparkles", variant: "primary", size: "sm", onClick: askSheet }), windowsBtn));
+    const explainCard = buildExplain();
     const zoomHas = !MISSING_ON_SERVER.has("ctrl+plus");
     const zoomCard = el("div", { class: "ui-card sc-card sc-zoomnote" },
       el("div", { class: "ui-card__head" }, ui.tile("eye", "info"), el("div", {}, el("div", { class: "ui-card__title" }, "Zoom the laptop browser"),
         el("div", { class: "ui-card__sub" }, zoomHas ? "Text too small? Use Zoom in and Zoom out in the Browser keys." : "Text too small? Pinch the picture to zoom this view, then double-tap to click. Bigger page text needs Ctrl and + on the laptop's own keyboard."))));
-    controls.replaceChildren(controlCard, viewCard, zoomCard, askCard);
+    controls.replaceChildren(controlCard, viewCard, zoomCard, explainCard, askCard);
     renderArm();
     if (S.windows) windowsBtn.hidden = false;
   }
   let windowsBtn;
+
+  // ---- explain this screen (Gemini, POST /api/vision/explain) -------------------------------------
+  function buildExplain() {
+    const q = el("input", { type: "text", class: "sc-ask", maxlength: "500", placeholder: "Optional: what do you want to know?", "aria-label": "Question about the screen (optional)" });
+    const out = el("div", { class: "sc-answer", "aria-live": "polite" });
+    const btn = ui.button({ label: "Explain this screen", icon: "sparkles", variant: "primary", size: "sm", onClick: async (e) => {
+      const ok = await ui.confirm({ title: "Send a screenshot to Gemini?", message: "A picture of your laptop screen will leave the laptop and be sent to Gemini. Close anything private first.", confirmLabel: "Send screenshot", icon: "eye" });
+      if (!ok) return;
+      out.replaceChildren(ui.skeleton("lines", 3));
+      await ui.busy(e.currentTarget, (async () => {
+        try {
+          const r = await api("/api/vision/explain", { method: "POST", json: { question: q.value.trim() } });
+          out.replaceChildren(el("p", { class: "sc-answer__text" }, r.answer || ""), el("p", { class: "sc-hint" }, "This screenshot was sent to Gemini and not saved."));
+        } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
+      })());
+    } });
+    return el("div", { class: "ui-card ui-card--glass sc-card" },
+      el("div", { class: "ui-card__head" }, ui.tile("eye", "violet"), el("div", {}, el("div", { class: "ui-card__title" }, "Explain this screen"), el("div", { class: "ui-card__sub" }, "What is it, what caused it, how to fix it."))),
+      q, el("div", { class: "sc-actions" }, btn), out);
+  }
   function resetZoom() { S.scale = 1; S.tx = 0; S.ty = 0; applyTransform(); }
 
   // ---- ask Claude -------------------------------------------------------------------------------

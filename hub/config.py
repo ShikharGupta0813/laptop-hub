@@ -97,6 +97,9 @@ class Config:
     research_max_hops: int = 3
     research_max_sources: int = 8
     research_daily_ai_calls: int = 20
+    # Screen vision (hub/vision.py): 'what's this error on my screen?' sent to Gemini (never the paid Claude API).
+    vision_enabled: bool = True
+    vision_daily_calls: int = 30
 
     # Skills: community skills (markdown instructions) installed from GitHub. See docs/api/skills.md.
     skills_enabled: bool = True
@@ -187,6 +190,7 @@ def save(config: Config, path: Path) -> None:
         "research_enabled": bool(config.research_enabled), "research_max_hops": int(config.research_max_hops),
         "research_max_sources": int(config.research_max_sources),
         "research_daily_ai_calls": int(config.research_daily_ai_calls),
+        "vision_enabled": bool(config.vision_enabled), "vision_daily_calls": int(config.vision_daily_calls),
         "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
         "backup_dir": config.backup_dir,
     }

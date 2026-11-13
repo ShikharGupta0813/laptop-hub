@@ -184,6 +184,15 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 - Security: skill text is untrusted; `use` fences it with a random code and a never-overrides note; scripts are listed, never run; install and remove are approval-gated (tool `needs_approval` + preview, route needs `confirm: true`, UI confirm).
 - Personas: frontmatter `persona: jarvis|friday|both`; `skills.ACTIVE_PERSONA` (a ContextVar) is set from `session.persona` at the start of each assistant turn and the tools filter by it; `persona_hint` is only a word-based guess.
 - Tests: `tests/test_skills.py` (fake git runner and fake GitHub HTTP). UNVERIFIED: real GitHub clone and API (rate limits), the real layout of hermes-agent / openclaw (default source paths are guesses), the phone UI (never opened in a browser), whether the assistant context var reaches tool calls in every provider path.
+## 3j. Screen vision (2026-11-13): "Jarvis, what's this error on my screen?"
+
+- `hub/vision.py`: `POST /api/vision/explain`, `GET /api/vision/status`, tool `screen_explain` (approval card unless Full Control,
+  `untrusted`, group `vision`). Reuses `screen.RealScreenSystem.capture_jpeg`, then `shrink()` (1600 px, q75, <= 1.2 MB, optional region crop).
+  `GeminiClient.ask_image` (new, `hub/llm.py`) sends an inline image part. claude-login only if its client gains `ask_image`; never the paid API.
+- Config `vision_enabled` (true), `vision_daily_calls` (30); both in Settings. Phone: "Explain this screen" card on the Screen tab (`js/screen.js`).
+- Docs `docs/api/vision.md`; tests `tests/test_vision.py`. No sw.js change (screen.js/css already in SHELL).
+- UNVERIFIED: real Gemini image call with a live key, real mss capture, the phone UI in a browser, voice phrasing routing on the local model.
+
 ## 3i. Deep research with citations (2026-11-13): "Jarvis, research X for me"
 
 `hub/research.py` (feature module `research`, last in `FEATURE_MODULES`; also `research.build()` registered in `server.py` with the other assistant tools), `js/research.js` + `css/research.css` (Apps > Research; added to sw.js SHELL, VERSION not bumped),

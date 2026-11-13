@@ -188,6 +188,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "laptop": ({"laptop_action"},
                re.compile(r"\bvolume|\bmute\b|\block\b|\bsleep\b|\bshut ?down\b|\brestart\b|\bscreenshot|"
                           r"\bbrightness|\blaptop\b", re.I)),
+    "vision": ({"screen_explain"}, re.compile(r"\bscreen\b|\berror\b|\bwhat am i looking at\b|\bwhat(?:'s| is) this\b|\bwhat(?:'s| is) (?:on|wrong)\b", re.I)),
     "jarvis": ({"jarvis"}, re.compile(r"\bjarvis\b", re.I)),
     "typing": ({"type_text"}, re.compile(r"\btype\b|\btyping\b|\bkeyboard\b", re.I)),
     "asana": ({"asana_tasks", "asana_task", "asana_comment", "asana_complete"},

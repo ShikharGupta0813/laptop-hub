@@ -21,6 +21,7 @@ Untrusted tools (reading their result taints the turn):
 - memory: `recall`, `tasks_list`
 - research and skills: `deep_research`, `skills_list`, `skill_search`, `skill_use`
 - council: `council_status`
+- screen vision: `screen_explain` (also needs approval; see docs/api/vision.md)
 
 Changing tools without an approval card, also refused while tainted (`mutating`): `remember`, `task_intake`,
 `task_update`, `autopilot_decide`. Owner-initiated fast commands ("run ...", "remember ...") are the

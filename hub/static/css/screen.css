@@ -50,6 +50,7 @@
 #view-screen .sc-typer { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; font-size: var(--fs-base); pointer-events: none; }
 #view-screen .sc-paste, #view-screen .sc-ask { width: 100%; }
 .sc-answer .markdown { font-size: var(--fs-md); }
+.sc-answer__text { font-size: var(--fs-md); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .sc-hint { margin: 0; font-size: var(--fs-sm); color: var(--c-text-2); }
 
 /* full screen (CSS fallback also used with the real Fullscreen API) */
