@@ -105,6 +105,9 @@ class Config:
     brain_enabled: bool = True
     brain_context: bool = True              # add the best matching memories to question-like assistant turns
 
+    # Build flow: spec-first delegation (brainstorm, spec, plan, Council builds step by step). See docs/api/buildflow.md.
+    buildflow_enabled: bool = True
+
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
     def data_path(self) -> Path:
@@ -188,6 +191,7 @@ def save(config: Config, path: Path) -> None:
         "research_max_sources": int(config.research_max_sources),
         "research_daily_ai_calls": int(config.research_daily_ai_calls),
         "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
+        "buildflow_enabled": bool(config.buildflow_enabled),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")

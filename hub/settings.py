@@ -44,7 +44,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "autopilot_daily_ai_calls", "autopilot_research", "today_enabled", "today_evening_time", "skills_enabled",
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
                "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
-               "proactive_quiet_end", "proactive_batch_minutes")
+               "proactive_quiet_end", "proactive_batch_minutes", "buildflow_enabled")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -179,7 +179,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "buildflow_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -502,6 +502,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "today_morning_time": config.today_morning_time, "proactive_enabled": config.proactive_enabled,
             "proactive_quiet_start": config.proactive_quiet_start, "proactive_quiet_end": config.proactive_quiet_end,
             "proactive_batch_minutes": config.proactive_batch_minutes,
+            "buildflow_enabled": config.buildflow_enabled,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

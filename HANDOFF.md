@@ -202,6 +202,14 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Intake uses `autopilot.pick_provider` (Gemini or local, never the paid Claude API). Config `brain_enabled`, `brain_context` (Settings).
 - Tests: `tests/test_brain.py` (fakes only). sw.js: files added to SHELL, VERSION NOT bumped (orchestrator). UNVERIFIED: the Memory screen in a real browser, real AI verdict quality, real ntfy push from a brain reminder, FTS5 on the laptop's SQLite build, Windows.
 
+## 3i. Build flow: spec-first delegation (2026-11-13), Jarvis
+
+`hub/buildflow.py` (module `buildflow`, last in `FEATURE_MODULES`), `hub/buildflow_tools.py` (7 tools in server.py `extra_tools`), `js/buildflow.js` + `css/buildflow.css` (Apps > Build), docs `docs/api/buildflow.md`, `docs/guide/15-build-flow.md`.
+- Flow in `buildflow.sqlite`: brainstorm (free AI, one question at a time, max 6) -> spec file -> checkbox plan file -> Council per step. Files live INSIDE a shared root (`roots`), never overwritten (`-2`). The plan file is the truth (steps re-parsed on every look, hand edits fine).
+- Delegation reuses `POST /api/council/run` / `GET /api/council/jobs/{id}` in-process; a run `accepted` ticks the box, anything else records the reason. 20 s poll in `start(ctx)` plus a settle on every look. Finish: Brain `decision` item + proactive `build_done` batch event (added to `BATCH_TYPES` and `batch_sentence`).
+- Preview/approve split: `spec`/`plan`/`next` routes take `{preview: true}`; tools `build_spec|build_plan|build_next` are approval-gated + `mutating` (taint gate). One `"buildflow"` TOOL_GROUPS entry. Config `buildflow_enabled` (Settings).
+- Tests: `tests/test_buildflow.py` (fake AI, fake council caller, temp workspace). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the Build screen in a real browser, real AI question/spec/plan quality, a real Council run ticking a box, Windows paths, the Council having no working-directory option (the task text names the folder, the lab is trusted to obey).
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)

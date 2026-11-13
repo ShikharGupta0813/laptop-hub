@@ -201,6 +201,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
               re.compile(r"\bremember\b|\bnote this\b|\brecall\b|\bwhat was\b|\brca\b|\broot cause\b|\btask from\b|"
                          r"\bsomeone gave me\b|\bgave me (?:a )?task\b|\bfollow[- ]?ups?\b|\bremind me\b|\btell me tomorrow\b|"
                          r"\bwhat did we (?:decide|do)\b|\bcan'?t be done\b|\bcan this be done\b", re.I)),
+    "buildflow": ({"build_start", "build_answer", "build_spec", "build_plan", "build_next", "build_status", "build_list"},
+                  re.compile(r"\bbuild me\b|\bbuild a\b|\bnew project\b|\bspec\b|\bplan the\b|\bnext step\b", re.I)),
 }
 
 
