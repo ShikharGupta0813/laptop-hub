@@ -1,5 +1,7 @@
 """Updater, install-updater, /api/status version and /api/update-log. No real git, schtasks or network."""
 import datetime as dt
+import json
+from unittest import mock
 import tempfile
 import unittest
 from pathlib import Path
@@ -169,6 +171,34 @@ class InstallUpdaterTest(Base):
         self.assertIn("updater", sw.STEP_IDS)
 
 
+class StartUpdate(unittest.TestCase):
+    def test_runs_the_task_when_it_exists(self):
+        calls, spawned = [], []
+
+        def runner(argv, cwd, timeout):
+            calls.append(argv)
+            return 0, ""
+        out = updater.start_update(None, root=Path("/r"), runner=runner, spawner=lambda a, c: spawned.append(a))
+        self.assertEqual(out, {"method": "task"})
+        self.assertEqual(calls, [["schtasks", "/Query", "/TN", "LaptopHubUpdate"], ["schtasks", "/Run", "/TN", "LaptopHubUpdate"]])
+        self.assertEqual(spawned, [])
+
+    def test_spawns_detached_when_there_is_no_task(self):
+        spawned = []
+        out = updater.start_update(Path("/c/hub.json"), root=Path("/r"), runner=lambda a, c, t: (1, "not found"),
+                                       spawner=lambda a, c: spawned.append((a, c)), python="py")
+        self.assertEqual(out, {"method": "process"})
+        self.assertEqual(spawned[0][0], ["py", "-m", "hub", "--config", str(Path("/c/hub.json")), "update", "--restart"])
+
+    def test_falls_back_when_the_task_will_not_run(self):
+        spawned = []
+        rcs = iter([0, 1])
+        out = updater.start_update(None, root=Path("/r"), runner=lambda a, c, t: (next(rcs), ""),
+                                       spawner=lambda a, c: spawned.append(a), python="py")
+        self.assertEqual(out["method"], "process")
+        self.assertEqual(spawned[0], ["py", "-m", "hub", "update", "--restart"])
+
+
 class ServerTest(unittest.TestCase):
     def setUp(self):
         self.config, self.root = make_config()
@@ -193,6 +223,32 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(data["lines"][-1].startswith("line 49"))
         self.assertTrue(all(len(ln) <= 200 for ln in data["lines"]))
         self.assertLessEqual(len(data["last_update"]), 200)
+
+    def test_update_post_needs_login_and_confirm(self):
+        self.assertEqual(self.client.post("/api/update", json={"confirm": True}).status_code, 401)
+        self.login()
+        with mock.patch.object(updater, "start_update") as start:
+            self.assertEqual(self.client.post("/api/update", json={}).status_code, 409)
+            start.assert_not_called()
+
+    def test_update_post_starts_and_is_audited(self):
+        self.login()
+        with mock.patch.object(updater, "start_update", return_value={"method": "process"}) as start:
+            r = self.client.post("/api/update", json={"confirm": True})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json()["method"], "process")
+            self.assertIn("20 seconds", r.json()["message"])
+            self.assertEqual(self.client.post("/api/update", json={"confirm": True}).status_code, 409)   # not twice in a minute
+            self.assertEqual(start.call_count, 1)
+        rows = [json.loads(x) for x in (self.root / "audit.log").read_text().splitlines()]
+        self.assertTrue(any(r["event"] == "update_start" and r["method"] == "process" for r in rows))
+
+    def test_update_post_failure_is_500_and_retryable(self):
+        self.login()
+        with mock.patch.object(updater, "start_update", side_effect=OSError("x")):
+            self.assertEqual(self.client.post("/api/update", json={"confirm": True}).status_code, 500)
+        with mock.patch.object(updater, "start_update", return_value={"method": "task"}):
+            self.assertEqual(self.client.post("/api/update", json={"confirm": True}).status_code, 200)
 
     def test_status_has_version(self):
         self.login()

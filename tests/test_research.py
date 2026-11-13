@@ -334,6 +334,36 @@ class SearchBackends(unittest.TestCase):
         self.assertEqual(research.parse_ddg(self.DDG),
                          [{"title": "Title A", "url": "https://example.com/a", "snippet": "Snippet & more"}])
 
+    def test_parse_ddg_fixture(self):
+        from pathlib import Path
+        text = (Path(__file__).parent / "fixtures" / "ddg_html_results.html").read_text(encoding="utf-8")
+        rows = research.parse_ddg(text)
+        self.assertEqual([r["url"] for r in rows], ["https://docs.example.org/library/asyncio.html",
+                                                    "https://example.com/no-snippet",
+                                                    "https://example.com/tutorial?a=1&b=2"])    # the ad is dropped
+        self.assertEqual(rows[0]["title"], "asyncio \u2014 Asynchronous I/O")
+        self.assertTrue(rows[0]["snippet"].startswith("asyncio is a library"))
+        self.assertEqual(rows[1]["snippet"], "")                                   # not borrowed from the next block
+        self.assertEqual(rows[2]["title"], "Tutorial: Python asyncio & friends")
+        self.assertEqual(research.parse_ddg("<html>captcha</html>"), [])
+
+    def test_backend_setting(self):
+        calls = []
+
+        async def ddg(q, n):
+            calls.append("ddg")
+            return []
+
+        async def wiki(q, n):
+            calls.append("wiki")
+            return [{"title": "W", "url": "https://en.wikipedia.org/wiki/W", "snippet": ""}]
+        with mock.patch.object(research, "ddg_search", ddg), mock.patch.object(research, "wikipedia_search", wiki):
+            asyncio.run(research.web_search("x", 8, "auto"))
+            asyncio.run(research.web_search("x", 8, "wikipedia"))
+            self.assertEqual(asyncio.run(research.web_search("x", 8, "ddg")), [])
+            asyncio.run(research.web_search("x", 8, "bogus"))
+        self.assertEqual(calls, ["ddg", "wiki", "wiki", "ddg", "ddg", "wiki"])
+
     def test_wikipedia_fallback_when_ddg_fails(self):
         async def bad(q, n):
             raise httpx.ConnectError("blocked")

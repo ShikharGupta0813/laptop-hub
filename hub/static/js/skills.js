@@ -21,7 +21,7 @@ export function init(container) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
   const root = el("div", { class: "sk ui-stack ui-stack--lg" });
   container.append(root);
-  let installed = null, sources = [], source = "", browse = null, tab = "installed", loadError = "", browseError = "", browsing = false;
+  let installed = null, sources = [], source = "", openedFrom = "", browse = null, tab = "installed", loadError = "", browseError = "", browsing = false;
 
   async function load({ quiet = false } = {}) {
     if (!installed && !quiet) root.replaceChildren(ui.skeleton("card", 3));
@@ -85,6 +85,10 @@ export function init(container) {
   }
 
   function browseCard(c) {
+    if (c.kind === "category") {
+      const open = ui.button({ label: "Open", icon: "folder", variant: "tonal", onClick: () => { openedFrom = source; source = c.source; browse = null; loadBrowse(); } });
+      return el("article", { class: "ui-card sk-card ui-stack" }, el("h3", { class: "sk-name" }, c.name), el("p", { class: "ui-hint" }, "Category: " + c.source), el("div", { class: "sk-actions" }, open));
+    }
     const btn = c.installed ? ui.badge("installed", "good")
       : ui.button({ label: "Install", icon: "download", variant: "primary", onClick: () => ui.busy(btn, () => install(c.source, c.name)) });
     return el("article", { class: "ui-card sk-card ui-stack" },
@@ -100,13 +104,14 @@ export function init(container) {
   }
 
   function browseTab() {
-    const pick = ui.segmented({ label: "Catalog", options: sources.map((s) => ({ value: s, label: s.split("/").slice(0, 2).join("/") })), value: source, onChange: (v) => { source = v; browse = null; loadBrowse(); } });
+    const pick = ui.segmented({ label: "Catalog", options: sources.map((s) => ({ value: s, label: s.split("/").slice(0, 2).join("/") })), value: openedFrom || source, onChange: (v) => { source = v; openedFrom = ""; browse = null; loadBrowse(); } });
+    const back = openedFrom ? ui.button({ label: "Back to categories", icon: "arrow-left", variant: "ghost", onClick: () => { source = openedFrom; openedFrom = ""; browse = null; loadBrowse(); } }) : null;
     const own = el("input", { class: "sk-own", type: "text", placeholder: "owner/repo/path/to/skill", "aria-label": "Install from GitHub", maxlength: 300 });
     const go = ui.button({ label: "Install", icon: "download", variant: "tonal", onClick: () => ui.busy(go, () => install(own.value.trim())) });
     const list = browsing ? ui.skeleton("card", 2)
       : browseError ? ui.notice(browseError, { tone: "warn" })
       : browse ? (browse.length ? el("div", { class: "ui-stack" }, ...browse.map(browseCard)) : ui.emptyState({ icon: "search", title: "Nothing listed here", compact: true })) : null;
-    return el("div", { class: "ui-stack" }, sources.length ? pick : null, list,
+    return el("div", { class: "ui-stack" }, sources.length ? pick : null, back, list,
       el("section", { class: "ui-card ui-stack" }, ui.eyebrow("", "Install from a GitHub link"), own, el("div", { class: "sk-actions" }, go)));
   }
 

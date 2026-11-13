@@ -81,6 +81,39 @@ def tail_log(path: Path, lines: int = 20, width: int = 200) -> list[str]:
     return out[-lines:] if lines else []
 
 
+def spawn_detached(argv: list, cwd: str) -> None:
+    """Start argv in its own session/process group so it outlives the hub (which the update restarts). No shell."""
+    kw: dict = {"cwd": cwd, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                "close_fds": True}
+    if sys.platform == "win32":
+        kw["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                               | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        kw["start_new_session"] = True
+    subprocess.Popen(argv, **kw)  # noqa: S603 - argv list, never a shell
+
+
+def start_update(config_path: Path | None = None, *, root: Path | None = None, runner: Runner | None = None,
+                 spawner: Callable[[list, str], None] | None = None, python: str | None = None) -> dict:
+    """The single way the app starts an update (the Settings button). Returns {'method': 'task'|'process'}.
+    If the Windows task LaptopHubUpdate exists it is run; otherwise `python -m hub update --restart` is spawned
+    detached. Both end in Updater.run(restart=True), the only implementation. Raises OSError when nothing could start."""
+    root_dir = str(root or repo_root())
+    runner = runner or real_runner
+    spawner = spawner or spawn_detached
+    rc, _ = runner(["schtasks", "/Query", "/TN", UPDATE_TASK_NAME], root_dir, 15)
+    if rc == 0:
+        rc, out = runner(["schtasks", "/Run", "/TN", UPDATE_TASK_NAME], root_dir, 30)
+        if rc == 0:
+            return {"method": "task"}
+    argv = [python or sys.executable, "-m", "hub"]
+    if config_path:
+        argv += ["--config", str(config_path)]
+    argv += ["update", "--restart"]
+    spawner(argv, root_dir)
+    return {"method": "process"}
+
+
 class Updater:
     def __init__(self, root: Path, log_path: Path, *, runner: Runner = real_runner,
                  sleep: Callable[[float], None] = time.sleep, python: str | None = None,

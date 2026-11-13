@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, File, HTTPException, Request,
+from fastapi import (APIRouter, BackgroundTasks, Body, Depends, FastAPI, File, HTTPException, Request,
                      UploadFile, WebSocket, WebSocketDisconnect)
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -410,6 +410,28 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         """Read-only: the last lines of update.log (20 at most, 200 characters each) and nothing else."""
         lines = updater_mod.tail_log(update_log_file, 20, 200)
         return {"version": updater_mod.read_version(), "lines": lines, "last_update": lines[-1] if lines else ""}
+
+    update_lock = threading.Lock()
+    update_started = {"at": 0.0}
+
+    @api.post("/update")
+    async def update_start(body: dict = Body(default={})):
+        """Starts an update (pull + restart) without needing the scheduled task. The owner confirms in the UI."""
+        if body.get("confirm") is not True:
+            raise HTTPException(409, "An update restarts the hub. Confirm to continue.")
+        with update_lock:
+            if time.monotonic() - update_started["at"] < 60 and update_started["at"]:
+                raise HTTPException(409, "An update was just started. Wait a minute.")
+            update_started["at"] = time.monotonic()
+        try:
+            result = await asyncio.to_thread(updater_mod.start_update, config_path)
+        except OSError:
+            update_started["at"] = 0.0
+            audit("update_start", ok=False)
+            raise HTTPException(500, "The update could not be started. Run: python -m hub update --restart") from None
+        audit("update_start", ok=True, method=result["method"])
+        return {"ok": True, "method": result["method"], "version": updater_mod.read_version(),
+                "message": "Updating now. The app will reconnect in about 20 seconds."}
 
     # ---- files -------------------------------------------------------------------------
 

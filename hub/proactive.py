@@ -10,6 +10,11 @@ Every "thing the hub wants you to know" is an event. `classify(event)` is a pure
 - 'quiet' everything else, and during quiet hours everything except 'now' events of type meeting/reminder. Stored
           and shown in Today, never pushed.
 
+Event types hooked up: 'meeting' (Friday's calendar check, once per meeting through the `dedupe` key, so only this
+path pushes it), 'backup_done' (batch) and 'backup_failed' (now) from the in-hub backup (Settings > Backup). The
+`python -m hub backup` command and the watchdog run as separate processes without the dispatcher and keep their own
+direct ntfy push.
+
 Routes (login needed): GET /api/proactive/state -> {enabled, pending, events (last 20), last_flush}.
 State lives in `proactive.json` under the data folder. Other modules call `submit_or_notify(ctx, event)`, which uses
 the dispatcher when it is running and falls back to a plain `ctx.notify` when it is not.
@@ -28,7 +33,7 @@ from .common import Ctx, JsonFile
 
 log = logging.getLogger("hub.proactive")
 
-NOW_TYPES = ("reminder", "morning", "evening_summary")
+NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed")
 BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done")
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
@@ -152,6 +157,11 @@ class Proactive:
             qs, qe = self._quiet()
             decision = classify(event, now=now, quiet_start=qs, quiet_end=qe)
             d = self.load()
+            dedupe = str(event.get("dedupe") or "")[:80]
+            if dedupe:                               # e.g. one push per meeting: the same key is never handled twice
+                if f"e:{dedupe}" in d["seen"]:
+                    return "duplicate"
+                d["seen"].append(f"e:{dedupe}")
             title = " ".join(str(event.get("title") or "").split())[:120]
             body = str(event.get("body") or "")[:400]
             link = event.get("link") if isinstance(event.get("link"), str) else None

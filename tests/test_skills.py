@@ -314,7 +314,19 @@ class Catalog(Base):
         self.assertTrue(skill["installed"])
 
     def test_sources_listed_in_config(self):
-        self.assertIn("openclaw/skills", self.client.get("/api/skills").json()["sources"])
+        src = self.client.get("/api/skills").json()["sources"]
+        self.assertEqual(src, ["NousResearch/hermes-agent/skills/*", "openclaw/openclaw/skills"])
+
+    def test_category_source_lists_one_level_of_categories(self):
+        r = self.client.get("/api/skills/catalog?source=NousResearch/hermes-agent/skills/*").json()
+        self.assertEqual(r["source"], "NousResearch/hermes-agent/skills/*")
+        self.assertTrue(all(i["kind"] == "category" and not i["installed"] for i in r["skills"]))
+        self.assertEqual(r["skills"][0]["source"], "NousResearch/hermes-agent/skills/arxiv")   # open it for its skills
+        self.assertIn("contents/skills", self.http.calls[-1])
+        self.assertNotIn("*", self.http.calls[-1])
+        plain = self.client.get("/api/skills/catalog?source=NousResearch/hermes-agent/skills").json()
+        self.assertEqual(plain["skills"][0]["kind"], "skill")
+        self.assertEqual(len(self.http.calls), 2)                    # the two shapes are cached separately
 
 
 class Tools(Base):

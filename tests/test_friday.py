@@ -633,6 +633,19 @@ class Proactive(FridayCase):
         self.clock.now = at(11, 3)
         self.assertEqual(self.tick(), [])
 
+    def test_meeting_goes_through_the_dispatcher_once(self):
+        from hub.proactive import Proactive
+        self.enable()
+        self.ctx.proactive = Proactive(self.ctx, clock=self.clock)
+        self.meetings = [meeting("Design sync", at(11, 9), at(11, 40))]
+        raised = self.tick()
+        self.assertEqual(len(raised), 1)
+        self.assertEqual([n["source"] for n in self.notes], ["proactive"])      # one push, from the dispatcher only
+        self.assertIn("Design sync starts in 9 minutes", self.notes[0]["title"])
+        self.clock.now = at(11, 3)
+        self.tick()
+        self.assertEqual(len(self.notes), 1)
+
     def test_sources_failing_do_not_stop_the_loop(self):
         self.enable()
         for key in list(self.hub.routes):

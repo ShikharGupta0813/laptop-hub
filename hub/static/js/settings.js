@@ -98,9 +98,36 @@ export function init(container, ctx) {
       el("div", { class: "st-chips" }, chips));
   }
 
+  // Update REDLINE: always present. POST /api/update starts the update (the task if installed, else a detached process).
+  let updateInfo = null, updating = false;
+  async function loadUpdate() {
+    try { updateInfo = await api("/api/update-log"); } catch { updateInfo = null; }
+    paint();
+  }
+  function updateCard() {
+    const btn = ui.button({ label: updating ? "Updating..." : "Update REDLINE", icon: "download", variant: "primary", block: true, disabled: updating });
+    btn.addEventListener("click", async () => {
+      if (updating) return;
+      if (!await ui.confirm({ title: "Update REDLINE?", message: "The newest code is pulled from GitHub and the hub restarts. The app will reconnect in about 20 seconds.", confirmLabel: "Update now" })) return;
+      updating = true; paint();
+      try {
+        const r = await api("/api/update", { method: "POST", json: { confirm: true } });
+        good(r.message || "Updating now. The app will reconnect in about 20 seconds.");
+        setTimeout(() => { updating = false; loadUpdate(); }, 20000);
+      } catch (error) { updating = false; fail(error); paint(); }
+    });
+    const lines = (updateInfo?.lines || []).slice(-6);
+    return el("div", { class: "ui-card ui-stack" },
+      el("h3", { class: "ui-card__title" }, "Update REDLINE"),
+      el("p", { class: "ui-card__sub" }, `Current version ${updateInfo?.version || S?.version || "?"}. The app will reconnect in ~20 s.`),
+      btn,
+      lines.length ? el("pre", { class: "ui-hint st-note", style: "white-space:pre-wrap;overflow-wrap:anywhere;margin:0" }, lines.join("\n")) : null);
+  }
+
   function main() {
     const rows = [];
     if (!S) return rows;
+    rows.push(updateCard());
     const chatName = S.chat_model || "Not set";
     rows.push(group("Intelligence",
       ui.listRow({ icon: "cpu", tone: "info", title: "Models", sub: `Chat: ${chatName}`, chevron: true, onClick: () => openSection("models"),
@@ -624,6 +651,7 @@ export function init(container, ctx) {
 
   paint();
   load();
+  loadUpdate();
   return {
     show() { if (!S) load(); },
     openSection,

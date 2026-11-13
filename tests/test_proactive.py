@@ -79,6 +79,22 @@ class Dispatch(Base):
         self.assertEqual(self.pushed[0]["title"], "Call Asha")
         self.assertEqual(self.pushed[0]["source"], "proactive")
 
+    def test_backup_events(self):
+        from hub import backup
+        self.assertEqual(proactive.classify(backup.proactive_event(True, 2048)), "batch")
+        self.assertEqual(proactive.classify(backup.proactive_event(False)), "now")
+        self.assertEqual(self.engine.submit(backup.proactive_event(False)), "now")
+        self.assertEqual(self.pushed[0]["title"], "Backup failed")
+        self.assertEqual(self.engine.submit(backup.proactive_event(True, 2048)), "batch")
+        self.assertEqual(self.pushed[1]["body"], "Chief, the backup is done.")
+
+    def test_dedupe_key_fires_once(self):
+        ev = {"type": "meeting", "minutes": 8, "title": "Standup", "dedupe": "m:abc"}
+        self.assertEqual(self.engine.submit(ev), "now")
+        self.assertEqual(self.engine.submit(ev), "duplicate")
+        self.assertEqual(self.engine.submit({**ev, "dedupe": "m:other"}), "now")
+        self.assertEqual(len(self.pushed), 2)
+
     def test_batching_window(self):
         self.engine.submit({"type": "autopilot_ready", "count": 2})
         self.assertEqual(len(self.pushed), 1)                       # first batch goes out at once

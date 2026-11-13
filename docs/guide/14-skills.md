@@ -6,7 +6,7 @@ A **skill** is a short instruction file someone else wrote, for example "how to 
 
 ## Add one
 - Say or type: "**install the arxiv skill**". You get an approval card with the name, where it comes from, what it does and its size. Tap Approve.
-- Or open **Apps, Skills, Browse**, pick a catalog (Hermes Agent or OpenClaw) and tap Install, or paste a GitHub link like `owner/repo/path/to/skill`.
+- Or open **Apps, Skills, Browse**, pick a catalog (Hermes Agent, open a category first; or OpenClaw) and tap Install, or paste a GitHub link like `owner/repo/path/to/skill`.
 
 ## Use one
 Say "**use the code-explainer skill on this**" and paste or describe the thing. Turn a skill off any time with its switch, or Remove it.

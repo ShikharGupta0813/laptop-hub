@@ -10,13 +10,13 @@ with a hub-written `.hub-skill.json` (source, size, scripts, enabled). Community
 | Key | Default | Meaning | Settings |
 |---|---|---|---|
 | `skills_enabled` | `true` | routes, tools, screen | yes |
-| `skills_sources` | `["NousResearch/hermes-agent/skills", "openclaw/skills"]` | catalogs shown in Browse | hand-edit |
+| `skills_sources` | `["NousResearch/hermes-agent/skills/*", "openclaw/openclaw/skills"]` | catalogs shown in Browse; a trailing `/*` means the folder holds categories | hand-edit |
 
 Caps: SKILL.md 40 KB, whole skill 2 MB and 300 files, 200 skills, name `^[a-z0-9][a-z0-9-_]{0,63}$` (a folder name is lower-cased and spaces become `-`).
 
 ## Routes
 - `GET /api/skills?persona=jarvis|friday` -> `{skills[{name, description, persona, persona_hint, enabled, source, size, installed_at, scripts[], files[], untrusted: true}], count, limit, sources[]}`. Without `persona` all skills show.
-- `GET /api/skills/catalog?source=owner/repo/path&refresh=` -> `{source, skills[{name, folder, source, persona_hint, installed}]}`: the sub-folders of that GitHub folder, from the unauthenticated GitHub contents API, cached 1 hour (`refresh=true` skips the cache). 403/429 -> 503 "limiting requests".
+- `GET /api/skills/catalog?source=owner/repo/path&refresh=` -> `{source, skills[{name, folder, source, kind: skill|category, persona_hint, installed}]}`: the sub-folders of that GitHub folder (with a trailing `/*` on `source` they are `category` entries, one level; open one by asking for its `source`), from the unauthenticated GitHub contents API, cached 1 hour (`refresh=true` skips the cache). 403/429 -> 503 "limiting requests".
   The list shows folder names only (no descriptions: that would be one request per skill); Install checks that SKILL.md exists.
 - `GET /api/skills/search?q=&persona=` -> `{installed[], catalog[], failed[]}`.
 - `POST /api/skills/preview {source}` -> `{name, description, persona, persona_hint, size, scripts[], source, installed}`. Downloads to a temp folder, installs nothing.
@@ -24,6 +24,11 @@ Caps: SKILL.md 40 KB, whole skill 2 MB and 300 files, 200 skills, name `^[a-z0-9
 - `POST /api/skills/{name}/toggle {enabled?}` -> `{ok, skill}`. Flips when `enabled` is omitted.
 - `POST /api/skills/{name}/use {input?, persona?}` -> `{name, prompt, untrusted}`: the fenced prompt block. A skill for the other voice or a switched-off skill answers 400.
 - `DELETE /api/skills/{name}?confirm=true` -> `{ok}`; without `confirm` 400.
+
+## Catalog layouts (checked against the real repos, 2026-11-13)
+- `NousResearch/hermes-agent`: `skills/<category>/<skill>/SKILL.md` (and the same under `optional-skills/`), so the default is `.../skills/*` (categories first, then open one).
+- `openclaw/openclaw`: `skills/<skill>/SKILL.md`, flat. The old default `openclaw/skills` is not a public repo; a hand-edited config that still lists it will show "not found" in Browse.
+- Browse only reads the cached GitHub contents API listing (folders only); a clone happens only on Install. Category listing does not check which folders hold a SKILL.md, so Install on a non-skill folder says "no SKILL.md".
 
 ## Sources and install safety
 `owner/repo`, `owner/repo/path/to/skill` or `https://github.com/owner/repo[/tree/branch/path]`. Anything else (other hosts, http, userinfo, `..`, option-like names) is refused before git runs.
