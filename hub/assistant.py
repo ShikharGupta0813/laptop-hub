@@ -197,6 +197,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "chat": ({"chat_send"}, re.compile(r"\bgoogle chat\b|\bchat (?:space|message)\b|\bpost (?:in|to) (?:the )?chat\b", re.I)),
     "english": ({"english_progress", "quiz_history"},
                 re.compile(r"\benglish\b|\bquiz|\bvocab|\bstudy progress\b", re.I)),
+    "ccsessions": ({"cc_sessions", "cc_session_read", "cc_session_send"},
+                   re.compile(r"\bclaude code\b|\bsessions?\b|\bwhat is claude doing\b|\bwaiting on me\b|\bclaude(?:'s| is) (?:waiting|working)\b", re.I)),
     "brain": ({"remember", "recall", "task_intake", "task_update", "tasks_list"},
               re.compile(r"\bremember\b|\bnote this\b|\brecall\b|\bwhat was\b|\brca\b|\broot cause\b|\btask from\b|"
                          r"\bsomeone gave me\b|\bgave me (?:a )?task\b|\bfollow[- ]?ups?\b|\bremind me\b|\btell me tomorrow\b|"

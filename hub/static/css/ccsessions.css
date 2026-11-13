@@ -1,0 +1,22 @@
+/* Claude Code sessions. Scoped under #view-ccsessions; tokens only (ARC-Glass). */
+#view-ccsessions .cc { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-ccsessions .cc > * { min-width: 0; }
+#view-ccsessions .cc-card { padding: var(--sp-4); }
+#view-ccsessions .cc-head { display: flex; align-items: center; gap: var(--sp-3); width: 100%; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; min-height: 44px; }
+#view-ccsessions .cc-project { font-weight: 600; overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
+#view-ccsessions .cc-age { color: var(--c-text-3); font-size: var(--fs-sm); flex: none; }
+#view-ccsessions .cc-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--c-text-3); }
+#view-ccsessions .cc-dot--working { background: var(--c-accent); box-shadow: 0 0 0 0 var(--c-accent); animation: cc-pulse 1.6s ease-out infinite; }
+#view-ccsessions .cc-dot--waiting { background: var(--c-warn); }
+#view-ccsessions .cc-dot--idle { background: var(--c-text-3); opacity: .6; }
+#view-ccsessions .cc-card--waiting { border-color: var(--c-warn); }
+#view-ccsessions .cc-state { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); }
+#view-ccsessions .cc-line { margin: 0; color: var(--c-text-2); overflow-wrap: anywhere; }
+#view-ccsessions .cc-turns { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); max-height: 22em; overflow: auto; }
+#view-ccsessions .cc-turn { display: grid; gap: 2px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md, 12px); background: var(--c-surface-2); overflow-wrap: anywhere; white-space: pre-wrap; }
+#view-ccsessions .cc-turn--assistant { background: var(--c-accent-soft); }
+#view-ccsessions .cc-say { width: 100%; min-height: 72px; }
+#view-ccsessions .cc-actions { display: flex; gap: var(--sp-2); }
+#view-ccsessions .cc-job { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+@keyframes cc-pulse { 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { #view-ccsessions .cc-dot--working { animation: none; } }
