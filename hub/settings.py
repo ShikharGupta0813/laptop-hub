@@ -33,6 +33,8 @@ from pydantic import BaseModel, StrictBool
 
 from . import config as cfg
 from . import providers
+from . import redact as redact_mod
+from . import usage as usage_mod
 from .common import Ctx
 
 # ---- what may be changed -------------------------------------------------------------------------------
@@ -45,12 +47,14 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
                "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
-               "wake_laptop_enabled", "wake_laptop_device")
+               "wake_laptop_enabled", "wake_laptop_device",
+               "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
+               "claude_login_5h_soft_cap")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
                "council_allow_claude")
-SECRET_KEYS = ("ntfy_topic",)   # changes are audited without the value (the topic works like a password)
+SECRET_KEYS = ("ntfy_topic", "redact_names")   # changes are audited without the value (the topic works like a password)
 
 FULL_CONTROL_PHRASE = "I UNDERSTAND"
 MODEL_NAME = re.compile(r"\A[A-Za-z0-9._:/-]{1,80}\Z")
@@ -212,6 +216,28 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 500:
                 raise HTTPException(400, "autopilot_daily_ai_calls must be a whole number from 0 to 500.")
             changes[key] = value
+        elif key == "redact_enabled":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "redact_enabled must be true or false.")
+            changes[key] = value
+        elif key == "redact_kinds":
+            if not isinstance(value, list) or not all(isinstance(v, str) and v in redact_mod.KINDS for v in value):
+                raise HTTPException(400, f"redact_kinds must be a list of: {', '.join(redact_mod.KINDS)}.")
+            changes[key] = [k for k in redact_mod.KINDS if k in value]
+        elif key == "redact_names":
+            if (not isinstance(value, list) or len(value) > redact_mod.MAX_NAMES
+                    or not all(isinstance(v, str) and 2 <= len(v.strip()) <= 60 and v.isprintable() for v in value)):
+                raise HTTPException(400, "redact_names must be a list of up to 50 words, each 2 to 60 printable characters.")
+            changes[key] = list(dict.fromkeys(v.strip() for v in value))
+        elif key in ("cloud_daily_cap", "claude_login_5h_soft_cap"):
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100000:
+                raise HTTPException(400, f"{key} must be a whole number from 0 (no cap) to 100000.")
+            changes[key] = value
+        elif key == "provider_daily_caps":
+            if (not isinstance(value, dict) or not all(k in usage_mod.PROVIDERS for k in value)
+                    or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
+                raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
+            changes[key] = {k: v for k, v in value.items() if v}
         elif key == "vision_daily_calls":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 500:
                 raise HTTPException(400, "vision_daily_calls must be a whole number from 0 to 500.")
@@ -514,6 +540,10 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "proactive_batch_minutes": config.proactive_batch_minutes,
             "buildflow_enabled": config.buildflow_enabled,
             "wake_laptop_enabled": config.wake_laptop_enabled, "wake_laptop_device": config.wake_laptop_device,
+            "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
+            "redact_kinds_all": list(redact_mod.KINDS), "redact_names": list(config.redact_names),
+            "cloud_daily_cap": config.cloud_daily_cap, "provider_daily_caps": dict(config.provider_daily_caps),
+            "claude_login_5h_soft_cap": config.claude_login_5h_soft_cap,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

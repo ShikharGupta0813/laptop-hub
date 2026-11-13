@@ -39,6 +39,7 @@ from .common import Ctx
 from .config import Config
 from . import providers as providers_mod
 from .router import Router
+from . import redact as redact_mod
 from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
@@ -52,7 +53,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
-                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword")
+                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -81,6 +82,7 @@ class AskBody(BaseModel):
     text: str = ""
     question: str = ""
     provider: str = "auto"
+    override_cap: bool = False   # lift the daily cap for this one request
 
 
 class NoteBody(BaseModel):
@@ -100,6 +102,7 @@ class AssistantBody(BaseModel):
     auto_approve: bool = False
     persona: str = "auto"      # "jarvis" | "friday" | "auto" (a leading name in the text decides)
     voice: bool = False        # the text came from the microphone
+    override_cap: bool = False  # lift the daily AI cap for this one message (or say "use gemini anyway")
     context: str = ""          # what the phone is showing right now; the assistant treats it as live context
 
 
@@ -134,13 +137,23 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
                config_path: Path | None = None, update_log: Path | None = None) -> FastAPI:
     deps = deps or Deps()
     llm = deps.llm or OllamaClient(config.ollama_host, config.chat_model)
-    claude = deps.claude or ClaudeClient(config.claude_model)
-    claude_login = deps.claude_login or ClaudeCliClient(config.claude_cli_model or "sonnet",
-                                                        path=config.claude_cli_path)
-    gemini = deps.gemini or GeminiClient(config.gemini_model)
+    # Every cloud client goes through redact.Guarded: private details are hidden on the way out and restored on
+    # the way back, and the request is counted (hub/usage.py). The local model is only counted, never redacted.
+    def _audit_late(*a, **k):
+        audit(*a, **k)
+    claude = redact_mod.Guarded(deps.claude or ClaudeClient(config.claude_model), config, _audit_late, count_as="claude")
+    claude_login_raw = deps.claude_login or ClaudeCliClient(config.claude_cli_model or "sonnet",
+                                                            path=config.claude_cli_path)
+    claude_login = redact_mod.Guarded(claude_login_raw, config, _audit_late, count_as="claude-login")
+    gemini_raw = deps.gemini or GeminiClient(config.gemini_model)
+    gemini = redact_mod.Guarded(gemini_raw, config, _audit_late, count_as="gemini")
     # Claude only supervises (plans, optionally reviews) and is rationed; Gemini does the work.
-    duo = deps.duo or DuoClient(gemini, Supervisor(claude_login, lambda: config.duo_max_claude_per_hour,
-                                                    lambda: config.duo_verify))
+    if deps.duo is not None:
+        duo = deps.duo
+    else:
+        duo = DuoClient(redact_mod.Guarded(gemini_raw, config, _audit_late, count_as="duo"),
+                        Supervisor(claude_login, lambda: config.duo_max_claude_per_hour, lambda: config.duo_verify))
+    llm = redact_mod.Guarded(llm, config, _audit_late, count_as="local", redact_text=False)
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
     router = Router(config)
     ollama_seen: dict[str, bool | None] = {"up": None}   # last Ollama answer from /api/status (None = not checked)
@@ -523,12 +536,13 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             system, user = build_prompt(body.mode, body.text, body.question)
         except LLMError as exc:
             raise HTTPException(400, str(exc))
-        picked, decision = router.route(body.provider, body.question or body.text, ollama_seen["up"])
+        picked, decision = router.route(body.provider, body.question or body.text, ollama_seen["up"], body.override_cap)
         model = model_for(picked)
 
         async def pieces():
             if decision:
-                yield {"meta": {"routed_to": decision["routed_to"], "reason": decision["reason"]}}
+                yield {"meta": {"routed_to": decision["routed_to"], "reason": decision["reason"],
+                                **({"note": decision["note"]} if decision.get("note") else {})}}
             async for text in model.stream(system, user):
                 yield {"t": text}
         return sse(pieces())
@@ -637,7 +651,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             named, stripped = split_persona(body.text, config.jarvis_name)
             if named and stripped:
                 persona, text = named, stripped
-        provider, decision = router.route(body.provider, text, ollama_seen["up"])
+        provider, decision = router.route(body.provider, text, ollama_seen["up"], body.override_cap)
         audit("assistant_message", session=body.session_id, provider=provider,
               auto_approve=body.auto_approve, chars=len(text), persona=persona or "jarvis",
               **({"full_control": True} if config.full_control is True else {}))
@@ -648,7 +662,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
         async def events():
             if decision:
-                yield f"data: {json.dumps({'type': 'meta', 'routed_to': decision['routed_to'], 'reason': decision['reason']})}\n\n"
+                yield f"data: {json.dumps({'type': 'meta', 'routed_to': decision['routed_to'], 'reason': decision['reason'], **({'note': decision['note']} if decision.get('note') else {})})}\n\n"
             try:
                 async for event in assistant.run(body.session_id, run_text, provider,
                                                  body.auto_approve, **extra_args):

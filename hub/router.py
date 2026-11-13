@@ -11,12 +11,13 @@ from __future__ import annotations
 import re
 import time
 
-from . import providers
+from . import providers, usage
 from .assistant import TOOL_GROUPS, TOOLISH
 
 TRIVIAL_WORDS = 12     # fewer words than this, with no tool intent, is chit-chat
 LONG_WORDS = 60        # more words than this is a big job
 CODE_RE = re.compile(r"```|\b(?:def|class|function|import|traceback|stack ?trace|exception|compile|debug|refactor|regex|sql)\b", re.I)
+OVERRIDE_RE = re.compile(r"\buse\s+(gemini|claude[- ]login|claude|duo)\s+anyway\b", re.I)
 MULTI_RE = re.compile(r"\b(?:step by step|and then|then|after that|first .+ then|for each|every)\b", re.I)
 
 
@@ -55,8 +56,33 @@ class Router:
     def status(self) -> dict:
         return {"enabled": self.enabled, "last_decision": self.last}
 
-    def route(self, choice: str | None, text: str, ollama_up: bool | None = None) -> tuple[str, dict | None]:
-        """(provider, decision). `decision` is None when the router did not decide (explicit pick or off)."""
+    def route(self, choice: str | None, text: str, ollama_up: bool | None = None,
+              override_cap: bool = False) -> tuple[str, dict | None]:
+        """(provider, decision). `decision` is None when the router did not decide (explicit pick or off).
+
+        Budget: when the chosen cloud provider hit its daily cap (hub/usage.py) the turn goes to the local model
+        with a visible `note`, never to another paid provider. "use gemini anyway" in the text (or override_cap)
+        lifts the cap for this one turn only."""
+        target, decision = self._pick(choice, text, ollama_up)
+        said = OVERRIDE_RE.search(text or "")
+        if said:
+            wanted = said.group(1).lower().replace(" ", "-")
+            if not choice or choice.strip().lower() in ("", "auto"):
+                target = wanted
+            override_cap = True
+        stop = "" if override_cap else usage.cap_reached(self.config, target)
+        if stop:
+            hint = f' Say "use {target.replace("-", " ")} anyway" to use it this once.'
+            decision = {**(decision or {}), "routed_to": "local", "capped": True, "note": stop + ".",
+                        "reason": stop + "." + hint, "default": target, "at": time.strftime("%H:%M:%S")}
+            target = "local"
+            self.last = decision
+        elif said and decision is None:
+            decision = {"routed_to": target, "kind": "override", "reason": "Daily cap lifted for this message.",
+                        "default": target, "at": time.strftime("%H:%M:%S")}
+        return target, decision
+
+    def _pick(self, choice: str | None, text: str, ollama_up: bool | None) -> tuple[str, dict | None]:
         config = self.config
         chosen = (choice or "").strip().lower()
         default = (getattr(config, "default_provider", "auto") or "auto").strip().lower()

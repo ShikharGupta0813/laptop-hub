@@ -36,6 +36,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from . import providers as providers_mod
+from . import usage
 from .common import Ctx, InProcessClient, ask_json
 from .llm import LLMError
 from .watch import epoch, parse_when
@@ -459,6 +460,7 @@ class Autopilot:
             return None, f"Daily AI limit reached ({used} of {self.budget}), so no draft was written."
         provider = pick_provider(self.config)
         self.store.add_ai_call(day)
+        usage.record(self.config, "autopilot")
         self.ctx.audit("autopilot_ai", kind=kind, provider=provider, chars=len(data_block))
         nonce = secrets.token_hex(8)
         user = (f"Owner tone: {self.tone}\n\n{KIND_RULES[kind]}\n\n===== BEGIN DATA {nonce} =====\n"

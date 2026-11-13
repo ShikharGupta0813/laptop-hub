@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .auth import hash_token
+from .redact import KINDS as REDACT_KINDS
 
 DEFAULT_PORT = 8765
 
@@ -118,6 +119,15 @@ class Config:
     wake_laptop_enabled: bool = False
     wake_laptop_device: str = ""            # sounddevice name or index; "" = the default microphone
 
+    # Privacy redaction (hub/redact.py): hide emails, phones, cards, keys... before text goes to a CLOUD model.
+    redact_enabled: bool = True
+    redact_kinds: list[str] = field(default_factory=lambda: list(REDACT_KINDS))
+    redact_names: list[str] = field(default_factory=list)   # extra words to mask (your employer, a project name...)
+    # Usage and budget (hub/usage.py): 0 / missing = no cap. At a cap the turn goes to the local model, with a note.
+    cloud_daily_cap: int = 0                                 # requests per day across Gemini, Claude and duo
+    provider_daily_caps: dict[str, int] = field(default_factory=dict)   # e.g. {"gemini": 200}
+    claude_login_5h_soft_cap: int = 0                        # 0 = unknown; else the estimate shows calls in the last 5 h
+
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
     def data_path(self) -> Path:
@@ -207,6 +217,10 @@ def save(config: Config, path: Path) -> None:
         "buildflow_enabled": bool(config.buildflow_enabled),
         "wake_laptop_enabled": config.wake_laptop_enabled is True, "wake_laptop_device": str(config.wake_laptop_device or ""),
         "backup_dir": config.backup_dir,
+        "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
+        "redact_names": list(config.redact_names), "cloud_daily_cap": int(config.cloud_daily_cap or 0),
+        "provider_daily_caps": dict(config.provider_daily_caps or {}),
+        "claude_login_5h_soft_cap": int(config.claude_login_5h_soft_cap or 0),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

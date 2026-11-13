@@ -4,6 +4,7 @@
 import { wakeEnabled, setWakeEnabled, wakeSupported, keepAwakeEnabled, setKeepAwake, wakeLockSupported } from "./wake.js";
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
+import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -61,6 +62,7 @@ export function init(container, ctx) {
   let notify = null;       // GET /api/notifications/settings (lazy)
   let diag = null;         // diagnostics summary (lazy)
   let appearanceCard = null;
+  let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
 
   // ---- main page ---------------------------------------------------------------------------------
   function appearance() {
@@ -149,6 +151,10 @@ export function init(container, ctx) {
       ui.listRow({ icon: "cpu", tone: "info", title: "Models", sub: `Chat: ${chatName}`, chevron: true, onClick: () => openSection("models"),
         meta: S.ollama?.reachable ? null : ui.badge("Offline", "warn") }),
       ui.listRow({ icon: "folder", tone: "orange", title: "Folders", sub: `${S.kb_roots?.length || 0} searchable, ${S.writable_roots?.length || 0} editable`, chevron: true, onClick: () => openSection("folders") })));
+    rows.push(group("Privacy and usage",
+      ui.listRow({ icon: "shield", tone: "good", title: "Privacy redaction", chevron: true, onClick: () => redactionSheet(S, load),
+        sub: S.redact_enabled === false ? "Off: cloud AI sees your text as it is" : "Hides emails, numbers, keys and your own words from cloud AI",
+        meta: ui.badge(S.redact_enabled === false ? "Off" : "On", S.redact_enabled === false ? "warn" : "good") })));
     rows.push(group("Alerts",
       ui.listRow({ icon: "bell", tone: "bad", title: "Phone push", sub: notify ? (notify.ntfy_enabled ? "On. Alerts reach your phone." : "Off. Alerts stay in the app.") : "Alerts on your phone through ntfy", chevron: true, onClick: () => openSection("push") }),
       ui.listRow({ icon: "eye", tone: "info", title: "Mail and chat watching", sub: "Rules for important mail and chat", chevron: true, onClick: () => ctx.open("watch") }),
@@ -232,7 +238,8 @@ export function init(container, ctx) {
 
   function paint() {
     appearanceCard = appearanceCard || appearance();
-    root.replaceChildren(...[glance(), appearanceCard, ...main()].filter(Boolean));
+    if (S && !usageEl) usageEl = usageCard({ onEdit: () => capsSheet(S, () => { load(); usageEl.refresh(); }) });
+    root.replaceChildren(...[glance(), usageEl, appearanceCard, ...main()].filter(Boolean));
   }
 
   async function load() {
