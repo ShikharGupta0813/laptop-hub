@@ -170,3 +170,15 @@ It is **off by default**, because it keeps the microphone open (privacy and batt
 recognition, so it only works while the app is open and the screen is on; Android stops it in the background. It needs
 the secure (https) address and the microphone permission. Under the hood: `js/wakephrase.js` (matching, tested with
 node), `js/wake.js` (the listener, chip and chime), `voicemode.js` `setPreload()` (hands over the words).
+
+**Keep the screen on.** Android stops the microphone when the screen turns off, so with the wake word on, REDLINE asks the browser to keep the
+screen awake while it listens and the page is visible (the Screen Wake Lock API; it lets go when you leave the app or switch the wake word off).
+That uses battery. Turn it off with **Settings > Appearance > Keep screen on while listening**. Browsers without the feature simply skip it.
+
+### At the desk: the laptop microphone
+
+Switch on **Settings > Appearance > Listen on the laptop microphone** and the hub itself listens on the laptop: say "Hey Jarvis, what's on my plate"
+and hear the answer from the laptop speakers, phone untouched. It is off by default and needs the optional `sounddevice` package
+(`pip install sounddevice`) plus a microphone; without them the switch shows a plain message instead of failing. **Privacy:** the audio never leaves the
+laptop (the local Whisper model reads it), only the text of a wake sentence goes to the AI you chose, and everything else it hears is thrown away
+at once. Changes that need approval still wait for you on the phone, and you get a push. Details: `docs/api/wakeword.md`.

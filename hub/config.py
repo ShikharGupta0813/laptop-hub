@@ -114,6 +114,9 @@ class Config:
     ccsessions_dir: str = ""                # "" = ~/.claude/projects
     # Build flow: spec-first delegation (brainstorm, spec, plan, Council builds step by step). See docs/api/buildflow.md.
     buildflow_enabled: bool = True
+    # Laptop-side wake word (hub/wakeword.py): listen on the laptop microphone for "Hey Jarvis". Off by default.
+    wake_laptop_enabled: bool = False
+    wake_laptop_device: str = ""            # sounddevice name or index; "" = the default microphone
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
@@ -202,6 +205,7 @@ def save(config: Config, path: Path) -> None:
         "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
         "ccsessions_enabled": bool(config.ccsessions_enabled), "ccsessions_dir": str(config.ccsessions_dir or ""),
         "buildflow_enabled": bool(config.buildflow_enabled),
+        "wake_laptop_enabled": config.wake_laptop_enabled is True, "wake_laptop_device": str(config.wake_laptop_device or ""),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")

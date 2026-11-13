@@ -8,6 +8,7 @@ import * as ui from "./ui.js";
 import { matchWake } from "./wakephrase.js";
 
 const KEY = "hub.wake";
+const KEEP_KEY = "hub.wake.keepawake";      // "0" = off; anything else (or unset) = on while wake is on
 const CHIP_TEXT = "Listening for Hey Jarvis or Hey Friday";
 const SETTLE_MS = 1100;            // after a match, wait this long for the rest of the sentence (a final result skips the wait)
 const BACKOFF_BASE_MS = 500;
@@ -19,6 +20,14 @@ export function wakeEnabled() { try { return localStorage.getItem(KEY) === "1"; 
 export function setWakeEnabled(on) {
   try { if (on) localStorage.setItem(KEY, "1"); else localStorage.removeItem(KEY); } catch (_) { /* not remembered */ }
   window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: !!on } }));
+}
+
+// ---- keep the screen on (Screen Wake Lock API): Android stops the microphone when the screen turns off -----
+export function wakeLockSupported() { try { return !!navigator.wakeLock?.request; } catch (_) { return false; } }
+export function keepAwakeEnabled() { try { return localStorage.getItem(KEEP_KEY) !== "0"; } catch (_) { return true; } }
+export function setKeepAwake(on) {
+  try { if (on) localStorage.removeItem(KEEP_KEY); else localStorage.setItem(KEEP_KEY, "0"); } catch (_) { /* not remembered */ }
+  window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: wakeEnabled() } }));
 }
 
 // ---- chime (WebAudio, no asset files): Jarvis is lower, Friday higher ----------------------------------
@@ -155,7 +164,28 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
     restartTimer = setTimeout(begin, delay);
   }
 
+  // The lock is held only while wake listening is on, the page is visible and the switch allows it. The browser drops it
+  // when the page is hidden, so every sync (visibilitychange included) asks again. Unsupported or refused: silently nothing.
+  let lock = null, locking = false;
+  function syncLock() {
+    const want = wakeEnabled() && keepAwakeEnabled() && wakeLockSupported() && !document.hidden;
+    if (!want) {
+      const l = lock; lock = null;
+      if (l) { try { Promise.resolve(l.release()).catch(() => {}); } catch (_) { /* gone already */ } }
+      return;
+    }
+    if (lock || locking) return;
+    locking = true;
+    Promise.resolve().then(() => navigator.wakeLock.request("screen")).then((l) => {
+      locking = false;
+      if (!(wakeEnabled() && keepAwakeEnabled() && !document.hidden)) { try { l.release(); } catch (_) { /* ignore */ } return; }
+      lock = l;
+      l.addEventListener?.("release", () => { if (lock === l) lock = null; });
+    }).catch(() => { locking = false; });
+  }
+
   function sync({ fresh = false } = {}) {
+    syncLock();
     if (fresh) { problem = ""; fails = 0; }
     if (wanted()) { loadName(); if (!running) { clearTimeout(restartTimer); begin(); } }
     else { clearTimeout(restartTimer); stopRec(); }
@@ -170,5 +200,5 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
   window.addEventListener("hub:mic", (e) => { dictating = Math.max(0, dictating + (e.detail?.on ? 1 : -1)); sync(); });
   window.addEventListener("pointerdown", unlockAudio, { once: true });
   sync();
-  return { sync, isRunning: () => running };
+  return { sync, isRunning: () => running, hasWakeLock: () => !!lock };
 }

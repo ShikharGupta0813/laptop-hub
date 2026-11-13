@@ -1,2 +1,5 @@
 faster-whisper>=1.0
 av>=14.0,<17
+# Optional: the hub listens on the laptop microphone for "Hey Jarvis" (Settings > Listen on the laptop microphone).
+# Needs the PortAudio library on Linux/macOS; Windows wheels include it.
+# sounddevice>=0.4

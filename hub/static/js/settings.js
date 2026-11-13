@@ -1,7 +1,7 @@
 // Settings: grouped inset lists that drill into sheets.
 // Routes: docs/api/settings.md, docs/api/notify.md (push), docs/api/capture-android.md (HubCapture plugin).
 // Sections (openSection): appearance, models, folders, push (alias notifications), capture, diagnostics, audit, backup, about.
-import { wakeEnabled, setWakeEnabled, wakeSupported } from "./wake.js";
+import { wakeEnabled, setWakeEnabled, wakeSupported, keepAwakeEnabled, setKeepAwake, wakeLockSupported } from "./wake.js";
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 
@@ -74,13 +74,29 @@ export function init(container, ctx) {
       } });
     const wakeOk = wakeSupported() && window.isSecureContext;
     const wake = switchRow({ icon: "mic", tone: "teal", title: "Hey Jarvis / Hey Friday",
-      sub: wakeOk ? "Say it hands-free to start voice mode. Works only while the app is open and the screen is on: Android stops the microphone in the background. Keeps the microphone open, so it uses some battery."
+      sub: wakeOk ? "Say it hands-free to start voice mode. Works only while the app is open and the screen is on: Android stops the microphone in the background. Keeps the microphone open and keeps the screen on while listening, so it uses battery."
         : "Needs Chrome on the secure (https) address. This browser cannot listen for a wake word.",
       checked: wakeEnabled() && wakeOk, disabled: !wakeOk, onChange: (on) => setWakeEnabled(on) });
+    const keep = switchRow({ icon: "phone", tone: "teal", title: "Keep screen on while listening",
+      sub: wakeLockSupported() ? "Stops the screen from turning off while Hey Jarvis is listening, so the microphone keeps working. Uses battery."
+        : "This browser cannot keep the screen on.",
+      checked: keepAwakeEnabled() && wakeLockSupported(), disabled: !wakeLockSupported(), onChange: (on) => setKeepAwake(on) });
+    const lap = switchRow({ icon: "laptop", tone: "violet", title: "Listen on the laptop microphone",
+      sub: "Say Hey Jarvis at the desk and the laptop answers out loud, phone untouched. Privacy: audio never leaves the laptop, only the text of what you say after the wake phrase goes to the AI you chose. Anything else it hears is thrown away. Needs the optional sounddevice package.",
+      checked: false, onChange: async (on) => {
+        try {
+          const st = await api("/api/wakeword/toggle", { method: "POST", json: { enabled: on } });
+          if (on && st.message) ui.toast(st.message, { kind: "warn" });
+        } catch (e) { fail(e); lap.switch.input.checked = !on; }
+      } });
+    api("/api/wakeword/status").then((st) => {
+      lap.switch.input.checked = !!st.enabled;
+      if (st.enabled && st.message) lap.querySelector(".ui-row__sub").textContent += " Status: " + st.message;
+    }).catch(() => {});
     return el("section", { class: "st-group", id: "st-appearance" },
       el("h2", { class: "ui-caps st-caps" }, "Appearance"),
       el("div", { class: "ui-card ui-card--pad-lg" }, ui.appearancePanel()),
-      el("div", { class: "ui-list ui-list--inset ui-list--icons st-after" }, haptics, motion, wake));
+      el("div", { class: "ui-list ui-list--inset ui-list--icons st-after" }, haptics, motion, wake, keep, lap));
   }
 
   function glance() {

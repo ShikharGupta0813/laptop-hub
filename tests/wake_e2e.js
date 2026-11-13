@@ -18,10 +18,22 @@ const FAKE = `(() => {
   window.SpeechRecognition = window.webkitSpeechRecognition = FakeSR;
 })();`;
 
+// Fake Screen Wake Lock: records every request and whether it was released.
+const FAKE_LOCK = `(() => {
+  window.__locks = [];
+  Object.defineProperty(navigator, "wakeLock", { configurable: true, value: {
+    request: async () => {
+      const l = { released: false, _h: [], addEventListener(t, f) { this._h.push(f); },
+        release() { this.released = true; this._h.forEach((f) => f()); return Promise.resolve(); } };
+      window.__locks.push(l); return l;
+    } } });
+})();`;
+
 (async () => {
   const browser = await chromium.launch({ args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, permissions: ["microphone"] });
   await ctx.addInitScript(FAKE);
+  await ctx.addInitScript(FAKE_LOCK);
   await ctx.addInitScript(() => { try { localStorage.setItem("hub.wake", "1"); } catch (_) {} });
   const page = await ctx.newPage();
   const errors = [];
@@ -39,6 +51,22 @@ const FAKE = `(() => {
   const wake = async (phrase) => {
     await page.evaluate((p) => window.__srs.filter((s) => s.live).forEach((s) => s.say(p)), phrase);
   };
+  // 0. screen wake lock: held while listening, dropped when hidden, re-acquired when visible, off with its switch
+  const held = () => page.evaluate(() => window.__locks.some((l) => !l.released));
+  await page.waitForFunction(() => window.__locks.some((l) => !l.released), null, { timeout: 8000 });
+  const setHidden = (h) => page.evaluate((hide) => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hide });
+    if (hide) window.__locks.forEach((l) => l.release());   // browsers drop the lock on hide
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, h);
+  await setHidden(true);
+  if (await held()) throw new Error("wake lock still held while the page is hidden");
+  await setHidden(false);
+  await page.waitForFunction(() => window.__locks.some((l) => !l.released), null, { timeout: 8000 });
+  await page.evaluate(() => { localStorage.setItem("hub.wake.keepawake", "0"); window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: true } })); });
+  await page.waitForFunction(() => window.__locks.every((l) => l.released), null, { timeout: 8000 });
+  await page.evaluate(() => { localStorage.removeItem("hub.wake.keepawake"); window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: true } })); });
+  await page.waitForFunction(() => window.__locks.some((l) => !l.released), null, { timeout: 8000 });
   // 1. noise that must not wake
   await wake("jarvis is a nice name");
   await page.waitForTimeout(300);

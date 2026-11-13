@@ -90,6 +90,16 @@ class WakeFilesTests(unittest.TestCase):
         self.assertIn("visibilitychange", wake)
         self.assertIn("setPreload", (STATIC / "js" / "voicemode.js").read_text(encoding="utf-8"))
 
+    def test_screen_wake_lock_wiring(self):
+        wake = (STATIC / "js" / "wake.js").read_text(encoding="utf-8")
+        self.assertIn("navigator.wakeLock.request(\"screen\")", wake)
+        self.assertIn('"hub.wake.keepawake"', wake)
+        self.assertIn("!== \"0\"", wake)                    # default on; only an explicit "0" turns it off
+        self.assertIn("release", wake)
+        settings = (STATIC / "js" / "settings.js").read_text(encoding="utf-8")
+        self.assertIn("Keep screen on while listening", settings)
+        self.assertIn("uses battery", settings.lower())
+
     def test_default_is_off(self):
         wake = (STATIC / "js" / "wake.js").read_text(encoding="utf-8")
         self.assertIn('getItem(KEY) === "1"', wake)   # only an explicit "1" turns it on
