@@ -444,3 +444,9 @@ python -m hub.devserver --port 8799                 # fake models and a harmless
 `hub/opps.py` (sources, finder loop, ranking, routes, tools), `hub/opps_vet.py` (scam flags), `hub/profile.py` (private profile, `get_profile(ctx)`), screen `js/opps.js`.
 Docs: `docs/api/opps.md`, `docs/guide/19-opportunities.md`. Settings: `opps_enabled` (off), `opps_interval_min`, `opps_min_score`. Pushes to `applyq.add_item` via guarded import.
 Unverified: every starter feed/API address (no network when built); PDF parsing without pypdf; the UI was not run in a browser.
+## 3l. Application queue / APPLYQ (2026-11-13)
+- `hub/applyq.py` (SQLite `applyq.sqlite`, drafting, `/api/applyq` routes, `add_item(ctx, item)` for the finder, `today_line`), `hub/applyq_tools.py` (6 tools; only `send_application` sends: approval, N2, one item by id), `js/applyq.js` + `css/applyq.css` (Apps > Applications; in `sw.js` SHELL, VERSION not bumped). Docs: `docs/api/applyq.md`, `docs/guide/19-applications.md`.
+- Hard rule: NO automatic sending. The only sender is `Applyq.send` via `POST /{id}/send` or the approved tool; `tests/test_applyq.py::NeverAutomatic` asserts add/draft/summary/proactive/routes never call gmailx.
+- Drafts are template-only by default (profile facts + `[FILL: x]` markers, sending blocked until filled); optional AI via `draft_fn` or `{"ai": true}` using `ctx.model_for("auto")`.
+- Optional neighbours, imported defensively: `hub.profile.get_profile`, `hub.gmailx.send_mail/list_accounts/search`. Settings keys appended: `applyq_enabled`, `applyq_daily_cap`. Proactive: `applyq_ready` (batch), `applyq_daily` (now, once after `today_evening_time`). Today gains an `applyq` line (also on the front page).
+- UNVERIFIED: real Gmail send/search (fake in tests), AI rewrite with a real model, the screen on a phone/390px (source-checked only), the `gmailx` search result shape (assumed list of dicts with `from`/`subject`).

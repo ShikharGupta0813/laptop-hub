@@ -49,6 +49,7 @@ export const VIEWS = [
   { id: "skills", label: "Skills", icon: "layers", path: "./skills.js", under: "apps" },
   { id: "research", label: "Research", icon: "search", path: "./research.js", under: "apps" },
   { id: "brain", label: "Memory", icon: "book-open", path: "./brain.js", under: "apps" },
+  { id: "applyq", label: "Applications", icon: "send", path: "./applyq.js", under: "apps" },
   { id: "buildflow", label: "Build", icon: "wand", path: "./buildflow.js", under: "apps" },
   { id: "opps", label: "Opportunities", icon: "target", path: "./opps.js", under: "apps" },
 ];

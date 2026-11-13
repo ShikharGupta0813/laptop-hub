@@ -33,8 +33,8 @@ from .common import Ctx, JsonFile
 
 log = logging.getLogger("hub.proactive")
 
-NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed")
-BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done")
+NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed", "applyq_daily")
+BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready")
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
 MAX_EVENTS = 20
@@ -91,6 +91,7 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     bak = sum(1 for e in events if e.get("type") == "backup_done")
     cc = [e for e in events if e.get("type") == "cc_waiting"]
     bld = sum(1 for e in events if e.get("type") == "build_done")
+    apq = sum(int(e.get("count") or 1) for e in events if e.get("type") == "applyq_ready")
     parts = []
     if ap:
         parts.append("1 Autopilot draft is waiting for you" if ap == 1 else f"{ap} Autopilot drafts are waiting for you")
@@ -104,6 +105,8 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
         parts.append(f"Claude is waiting on you in {len(cc)} sessions")
     if bld:
         parts.append("your build is finished" if bld == 1 else f"{bld} builds are finished")
+    if apq:
+        parts.append("1 application is ready to review" if apq == 1 else f"{apq} applications are ready to review")
     return f"{call}, {_join(parts)}." if parts else ""
 
 
@@ -137,7 +140,7 @@ class Proactive:
                 "events": [e for e in d.get("events", []) if isinstance(e, dict)][-MAX_EVENTS:],
                 "last_flush": d.get("last_flush") if isinstance(d.get("last_flush"), str) else "",
                 "seen": [str(x) for x in d.get("seen", [])][-MAX_SEEN:],
-                "morning": str(d.get("morning") or "")}
+                "morning": str(d.get("morning") or ""), "applyq_daily": str(d.get("applyq_daily") or "")}
 
     def save(self, d: dict) -> None:
         try:
@@ -257,8 +260,32 @@ class Proactive:
                          "body": (f"From {f['who']}" if f.get("who") else "Follow-up due"), "link": "brain"})
         return len(fresh)
 
+    def applyq_daily(self) -> bool:
+        """Once a day at/after today_evening_time: Friday's one-line application summary (hub/applyq.py)."""
+        t = str(getattr(self.ctx.config, "today_evening_time", "18:00") or "")
+        m = CLOCK_RE.match(t)
+        now = self.clock()
+        if not self.enabled or not m or now.hour * 60 + now.minute < int(m.group(1)) * 60 + int(m.group(2)):
+            return False
+        try:
+            from . import applyq
+            if not applyq.enabled(self.ctx.config):
+                return False
+            d = self.load()
+            key = now.date().isoformat()
+            if d.get("applyq_daily") == key:
+                return False
+            d["applyq_daily"] = key
+            self.save(d)
+            line = applyq.Applyq(self.ctx, clock=self.clock).daily_line()
+        except Exception:  # noqa: BLE001 - optional feature
+            return False
+        if line.startswith("Today: 0 applied, 0 ready, 0 replies"):
+            return False
+        return self.submit({"type": "applyq_daily", "title": "Applications", "body": line, "link": "applyq"}) == "now"
+
     def tick(self) -> None:
-        for step in (self.flush, self.morning, self.reminders):
+        for step in (self.flush, self.morning, self.reminders, self.applyq_daily):
             try:
                 step()
             except Exception:  # noqa: BLE001

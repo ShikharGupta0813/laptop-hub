@@ -53,6 +53,12 @@ export function init(container, ctx) {
     return el("section", { class: "ui-stack" }, ui.eyebrow("FU", "Follow-ups"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
   }
 
+  // One small line from the application queue (hub/applyq.py); hidden when empty
+  function applyqLine() {
+    if (!data.applyq) return null;
+    return el("p", { class: "ui-hint", style: "cursor:pointer", onclick: () => ctx?.open?.("applyq") }, data.applyq);
+  }
+
   function timeline() {
     const items = data.timeline || [];
     const body = items.length
@@ -173,7 +179,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), front, refresh),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
-      (askNode ||= askBar()), now(), held(), followups(), timeline(), doneToday(), numbers(), tasks(), summary(),
+      (askNode ||= askBar()), now(), held(), followups(), applyqLine(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
   }
 

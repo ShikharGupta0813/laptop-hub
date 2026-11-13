@@ -9,6 +9,7 @@ const SHELL = [
   "/css/hub.css", "/css/inbox.css", "/css/journal.css", "/css/kb.css", "/css/learn.css", "/css/notes.css",
   "/css/notifications.css", "/css/reminders.css", "/css/screen.css", "/css/settings.css", "/css/shell.css",
   "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/css/ccsessions.css", "/js/ccsessions.js", "/js/today.js", "/css/research.css", "/js/research.js", "/css/opps.css", "/js/opps.js", "/css/skills.css", "/js/skills.js", "/css/brain.css", "/js/brain.js", "/css/buildflow.css", "/js/buildflow.js",
+  "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/css/ccsessions.css", "/js/ccsessions.js", "/js/today.js", "/css/research.css", "/js/research.js", "/css/skills.css", "/js/skills.js", "/css/brain.css", "/js/brain.js", "/css/applyq.css", "/js/applyq.js", "/css/buildflow.css", "/js/buildflow.js",
   "/js/privacy.js", "/css/privacy.css", "/js/fullcontrol.js", "/js/wheel.js", "/css/wheel.css", "/vendor/fonts/orbitron-var-latin.woff2",
   "/js/speechchunk.js", "/js/wake.js", "/js/wakephrase.js", "/css/wake.css",
   "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js", "/js/bookmarks.js", "/js/boot.js",

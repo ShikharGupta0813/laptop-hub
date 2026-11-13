@@ -343,8 +343,17 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
-            "brain": memory, "proactive": _proactive_view(ctx),
+            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx),
             "numbers": numbers, "sources_failed": sorted(set(failed))}
+
+
+def _applyq_line(ctx: Ctx) -> str:
+    """One short line about the application queue (hub/applyq.py), "" when it is off, empty or missing."""
+    try:
+        from . import applyq
+        return applyq.today_line(ctx.config)
+    except Exception:  # noqa: BLE001 - optional
+        return ""
 
 
 def _proactive_view(ctx: Ctx) -> dict:
