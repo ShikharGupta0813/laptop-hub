@@ -49,7 +49,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
                "wake_laptop_enabled", "wake_laptop_device",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
-               "claude_login_5h_soft_cap")
+               "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -188,7 +188,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "applyq_enabled", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -238,6 +238,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
                 raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
             changes[key] = {k: v for k, v in value.items() if v}
+        elif key == "applyq_daily_cap":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 200:
+                raise HTTPException(400, "applyq_daily_cap must be a whole number from 0 to 200.")
+            changes[key] = value
         elif key == "vision_daily_calls":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 500:
                 raise HTTPException(400, "vision_daily_calls must be a whole number from 0 to 500.")
@@ -539,6 +543,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "proactive_quiet_start": config.proactive_quiet_start, "proactive_quiet_end": config.proactive_quiet_end,
             "proactive_batch_minutes": config.proactive_batch_minutes,
             "buildflow_enabled": config.buildflow_enabled,
+            "applyq_enabled": config.applyq_enabled, "applyq_daily_cap": config.applyq_daily_cap,
             "wake_laptop_enabled": config.wake_laptop_enabled, "wake_laptop_device": config.wake_laptop_device,
             "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
             "redact_kinds_all": list(redact_mod.KINDS), "redact_names": list(config.redact_names),

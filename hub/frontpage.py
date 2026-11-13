@@ -87,6 +87,7 @@ footer{{color:var(--mute);font-size:12px;border-top:1px solid var(--line);paddin
 {_section("Tasks due and overdue", t_rows, "Nothing due.")}
 {_section("Follow-ups due", f_rows, "No follow-ups due.")}
 {_section("Autopilot drafts waiting", d_rows, "Nothing to approve.")}
+{f'<p class="sub">{e(data.get("applyq"))}</p>' if data.get("applyq") else ""}
 <section><h2>Spend so far</h2><p class="spend">{e(numbers.get("spent_text") or "0")}</p></section>
 {note}
 <footer>Generated {e(data.get("generated_at"))}. Print this page or keep it open.</footer>

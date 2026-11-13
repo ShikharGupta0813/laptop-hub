@@ -110,6 +110,10 @@ class Config:
     brain_enabled: bool = True
     brain_context: bool = True              # add the best matching memories to question-like assistant turns
 
+    # Application queue (hub/applyq.py): drafts wait here; nothing is sent without the owner's tap. See docs/api/applyq.md.
+    applyq_enabled: bool = True
+    applyq_daily_cap: int = 10              # sends per day before an extra confirm is needed (0 = no cap)
+
     # Claude Code sessions (hub/ccsessions.py): watch the owner's Claude Code transcripts, nudge one from the phone.
     ccsessions_enabled: bool = True
     ccsessions_dir: str = ""                # "" = ~/.claude/projects
