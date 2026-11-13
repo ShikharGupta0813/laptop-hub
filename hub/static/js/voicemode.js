@@ -139,11 +139,13 @@ export function openVoiceMode(host) {
     el("div", { class: "vm-fr__head" }, ui.icon("laptop"), el("strong", {}, "Ready to open on your laptop")),
     frList, frMsg, el("div", { class: "vm-fr__btns" }, frNoBtn, frOpenBtn));
 
+  const stopBtn = ui.button({ variant: "danger", size: "md", icon: "stop", label: "Stop", class: "vm-stop", hidden: true,
+    "aria-label": "Stop the assistant", onClick: () => { cancelSpeech(); aiCap.dataset.raw = ""; host.stopTurn(); } });
   const errBox = el("div", { class: "vm-error", hidden: true, role: "alert" });
   const foot = el("p", { class: "vm-foot" }, "Say “stop”, “cancel” or “new chat”. Tap the orb to interrupt.");
 
   const root = el("div", { class: "vm", id: "vm-overlay", role: "dialog", "aria-modal": "true", "aria-labelledby": "vm-title", "data-state": "listening" },
-    top, el("div", { class: "vm-stage" }, who, orb, wave, title, hint, captions, errBox), frPanel, approval, foot);
+    top, el("div", { class: "vm-stage" }, who, orb, wave, title, hint, captions, stopBtn, errBox), frPanel, approval, foot);
   document.body.append(root);
   document.documentElement.classList.add("vm-open");
   release = ui.pushLayer(() => close(true));
@@ -178,6 +180,7 @@ export function openVoiceMode(host) {
     const labels = { listening: "Pause listening", paused: "Resume listening", thinking: "Stop the assistant", speaking: "Interrupt and listen", approval: "Stop and decline", error: "Voice orb" };
     orb.setAttribute("aria-label", labels[next] || "Voice orb");
     orb.disabled = next === "error";
+    stopBtn.hidden = !(next === "thinking" || next === "approval");   // a visible Stop while a turn runs
     const icon = { listening: "mic", paused: "mic-off", thinking: "stop", speaking: "volume", approval: "stop", error: "mic-off" }[next] || "mic";
     orb.querySelector(".vm-orb__icon").replaceChildren(ui.icon(icon));
   }

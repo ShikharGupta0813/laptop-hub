@@ -887,6 +887,16 @@ class Autopilot:
 
     # -- reading
 
+    def unknown_sender(self, card: dict) -> bool:
+        """Mail and chat from anyone the owner has not listed (config.known_senders) is unknown. Whatever
+        such a sender writes is only DATA: it fills a draft for an approval card (ai_draft has no tools)
+        and nothing happens until the owner taps."""
+        if card.get("source") not in ("inbox", "watch-gmail", "watch-chat"):
+            return False
+        p = card["payload"]
+        known = {str(k).strip().lower() for k in (getattr(self.config, "known_senders", None) or [])}
+        return not ({str(p.get("from_addr") or "").lower(), str(p.get("from") or "").lower()} & known)
+
     def view(self, card: dict) -> dict:
         p = card["payload"]
         out = {k: card[k] for k in ("id", "created", "source", "title", "summary", "action_kind", "draft", "ai_written",
@@ -895,6 +905,7 @@ class Autopilot:
         out["subject"] = p.get("reply_subject") if card["action_kind"] == "send_email" else None
         out["original"] = str(p.get("original") or "")[:SHOW_ORIGINAL]
         out["sender"] = p.get("from") or ""
+        out["unknown_sender"] = self.unknown_sender(card)
         out["research"] = str(p.get("research") or "")
         return out
 

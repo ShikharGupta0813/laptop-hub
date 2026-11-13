@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from .assistant import ExtraTool
+from .assistant import ExtraTool, mark_tools
 from .common import InProcessClient
 from .skills import ACTIVE_PERSONA, NAME_RE, clean
 
@@ -102,7 +102,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         ok, d = await hub.call("DELETE", f"/api/skills/{name}?confirm=true")
         return (True, f"Removed the skill '{name}'.") if ok else (False, d)
 
-    return [
+    return mark_tools([
         tool("skills_list", "List the installed community skills usable in this voice (name and description). Read-only. "
                             "Use for 'what skills do I have'.", {}, [], skills_list),
         tool("skill_search", "Search installed skills and the community catalogs (Hermes, OpenClaw) by words. Read-only.",
@@ -117,4 +117,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
              {"name": {"type": "string"}, "input": {"type": "string"}}, ["name"], skill_use),
         tool("skill_remove", "Remove an installed skill. The owner is asked first.",
              {"name": {"type": "string"}}, ["name"], skill_remove, needs_approval=True, preview=remove_preview),
-    ]
+    ], untrusted=['skill_search', 'skill_use', 'skills_list'], mutating=[])

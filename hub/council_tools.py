@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from .assistant import ExtraTool
+from .assistant import ExtraTool, mark_tools
 from .common import InProcessClient
 from .council import MAX_NOTES_CHARS, MAX_TASK_CHARS, MAX_VERIFY_CHARS
 
@@ -141,7 +141,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         ok, d = await hub.call("POST", f"/api/council/jobs/{job_id}/cancel", body={})
         return (True, f"Council run {job_id} was cancelled.") if ok else (False, d)
 
-    return [
+    return mark_tools([
         tool("council_run",
              "Start a 'council' run in the BACKGROUND: several different models (local and free hosted) work on one "
              "task together, with an optional shell command that verifies the result. Use it for side jobs that "
@@ -163,4 +163,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
              {"job_id": {"type": "string"}}, [], council_status),
         tool("council_cancel", "Stop a running council run (kills it). The owner is asked first.",
              {"job_id": {"type": "string"}}, ["job_id"], council_cancel, needs_approval=True, preview=cancel_preview),
-    ]
+    ], untrusted=['council_status'], mutating=[])

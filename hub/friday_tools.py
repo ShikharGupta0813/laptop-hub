@@ -13,7 +13,7 @@ import re
 import time
 from typing import Any, Callable
 
-from .assistant import ExtraTool
+from .assistant import ExtraTool, mark_tools
 from .common import InProcessClient
 
 ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -255,7 +255,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
             return False, d
         return True, fmt_autopilot(d)
 
-    return [
+    return mark_tools([
         tool("today_summary", "The owner's whole day in a few spoken sentences: meetings, tasks due, spending so far, mail, "
                               "commits and what was done. style 'evening' gives the 'what happened today' review. Use it for "
                               "'summary', 'my day', 'what's the update', 'day end', 'what did I do today'. Read-only.",
@@ -291,4 +291,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
                                        "stored pending ids work. The owner is asked first and sees each exact target.",
              {"ids": {"type": "array", "items": {"type": "string"}}}, ["ids"], friday_run_laptop_prep,
              needs_approval=True, preview=run_preview),
-    ]
+    ], untrusted=['autopilot_cards', 'autopilot_pending', 'friday_brief', 'friday_laptop_prep', 'friday_plan', 'today_summary'], mutating=['autopilot_decide'])

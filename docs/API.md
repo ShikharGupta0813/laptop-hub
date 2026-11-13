@@ -80,6 +80,7 @@ sentence the UI can show as is.
   - `{"type":"error","message"}`
   - `{"type":"done"}` always the last event
 - `POST /api/assistant/approve` `{session_id, call_id, approve: bool}` → `{ok:true}` · `404` if nothing is waiting
+- `POST /api/assistant/stop` `{session_id}` → `{ok, stopped}` cancels the running turn (see docs/api/assistant-safety.md)
 - `POST /api/assistant/reset` `{session_id}` → `{ok:true}` forgets the conversation
 
 ## Terminal (WebSocket)

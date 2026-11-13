@@ -556,7 +556,9 @@ export function init(container, ctx) {
     const shown = output.length > OUTPUT_LIMIT ? output.slice(0, OUTPUT_LIMIT) + `\n… (${output.length - OUTPUT_LIMIT} more characters not shown)` : output;
     card.outputPre = el("pre", { class: "as-pre as-output" }, shown || "(no output)");
     fillDetail(card);
-    if (ev.denied) {
+    if (ev.blocked === "taint") {
+      setCardState(card, "failed", "Blocked: untrusted content was read");
+    } else if (ev.denied) {
       setCardState(card, "denied", "Declined");
       resolveApprovalUi(card, "Declined. Nothing was run.");
     } else if (ev.ok) {
@@ -611,6 +613,9 @@ export function init(container, ctx) {
       }
       case "note":
         if (ev.text) showNotice(ev.text);
+        break;
+      case "stopped":
+        t.stopped = true;
         break;
       case "error": {
         closeBubble(t);
@@ -714,6 +719,8 @@ export function init(container, ctx) {
     t.stopped = true;
     stopButton.disabled = true;
     t.pending = null;
+    // Tell the laptop too: it cancels the generation or the tool wait and denies what waits for a tap.
+    try { await ctx.api("/api/assistant/stop", { method: "POST", json: { session_id: t.sid } }); } catch (_) { /* the abort below still ends the stream */ }
     for (const card of t.cards.values()) {
       if (!card.ui || card.done || card.answering) continue;
       card.answering = true;

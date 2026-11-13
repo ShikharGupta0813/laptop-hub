@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import httpx
 
-from .assistant import ExtraTool
+from .assistant import ExtraTool, mark_tools
 from .common import InProcessClient
 
 MAX_LINES = 40
@@ -100,9 +100,9 @@ def fmt_result(data: dict) -> str:
 def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
     hub = Hub(get_app, config)
 
-    def tool(name, description, props, required, run, needs_approval=False, preview=None):
+    def tool(name, description, props, required, run, needs_approval=False, preview=None, untrusted=False):
         return ExtraTool({"name": name, "description": description,
-                          "input_schema": _schema(props, required)}, run, needs_approval, preview)
+                          "input_schema": _schema(props, required)}, run, needs_approval, preview, untrusted)
 
     async def asana_tasks(a):
         ok, d = await hub.call("GET", "/api/work/asana/tasks", params={"filter": a.get("filter") or "today"})
@@ -207,7 +207,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         recent = ", ".join(f"{q['title']} {round(q['percent'])}%" for q in d["quizzes"][:5]) or "none yet"
         return True, f"{d['streak_days']} day quiz streak. Recent: {recent}."
 
-    return [
+    return mark_tools([
         tool("asana_tasks", "List the owner's open Asana tasks. filter: today (default), overdue, upcoming or all. Read-only.",
              {"filter": {"type": "string", "enum": ["today", "overdue", "upcoming", "all"]}}, [], asana_tasks),
         tool("asana_task", "Details of one Asana task (notes, subtasks, recent comments) by its id. Read-only.",
@@ -228,7 +228,9 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
                               "processes, clipboard...). Use action 'list' first to see the actions and their params. "
                               "Reading status is free; anything that changes the laptop asks the owner first.",
              {"action": _s("An action id, or 'list'."), "params": {"type": "object"}}, ["action"], laptop_action,
-             needs_approval=lambda a: a.get("action") not in FREE_LAPTOP_ACTIONS),
+             needs_approval=lambda a: a.get("action") not in FREE_LAPTOP_ACTIONS,
+             untrusted=lambda a: any(w in str(a.get("action", "")).lower()
+                                     for w in ("clipboard", "screen", "ocr", "window", "read"))),
         tool("type_text", "Type text on the laptop as keystrokes into the window that has focus. Works only while "
                           "remote control is armed in Apps > Screen. Asks the owner first.",
              {"text": _s("What to type.")}, ["text"], type_text, needs_approval=True),
@@ -238,4 +240,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
              needs_approval=lambda a: a.get("action") != "status"),
         tool("english_progress", "The owner's English practice streak and progress. Read-only.", {}, [], english_progress),
         tool("quiz_history", "The owner's recent quiz results and streak. Read-only.", {}, [], quiz_history),
-    ]
+    ], untrusted=['asana_task', 'asana_tasks', 'calendar'], mutating=[])

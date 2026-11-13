@@ -113,6 +113,10 @@ class ResetBody(BaseModel):
     session_id: str
 
 
+class StopBody(BaseModel):
+    session_id: str
+
+
 def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None = None,
                config_path: Path | None = None, update_log: Path | None = None) -> FastAPI:
     deps = deps or Deps()
@@ -639,6 +643,14 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         if not assistant.resolve(body.session_id, body.call_id, body.approve):
             raise HTTPException(404, "Nothing is waiting for that approval.")
         return {"ok": True}
+
+    @api.post("/assistant/stop")
+    async def assistant_stop(body: StopBody):
+        """Stop: cancel the running turn, deny what waits for approval, end the stream with a 'stopped' note."""
+        stop = getattr(assistant, "stop", None)
+        stopped = bool(stop(body.session_id)) if stop else False
+        audit("assistant_stop_request", session=body.session_id, stopped=stopped)
+        return {"ok": True, "stopped": stopped}
 
     @api.post("/assistant/reset")
     def assistant_reset(body: ResetBody):
