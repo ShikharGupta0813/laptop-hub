@@ -8,6 +8,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [capture-android.md](api/capture-android.md): the Android `HubCapture` plugin (payment and Gmail/Chat notification capture)
 - [cards.md](api/cards.md): flashcards with spaced repetition, decks, AI roadmaps
 - [fileops.md](api/fileops.md): write side of Files (writable roots, trash, upload, zip)
+- [gmailx.md](api/gmailx.md): several Gmail accounts (personal + company), scopes, company-mail privacy, send gating
 - [inbox.md](api/inbox.md): read-only Gmail, summaries, reply drafts, daily briefing
 - [kb.md](api/kb.md): Ask my files (keyword and embedding search with citations)
 - [life-capture.md](api/life-capture.md): automatic UPI spend capture and pending payments

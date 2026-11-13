@@ -124,7 +124,18 @@ python -m hub setup --only chat
 | **Calendar** | The secret iCal link of your calendar (ends in `.ics`) | Windows keyring |
 | **Google Chat** | A webhook URL from a Space (Apps and integrations, Webhooks) | Windows keyring |
 
-> ⚠️ **Careful:** Company Google accounts often have App passwords or IMAP turned off by the admin. Then Gmail login is refused and only your admin can change it. A personal Gmail works without help. Only one mailbox can be connected at a time.
+> ⚠️ **Careful:** Company Google accounts often have App passwords or IMAP turned off by the admin. Then Gmail login is refused and only your admin can change it. A personal Gmail works without help. The Inbox and Watch read one app-password mailbox; a **second account (for example your company one)** is connected with Google sign-in instead, see the next section.
+
+## Connect a second Gmail account (company)
+
+The first mailbox (your app password above) shows up in Settings as **Gmail accounts, personal**. A company mailbox is added next to it with Google sign-in, so it needs no app password and no IMAP switch. It is **read-only** unless you turn sending on.
+
+1. **Create an OAuth client once** (about 5 minutes) at console.cloud.google.com: new project, *APIs and services*, enable the **Gmail API**, then *OAuth consent screen* (choose **Internal** if the account is a Google Workspace one and you are its user; otherwise **External**), then *Credentials, Create credentials, OAuth client ID, type **Desktop app***. Copy the client id and secret.
+2. If the consent screen is **External** and in *Testing*, add the company address under **Test users**. Otherwise Google refuses the sign-in ("access blocked"). Testing-mode sign-ins expire after 7 days; publish the app to stop that. A Workspace admin may also have to allow the app (Admin console, Security, API controls); if sign-in is blocked, ask them.
+3. In REDLINE: **Settings, Gmail accounts, Connect another account**. Label it `company`, paste the client id and secret (saved in the Windows keyring), press **Open Google sign-in**, and approve **View your email messages and settings** only. The page then says "Connected". If the phone is not the laptop, open the sign-in link on the laptop; if the final page cannot be reached, copy its address into **Finish with pasted address**.
+4. The card lists what Google really granted. Sending needs the extra **Allow sending from this account** switch and a fresh consent (press **Re-consent**).
+
+> ⚠️ **Careful:** Company mail is treated as protected. With **Allow company mail to reach cloud AI** off (the default) the text of company mail is never sent to Gemini or Claude, only sender, subject and Gmail's short snippet, and only the local model reads a body. Ask your company (for example OneStack's policy) before switching it on. 🟡 Not tested against real Google accounts yet.
 
 > ⚠️ **Careful:** Chat webhooks can **post** into a Space. They cannot **read** Chat, and they cannot send direct messages. To read Chat, use the Android app's notification capture (Settings, Phone capture, Watch chat). 🟡 Not tested on real devices yet.
 

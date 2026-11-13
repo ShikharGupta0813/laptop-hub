@@ -75,7 +75,7 @@ export function init(container, ctx) {
   function numbers() {
     const n = data.numbers || {};
     return el("section", { class: "ui-stack" }, ui.eyebrow("04", "Numbers"),
-      el("div", { class: "ui-stack" }, stat("Spent today", n.spent_text), stat("Mails handled", n.mails_handled), stat("Commits", n.commits), stat("Cards approved", n.cards_approved)));
+      el("div", { class: "ui-stack" }, stat("Spent today", n.spent_text), stat("Mails handled", n.mails_handled), ...(data.mail?.accounts || []).map((a) => stat(`Unread (${a.label})`, a.unread ?? "?")), stat("Commits", n.commits), stat("Cards approved", n.cards_approved)));
   }
 
   function tasks() {

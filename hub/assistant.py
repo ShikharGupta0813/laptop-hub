@@ -184,7 +184,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "spending": ({"expense_add", "spending_summary"},
                  re.compile(r"\bspen[dt]|\bexpenses?\b|\bbudget|\bpaid\b|\bbought\b|\bcost\b|[$\u20ac\u00a3]", re.I)),
     "bookmarks": ({"bookmark_add"}, re.compile(r"\bbookmark|\bsave (?:this )?(?:link|url|page)\b", re.I)),
-    "mail": ({"inbox_unread", "send_email"},
+    "mail": ({"inbox_unread", "send_email", "gmail_summary", "gmail_search"},
              re.compile(r"\be-?mails?\b|\binbox\b|\bmail\b|\bunread\b|\bgmail\b|\boutlook\b", re.I)),
     "alerts": ({"watch_alerts", "notifications_recent"},
                re.compile(r"\balerts?\b|\bnotifications?\b|\bwatch(?:ing)?\b", re.I)),

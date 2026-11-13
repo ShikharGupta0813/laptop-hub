@@ -138,8 +138,35 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
 
     drafts: dict[tuple, str] = {}  # the draft shown to the owner is the one that gets sent
 
+    async def pick_account(a):
+        """(True, account dict or None for the plain Work mailer) or (False, a sentence). Refuses an account that
+        is unknown, not connected or not send-enabled; with two or more connected accounts one must be named."""
+        ok, d = await hub.call("GET", "/api/gmail/accounts")
+        accounts = [x for x in (d.get("accounts") if ok and isinstance(d, dict) else []) or [] if x.get("connected")]
+        want = str(a.get("account") or "").strip().lower()
+        if not accounts:
+            return True, None                      # Gmailx not available: the existing single mailer
+        if not want:
+            if len(accounts) > 1:
+                names = " or ".join(x["label"] for x in accounts)
+                return False, f"Say which account to send from: {names}."
+            chosen = accounts[0]
+        else:
+            chosen = next((x for x in accounts if want in (str(x["id"]).lower(), str(x["label"]).lower())), None)
+            if chosen is None:
+                return False, f"There is no connected Gmail account called '{a.get('account')}'."
+        if not chosen.get("send_enabled"):
+            return False, (f"Sending from the {chosen['label']} account is switched off. The owner can turn on "
+                           "'Allow sending from this account' in Settings, Gmail accounts.")
+        return True, None if chosen.get("kind") == "legacy" else chosen
+
     async def email_preview(a):
         """Resolve the recipient and keep the draft, so the approval card shows the real address."""
+        ok, acct = await pick_account(a)
+        if not ok:
+            return False, acct
+        if acct is not None:
+            return True, {"resolved_to": a["to"], "from_account": f"{acct['label']} ({acct.get('address', '')})"}
         ok, d = await hub.call("POST", "/api/work/email/draft",
                                body={"to": a["to"], "subject": a["subject"], "body": a["body"]})
         if not ok:
@@ -148,6 +175,13 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         return True, {"resolved_to": d["to"]}
 
     async def send_email(a):
+        ok, acct = await pick_account(a)
+        if not ok:
+            return False, acct
+        if acct is not None:
+            ok, sent = await hub.call("POST", "/api/gmail/send", body={
+                "account": acct["id"], "to": a["to"], "subject": a["subject"], "body": a["body"], "confirm": True})
+            return ok, f"Email sent to {a['to']} from the {acct['label']} account." if ok else sent
         draft_id = drafts.pop((a["to"], a["subject"], a["body"]), None)
         if draft_id is None:  # approved without a preview (auto-approve): create the draft now
             ok, d = await hub.call("POST", "/api/work/email/draft",
@@ -223,7 +257,9 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
              {"gid": _s()}, ["gid"], asana_complete, needs_approval=True),
         tool("send_email", "Send an email from the owner's account. 'to' is a contact name, 'me' or an address. The owner "
                            "sees the whole email and is asked first.",
-             {"to": _s(), "subject": _s(), "body": _s()}, ["to", "subject", "body"], send_email, needs_approval=True,
+             {"to": _s(), "subject": _s(), "body": _s(),
+              "account": _s("Which Gmail account to send from (personal, company...). Required when more than one is connected.")},
+             ["to", "subject", "body"], send_email, needs_approval=True,
              preview=email_preview),
         tool("chat_send", "Post a message to one of the owner's Google Chat spaces. The owner is asked first.",
              {"space": _s(), "text": _s()}, ["space", "text"], chat_send, needs_approval=True),

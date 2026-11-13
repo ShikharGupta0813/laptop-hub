@@ -929,6 +929,13 @@ def make_router(ctx: Ctx, *, mailbox: MailBox | None = None, bridge: Bridge | No
 
     async def ai(model_choice: str, action: str, **fields):
         ctx.audit("inbox_ai", action=action, model=model_choice, **fields)   # no mail content in the log
+        try:                                         # a relabelled (company) default account keeps its bodies off cloud AI
+            from . import gmailx
+            if not gmailx.provider_is_local(model_choice) and not gmailx.cloud_ai_allowed(ctx, "default"):
+                raise HTTPException(403, "This mailbox is marked as company mail, so its text can only be read by the local "
+                                         "model. Choose Local, or allow it in Settings, Gmail accounts.")
+        except ImportError:
+            pass
         try:
             return ctx.model_for(model_choice)
         except LLMError as exc:

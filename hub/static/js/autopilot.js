@@ -80,6 +80,7 @@ export function init(container, ctx) {
     } }) : null;
     return el("article", { class: "ui-card ap-card ui-stack", "data-id": c.id },
       el("div", { class: "ap-head" }, ui.badge(SOURCE[c.source] || c.source, "accent"),
+        c.account ? ui.badge(c.account, c.account === "personal" ? "accent" : "warn") : null,
         c.unknown_sender ? ui.badge("Unknown sender", "warn") : null,
         c.ai_written ? ui.badge("AI-written draft", "warn") : null,
         c.research ? ui.badge(`research: ${c.research}`, "accent") : null,

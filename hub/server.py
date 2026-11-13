@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision
+from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, gmailx_tools, research, skills_tools, vision
 from . import llm as llm_mod
 from . import updater as updater_mod
 from .assistant import LOCAL_CTX_TOOLS, ApprovalError, AssistantService
@@ -53,7 +53,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
-                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy")
+                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "gmailx")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -194,7 +194,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + vision.build(lambda: app, config)
         + brain_tools.build(lambda: app, config)
         + ccsessions.build(lambda: app, config)
-        + buildflow_tools.build(lambda: app, config))
+        + buildflow_tools.build(lambda: app, config)
+        + gmailx_tools.build(lambda: app, config))
 
     latency = getattr(assistant, "latency", None) or Latency()   # per-turn timings for GET /api/latency
     warming = {"busy": False}
