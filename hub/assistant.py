@@ -214,6 +214,10 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                 "send_application"},
                re.compile(r"\bapplications?\b|\bapplied\b|\bapply\b|\bcover (?:letter|note)\b|\bready to send\b|"
                           r"\bsend (?:it|that|the application)\b|\bproposals?\b", re.I)),
+    "triage": ({"list_alerts", "show_alert", "draft_reply", "mark_alert", "snooze_alert"},
+               re.compile(r"\burgent\b|\bwhat(?:'s| is) (?:urgent|important)\b|\bdraft (?:a |the )?(?:reply|response)\b|\bsnooze\b|"
+                          r"\bmark (?:it |that |this )?(?:as )?(?:handled|seen|done)\b|\bmy manager\b|\bmy boss\b|\bneed(?:s)? (?:a )?repl(?:y|ies)\b|"
+                          r"\bwho (?:messaged|pinged|needs) me\b", re.I)),
     "buildflow": ({"build_start", "build_answer", "build_spec", "build_plan", "build_next", "build_status", "build_list"},
                   re.compile(r"\bbuild me\b|\bbuild a\b|\bnew project\b|\bspec\b|\bplan the\b|\bnext step\b", re.I)),
     "devto": ({"devto_ideas", "devto_draft", "devto_list", "devto_save_draft", "devto_publish", "post_pack"},

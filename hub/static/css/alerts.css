@@ -1,0 +1,23 @@
+/* Alerts (urgent triage). Scoped under #view-alerts; tokens only. */
+#view-alerts .al { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-alerts .al > * { min-width: 0; }
+#view-alerts .al-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+#view-alerts .al-count { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-alerts .al-card { padding: 0; overflow: hidden; }
+#view-alerts .al-card.is-urgent { border-color: var(--c-warn, var(--c-accent-line)); }
+#view-alerts .al-card-head { display: grid; gap: var(--sp-1); width: 100%; padding: var(--sp-4); text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; min-height: 44px; }
+#view-alerts .al-badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+#view-alerts .al-sender { font-weight: 600; overflow-wrap: anywhere; }
+#view-alerts .al-preview { color: var(--c-text-2); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+#view-alerts .al-card-head[aria-expanded="true"] .al-preview { -webkit-line-clamp: unset; display: block; }
+#view-alerts .al-meta { color: var(--c-text-3); font-size: var(--fs-sm); }
+#view-alerts .al-detail { padding: 0 var(--sp-4) var(--sp-4); }
+#view-alerts .al-note, #view-alerts .al-why { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+#view-alerts .al-list { margin: 0; padding-left: 1.2em; color: var(--c-text-2); overflow-wrap: anywhere; }
+#view-alerts .al-draft { margin: 0; padding: var(--sp-3); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--c-surface-2); border: 1px solid var(--c-line); border-radius: var(--r-md, 10px); font: inherit; max-height: 18em; overflow: auto; }
+#view-alerts .al-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+#view-alerts .al-actions a.ui-btn { text-decoration: none; }
+#view-alerts .al-set { padding: var(--sp-4); }
+#view-alerts .al-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+#view-alerts .al-vips, #view-alerts .ui-input { width: 100%; }
+.al-offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }

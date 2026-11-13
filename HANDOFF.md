@@ -464,3 +464,10 @@ Unverified: every starter feed/API address (no network when built); PDF parsing 
 - Friday batch: `proactive.py` got batch types `devto_comment`, `devto_cadence` (and sentences). Comments are untrusted (`untrusted:true`, never in notifications; `devto_list` is an untrusted tool).
 - Optional `profile.get_profile(ctx)` is imported guarded for "Profile polish"; works without it.
 - UNVERIFIED: real dev.to response shapes, partial `PUT {published:true}`, `/users/me`, the phone UI, real keyring, AI draft quality. See `docs/api/devto.md`.
+## 3l. Urgent-alert triage (2026-11-13), Friday owns, Jarvis supplies technical content
+
+`hub/alerts.py` (triage, rules, plan/evidence/draft, delivery), `hub/asana.py` (optional poller, token in keyring), `hub/alerts_tools.py` (5 tools, TOOL_GROUPS `triage`), `js/alerts.js` + `css/alerts.css` (#/alerts, Settings tab inside it), docs `docs/api/alerts.md`, `docs/guide/22-urgent-alerts.md`, tests `tests/test_alerts.py`.
+- Hooks kept small: `proactive.py` (event type `alert`, urgency 3 passes quiet hours, batch sentence), `watch.py` ingest calls `alerts.on_watch_ingest`, `main.js` registry + `pollAlerts` (speaks `/api/alerts/pending`), sw SHELL (VERSION NOT bumped), `server.py` FEATURE_MODULES + tools, config keys appended (`alerts_*`, `asana_*`).
+- GENERAL design (owner correction): every mention/question/request raises an alert; VIPs, watched sources (`alerts_sources`) and word lists (`alerts_rules`) are editable in Alerts > Settings; one generic draft path (Brain memory + task plan; RCA is just a memory lookup).
+- HARD RULE: drafts are never sent; Copy / wa.me / intent / mailto links the owner taps.
+- UNVERIFIED: real Asana API, gmailx result shape, Android intent links, the screen in a real browser, laptop speaker on Windows. Android capture only forwards Google Chat and Gmail today (WhatsApp/Slack/Teams/Asana need a Java filter change, not done). Possible double push with Watch rules for the same Gmail/Chat message.
