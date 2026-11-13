@@ -784,7 +784,9 @@ export function init(container, ctx) {
   let recCancelled = false;
 
   function setMicState(state) {
+    const wasRec = micState === "recording";
     micState = state;
+    if (wasRec !== (state === "recording")) window.dispatchEvent(new CustomEvent("hub:mic", { detail: { on: state === "recording" } }));   // wake word pauses meanwhile
     const rec = state === "recording";
     micButton.classList.toggle("is-recording", rec);
     micButton.replaceChildren(ui.icon(rec ? "stop" : "mic"));

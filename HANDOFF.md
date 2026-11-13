@@ -344,6 +344,12 @@ python -m hub.devserver --port 8799                 # fake models and a harmless
   Whisper preloads and uses beam 1; voice turns skip the Claude planning/review calls; voice replies are spoken sentence by sentence.
 - Tool exceptions and model crashes become error messages; voice retries once if the stream drops before any event.
 - Tests: `tests/test_full_control.py`. Not in `sw.js` precache yet: `/js/fullcontrol.js`, `/js/speechchunk.js` (add on merge).
+- **Wake word ("Hey Jarvis" / "Hey Friday")**: `js/wakephrase.js` (pure matcher, node-tested), `js/wake.js` + `css/wake.css`
+  (continuous browser SpeechRecognition, auto-restart with backoff, paused while hidden / voice mode / dictation, chip row under the
+  top bar, WebAudio chime), `voicemode.js` `setPreload(text, persona)`, Settings > Appearance switch (`localStorage hub.wake`, default off).
+  Works only while the app is open and the screen on. Tests: `tests/test_wake.py`, `tests/wake_e2e.js` (fake SpeechRecognition).
+  In `sw.js` SHELL; VERSION not bumped. **Unverified on a real phone** (mic, Android session restarts, en-IN accuracy).
+  Dev server note: its fake assistant rejects the `persona` argument, so a voice turn there shows an error after the words arrive.
 
 ## 9. Related repos
 

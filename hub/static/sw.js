@@ -10,7 +10,7 @@ const SHELL = [
   "/css/notifications.css", "/css/reminders.css", "/css/screen.css", "/css/settings.css", "/css/shell.css",
   "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/js/today.js",
   "/js/fullcontrol.js", "/js/wheel.js", "/css/wheel.css", "/vendor/fonts/orbitron-var-latin.woff2",
-  "/js/speechchunk.js",
+  "/js/speechchunk.js", "/js/wake.js", "/js/wakephrase.js", "/css/wake.css",
   "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js", "/js/bookmarks.js", "/js/boot.js",
   "/js/cards.js", "/js/english.js", "/js/expenses.js", "/js/fileeditor.js", "/js/files.js", "/js/focus.js",
   "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js", "/js/jarvis.js", "/js/journal.js",

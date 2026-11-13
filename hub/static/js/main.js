@@ -7,6 +7,7 @@ import { api, ApiError } from "./api.js";
 import * as ui from "./ui.js";
 import { openSearch } from "./omnibox.js";
 import { mountWheel } from "./wheel.js";
+import { mountWake } from "./wake.js";
 
 // ---- the registry: adding a screen is one line ----------------------------------------------------
 // id: also the DOM id (#view-<id>) and the hash (#/<id>). path: module, loaded on first open.
@@ -343,6 +344,7 @@ function buildChrome() {
   }
   nav.replaceChildren(dock);
   mountWheel($("views"), ctx);   // the floating assistant wheel, above the tab bar
+  mountWake(ctx, { bar });       // "Hey Jarvis" / "Hey Friday" (off until switched on in Settings)
 
   // "/" or Ctrl+K opens search on a keyboard.
   document.addEventListener("keydown", (e) => {

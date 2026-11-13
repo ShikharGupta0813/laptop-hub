@@ -152,8 +152,21 @@ Friday decides to), it just goes. Turn it on in Settings > Account and security 
 
 | Limit | Detail |
 |---|---|
-| No "Hey Friday" | An always-listening wake word is **not built**. It needs a native Android service. Tap the mic instead. |
+| "Hey Friday" only while the app is open | The wake word works only while the app is open and the screen is on (Android stops the microphone in the background). A true always-on wake word needs a native Android service. See "Hands-free" below. |
 | "Tagged" is narrow | It means @mentions and others' comments on your open or followed tasks. |
 | Calendar needs setup | Without the Jarvis folder or an iCal link, the calendar part shows a 503 error. The rest of Friday still works. |
 | Failed sources | If one source fails, Friday lists it and uses the rest. |
 | Voice on the phone | Hands-free voice mode is 🟡 not tested on real devices yet. |
+
+## Hands-free: "Hey Jarvis" and "Hey Friday"
+
+Switch on **Settings > Appearance > Hey Jarvis / Hey Friday** and you can start voice mode by just talking: say
+"Hey Jarvis, remember that the RCA was a bad deploy" or "Hey Friday, what's my day". You hear a short chime (lower for
+Jarvis, higher for Friday), voice mode opens (cyan orb for Jarvis, amber for Friday) and whatever you said after the
+name is sent straight away. Say only "Hey Jarvis" and it opens and listens. A small chip under the top bar says
+"Listening for Hey Jarvis or Hey Friday" while it is on.
+
+It is **off by default**, because it keeps the microphone open (privacy and battery). It uses Chrome's own speech
+recognition, so it only works while the app is open and the screen is on; Android stops it in the background. It needs
+the secure (https) address and the microphone permission. Under the hood: `js/wakephrase.js` (matching, tested with
+node), `js/wake.js` (the listener, chip and chime), `voicemode.js` `setPreload()` (hands over the words).

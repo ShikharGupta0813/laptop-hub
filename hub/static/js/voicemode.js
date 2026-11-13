@@ -31,6 +31,15 @@ function storeSet(key, value) {
 
 export { speakable };
 
+// Wake word hook (js/wake.js): hand voice mode some words, and optionally a persona, before it opens.
+// Non-empty text is sent as if it had just been spoken; with no text voice mode simply starts listening.
+let preload = null;
+export function setPreload(text, persona = "") {
+  preload = { text: String(text || "").trim(), persona: persona === "friday" ? "friday" : persona === "jarvis" ? "jarvis" : "", at: Date.now() };
+}
+function takePreload() { const p = preload; preload = null; return p && p.text && Date.now() - p.at < 15000 ? p : null; }
+function peekPreload() { return preload && Date.now() - preload.at < 15000 ? preload : null; }
+
 function sentences(text, max = 220) {
   const parts = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
   const out = [];
@@ -155,8 +164,9 @@ export function openVoiceMode(host) {
     root.dataset.persona = key;
     who.textContent = key === "friday" ? (fr?.personaName?.() || "Friday") : names.jarvis;
   }
-  root.dataset.persona = host.friday ? "friday" : "jarvis";
-  if (host.friday) who.textContent = "Friday";
+  const wakePersona = peekPreload()?.text ? peekPreload().persona : "";   // opened by the wake word with words to send
+  root.dataset.persona = wakePersona || (host.friday ? "friday" : "jarvis");
+  if (root.dataset.persona === "friday") who.textContent = "Friday";
 
   function setState(next, extraHint) {
     if (!alive) return;
@@ -568,11 +578,11 @@ export function openVoiceMode(host) {
       if (info) names = { jarvis: info.jarvis_name || "Jarvis", call: info.display_name || "" };
     } catch (_) { /* older hub: names stay default */ }
     if (!alive) return;
-    setPersona(host.friday ? "friday" : "jarvis");
+    setPersona(wakePersona || (host.friday ? "friday" : "jarvis"));
     if (frOn) {
       top.querySelector(".vm-top__mid").firstChild.textContent = `${fr.personaName()} `;
       renderPanel();
-      if (host.friday) {
+      if (host.friday && !wakePersona) {
         const line = `${fr.greetingText()} Ready when you are.`;
         await say(line);
         if (!alive) return;
@@ -589,39 +599,42 @@ export function openVoiceMode(host) {
       userCap.textContent = userCap.textContent; // keep the last words visible while listening
       setState("listening");
       root.classList.remove("is-heard");
-      const heardNow = await listen();
-      if (!alive) break;
-      if (listenError) { const e = listenError; listenError = null; fail("Recording failed", `The microphone could not start recording: ${e.message || e}.`); return; }
-      if (!heardNow) {
-        if (paused) { await new Promise((r) => { resumeSignal = r; }); resumeSignal = null; }
-        continue;
-      }
-      root.classList.remove("is-heard");
-      if (heardNow.blob.size < 1500) continue;
-
-      setState("thinking", "Turning your voice into text…");
-      let text = "";
-      try {
-        text = await transcribe(heardNow.blob, heardNow.mime);
-        failures = 0;
-      } catch (error) {
+      let text = "", pre = takePreload();
+      if (pre) { text = pre.text; sub.textContent = ""; } else {
+        const heardNow = await listen();
         if (!alive) break;
-        if (error instanceof ApiError && error.status === 503) { fail("Voice is not set up", `${error.message} Install the voice requirements on the laptop, then try again.`); return; }
-        failures += 1;
-        if (failures >= 3) { fail("Cannot reach your laptop", `Transcribing keeps failing: ${error.message}`); return; }
-        sub.textContent = `Could not turn that into text (${error.message}). Listening again…`;
-        await new Promise((r) => setTimeout(r, 1500));
+        if (listenError) { const e = listenError; listenError = null; fail("Recording failed", `The microphone could not start recording: ${e.message || e}.`); return; }
+        if (!heardNow) {
+          if (paused) { await new Promise((r) => { resumeSignal = r; }); resumeSignal = null; }
+          continue;
+        }
+        root.classList.remove("is-heard");
+        if (heardNow.blob.size < 1500) continue;
+
+        setState("thinking", "Turning your voice into text…");
+        try {
+          text = await transcribe(heardNow.blob, heardNow.mime);
+          failures = 0;
+        } catch (error) {
+          if (!alive) break;
+          if (error instanceof ApiError && error.status === 503) { fail("Voice is not set up", `${error.message} Install the voice requirements on the laptop, then try again.`); return; }
+          failures += 1;
+          if (failures >= 3) { fail("Cannot reach your laptop", `Transcribing keeps failing: ${error.message}`); return; }
+          sub.textContent = `Could not turn that into text (${error.message}). Listening again…`;
+          await new Promise((r) => setTimeout(r, 1500));
+          sub.textContent = "";
+          continue;
+        }
+        if (!alive) break;
+        if (!text) { sub.textContent = "I did not catch that."; continue; }
         sub.textContent = "";
-        continue;
       }
-      if (!alive) break;
-      if (!text) { sub.textContent = "I did not catch that."; continue; }
-      sub.textContent = "";
 
       // "Jarvis, ..." goes to the laptop operator, "Friday, ..." to the day assistant; no name keeps the old behaviour.
-      const routed = splitName(text, names.jarvis);
-      let persona = host.friday ? "friday" : "";
-      if (routed.persona) {
+      const routed = pre ? { persona: "", text } : splitName(text, names.jarvis);
+      let persona = pre?.persona || (host.friday ? "friday" : "");
+      if (pre?.persona) setPersona(persona);
+      if (!pre && routed.persona) {
         persona = routed.persona;
         setPersona(persona);
         text = routed.text;

@@ -1,6 +1,7 @@
 // Settings: grouped inset lists that drill into sheets.
 // Routes: docs/api/settings.md, docs/api/notify.md (push), docs/api/capture-android.md (HubCapture plugin).
 // Sections (openSection): appearance, models, folders, push (alias notifications), capture, diagnostics, audit, backup, about.
+import { wakeEnabled, setWakeEnabled, wakeSupported } from "./wake.js";
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 
@@ -71,10 +72,15 @@ export function init(container, ctx) {
         try { if (on) localStorage.setItem("hub.motion", "reduce"); else localStorage.removeItem("hub.motion"); } catch (_) { /* private */ }
         if (on) document.documentElement.dataset.motion = "reduce"; else delete document.documentElement.dataset.motion;
       } });
+    const wakeOk = wakeSupported() && window.isSecureContext;
+    const wake = switchRow({ icon: "mic", tone: "teal", title: "Hey Jarvis / Hey Friday",
+      sub: wakeOk ? "Say it hands-free to start voice mode. Works only while the app is open and the screen is on: Android stops the microphone in the background. Keeps the microphone open, so it uses some battery."
+        : "Needs Chrome on the secure (https) address. This browser cannot listen for a wake word.",
+      checked: wakeEnabled() && wakeOk, disabled: !wakeOk, onChange: (on) => setWakeEnabled(on) });
     return el("section", { class: "st-group", id: "st-appearance" },
       el("h2", { class: "ui-caps st-caps" }, "Appearance"),
       el("div", { class: "ui-card ui-card--pad-lg" }, ui.appearancePanel()),
-      el("div", { class: "ui-list ui-list--inset ui-list--icons st-after" }, haptics, motion));
+      el("div", { class: "ui-list ui-list--inset ui-list--icons st-after" }, haptics, motion, wake));
   }
 
   function glance() {

@@ -139,6 +139,8 @@ export function init(container, ctx) {
         const r = new SR(); r.lang = "en-IN"; r.interimResults = false;
         r.onresult = (e) => sendAsk(e.results[0][0].transcript, input, send);
         r.onerror = () => ui.toast("Couldn't hear you. Try again or type.", { kind: "warn" });
+        r.onstart = () => window.dispatchEvent(new CustomEvent("hub:mic", { detail: { on: true } }));
+        r.onend = () => window.dispatchEvent(new CustomEvent("hub:mic", { detail: { on: false } }));
         try { r.start(); ui.toast("Listening…", { kind: "info" }); } catch (_) { /* already listening */ }
       } });
       row.insertBefore(mic, send);
