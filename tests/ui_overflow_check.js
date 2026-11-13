@@ -3,7 +3,7 @@
 // Exits 0 when nothing overflows. Needs the `playwright` node package and a browser.
 const { chromium } = require("playwright");
 const [base, shots] = [process.argv[2], process.argv[3] || "/tmp/claude-0/shots"];
-const SCREENS = ["home", "assistant", "today", "autopilot", "brain", "research", "skills", "ccsessions", "buildflow", "settings", "terminal"];
+const SCREENS = ["home", "assistant", "today", "autopilot", "brain", "research", "skills", "ccsessions", "buildflow", "devto", "settings", "terminal"];
 const SIZES = [[390, 844], [360, 740]];
 
 (async () => {

@@ -34,7 +34,7 @@ from .common import Ctx, JsonFile
 log = logging.getLogger("hub.proactive")
 
 NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed")
-BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done")
+BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "devto_comment", "devto_cadence")
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
 MAX_EVENTS = 20
@@ -84,6 +84,11 @@ def _join(parts: list[str]) -> str:
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
+def _lower_first(text: str) -> str:
+    text = text.rstrip(".")
+    return text[:1].lower() + text[1:]
+
+
 def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     """One sentence in Friday's voice. Deterministic template, no AI."""
     ap = sum(int(e.get("count") or 1) for e in events if e.get("type") == "autopilot_ready")
@@ -91,6 +96,8 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     bak = sum(1 for e in events if e.get("type") == "backup_done")
     cc = [e for e in events if e.get("type") == "cc_waiting"]
     bld = sum(1 for e in events if e.get("type") == "build_done")
+    dc = [e for e in events if e.get("type") == "devto_comment"]
+    cad = [e for e in events if e.get("type") == "devto_cadence"]
     parts = []
     if ap:
         parts.append("1 Autopilot draft is waiting for you" if ap == 1 else f"{ap} Autopilot drafts are waiting for you")
@@ -104,6 +111,13 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
         parts.append(f"Claude is waiting on you in {len(cc)} sessions")
     if bld:
         parts.append("your build is finished" if bld == 1 else f"{bld} builds are finished")
+    n_dc = sum(int(e.get("count") or 1) for e in dc)
+    if n_dc == 1:
+        parts.append(_lower_first(str(dc[0].get("title") or "you have a new comment on your post")))
+    elif n_dc:
+        parts.append(f"you have {n_dc} new comments on your posts")
+    if cad:
+        parts.append(_lower_first(str(cad[-1].get("title") or "no post lately, ideas ready")))
     return f"{call}, {_join(parts)}." if parts else ""
 
 

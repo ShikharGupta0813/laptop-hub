@@ -128,6 +128,14 @@ class Config:
     provider_daily_caps: dict[str, int] = field(default_factory=dict)   # e.g. {"gemini": 200}
     claude_login_5h_soft_cap: int = 0                        # 0 = unknown; else the estimate shows calls in the last 5 h
 
+    # Posts (hub/devto.py): dev.to drafts and post packs. The API key is NOT here (OS keyring). Reminders/checks are off.
+    devto_enabled: bool = True
+    devto_cadence_enabled: bool = False     # weekly "no post for N days, ideas ready" through Friday's batch
+    devto_cadence_days: int = 7
+    devto_stats_enabled: bool = False       # scheduled read of views/reactions/comments from dev.to
+    devto_stats_hours: int = 24
+    devto_blocklist_words: list[str] = field(default_factory=list)   # words that must never appear in a post
+
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
     def data_path(self) -> Path:
@@ -216,6 +224,9 @@ def save(config: Config, path: Path) -> None:
         "ccsessions_enabled": bool(config.ccsessions_enabled), "ccsessions_dir": str(config.ccsessions_dir or ""),
         "buildflow_enabled": bool(config.buildflow_enabled),
         "wake_laptop_enabled": config.wake_laptop_enabled is True, "wake_laptop_device": str(config.wake_laptop_device or ""),
+        "devto_enabled": config.devto_enabled is not False, "devto_cadence_enabled": config.devto_cadence_enabled is True,
+        "devto_cadence_days": int(config.devto_cadence_days), "devto_stats_enabled": config.devto_stats_enabled is True,
+        "devto_stats_hours": int(config.devto_stats_hours), "devto_blocklist_words": list(config.devto_blocklist_words),
         "backup_dir": config.backup_dir,
         "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
         "redact_names": list(config.redact_names), "cloud_daily_cap": int(config.cloud_daily_cap or 0),

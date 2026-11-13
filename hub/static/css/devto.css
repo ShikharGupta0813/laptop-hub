@@ -1,0 +1,25 @@
+/* Posts. Scoped under #view-devto; tokens only. */
+#view-devto .dv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-devto .dv > *, #view-devto .dv-card > * { min-width: 0; }
+#view-devto .dv-card { padding: var(--sp-4); }
+#view-devto .dv-tabs { width: 100%; }
+#view-devto .dv-tabs button { min-width: 0; padding-inline: var(--sp-1); font-size: var(--fs-sm); }
+#view-devto .dv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+#view-devto .dv-idea { padding: var(--sp-4); }
+#view-devto .dv-idea__title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+#view-devto .dv-idea__angle { margin: 0; color: var(--c-text-2); white-space: pre-line; overflow-wrap: anywhere; }
+#view-devto .dv-text { width: 100%; min-height: 260px; resize: vertical; font-family: var(--font-mono, monospace); font-size: var(--fs-sm); }
+#view-devto .dv-block { width: 100%; min-height: 96px; resize: vertical; }
+#view-devto .dv-preview { padding: var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface-2); overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; }
+#view-devto .dv-preview img { max-width: 100%; height: auto; }
+#view-devto .dv-preview pre { overflow-x: auto; max-width: 100%; }
+#view-devto .dv-actions { flex-wrap: wrap; }
+#view-devto .dv-url { overflow-wrap: anywhere; word-break: break-all; }
+#view-devto .dv-pre { margin: 0; padding: var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface-2);
+  white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-read, inherit); font-size: var(--fs-sm); max-height: 280px; overflow-y: auto; }
+#view-devto .dv-copy .ui-row, #view-devto .dv-pol .ui-row { flex-wrap: wrap; align-items: center; }
+#view-devto .dv-c__who { font-weight: 600; overflow-wrap: anywhere; }
+#view-devto .dv-c__text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--c-text-2); }
+#view-devto .dv-comment { padding: var(--sp-3); }
+#view-devto a.ui-btn { text-decoration: none; }
+#view-devto .ui-input { max-width: 100%; }
