@@ -141,6 +141,14 @@ python -m hub setup --only asana
 | Your `hub.json` | See your folder list and settings | Log in. It holds a token hash, not the token. |
 | A backup zip | Read your notes and data | Log in. It has no token hash or secrets. |
 
+## Hiding private details from cloud AI
+
+Before a message, a tool result or file text goes to Gemini or Claude, REDLINE replaces emails, phone numbers, card numbers, Aadhaar and PAN numbers, IBANs, API keys, passwords written after a label like `password:`, and any words you list (your employer, a project name) with tags such as `[EMAIL_1]`. The AI works with the tags, and the hub puts your real values back into the answer and into tool calls on the laptop. Turn it on or off, choose what is hidden and try it on a sample in **Settings > Privacy redaction**. The local model is never filtered, because nothing leaves the laptop.
+
+What it can and cannot do: it recognises **shapes**, not meaning. It will not hide a person's name or an address you did not list, a secret with no label, details the AI can work out from the rest of your text, or anything inside a screenshot (Screen vision sends the picture as it is), and Council runs talk to their models directly. It is a seat belt, not a vault. For truly private work pick **Local**. The activity log records only how many items of each kind were hidden, never the values.
+
+**Usage and caps.** Settings > Usage today (and a small row on Home) counts requests per AI per day. Set daily caps with **Edit caps**; when one is reached the assistant answers with the local model for that message, says so, and never silently switches to another paid AI. Say "use gemini anyway" to go over the cap once. The Claude 5-hour figure is your own estimate, not something Claude reports.
+
 ## Privacy summary
 
 - **Local model and Whisper** keep your words on the laptop.

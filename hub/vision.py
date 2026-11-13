@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
+from . import usage
 from .assistant import ExtraTool, mark_tools
 from .common import Ctx, InProcessClient
 from .llm import LLMError
@@ -163,6 +164,7 @@ class Vision:
             raise VisionError(str(exc), exc.status) from None
         del raw
         self._used = self.used() + 1                  # counted once a picture is really going out
+        usage.record(self.ctx.config, "vision")
         self.ctx.audit("vision_explain", model=getattr(model, "name", "gemini"), question_chars=len(question),
                        image_kb=len(jpeg) // 1024, region=bool(box))
         try:

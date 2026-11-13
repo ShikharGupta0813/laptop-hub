@@ -42,6 +42,7 @@ from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
+from . import usage
 from .assistant import ExtraTool
 from .autopilot import pick_provider
 from .common import Ctx, InProcessClient, parse_json
@@ -556,6 +557,7 @@ class Researcher:
         if self.budget_left() <= 0:
             raise LLMError("The daily research AI budget is used up.")
         self.store.add_ai_call(self.today())
+        usage.record(self.ctx.config, "research")
         if self._ask is not None:
             return await asyncio.wait_for(self._ask(system, user), MODEL_TIMEOUT)
         provider = pick_provider(self.config)   # never the paid Claude API, never the duo (it asks Claude)

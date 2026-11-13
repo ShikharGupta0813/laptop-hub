@@ -22,6 +22,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [council.md](api/council.md): background multi-model side jobs (multi-llm-lab), review packet, per-model switches
 - [today.md](api/today.md): the whole day on one page + spoken summary, evening review, approve by voice or text
 - [skills.md](api/skills.md): installable community skills (SKILL.md) from GitHub; approval to install; per-persona
+- [privacy-usage.md](api/privacy-usage.md): hides emails, numbers and keys from cloud AI; usage counts and daily caps
 - [autopilot.md](api/autopilot.md): drafts queued as approval cards (mail, chat, Asana, standup); nothing runs without a tap
 
 **Search note:** `GET /api/search?q=` (no `root`) is global search across the whole hub, see `api/search.md`.

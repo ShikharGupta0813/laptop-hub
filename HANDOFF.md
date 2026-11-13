@@ -226,6 +226,14 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Preview/approve split: `spec`/`plan`/`next` routes take `{preview: true}`; tools `build_spec|build_plan|build_next` are approval-gated + `mutating` (taint gate). One `"buildflow"` TOOL_GROUPS entry. Config `buildflow_enabled` (Settings).
 - Tests: `tests/test_buildflow.py` (fake AI, fake council caller, temp workspace). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the Build screen in a real browser, real AI question/spec/plan quality, a real Council run ticking a box, Windows paths, the Council having no working-directory option (the task text names the folder, the lab is trusted to obey).
 
+## 3k. Privacy redaction and usage budget (2026-11-13), Jarvis
+
+`hub/redact.py` (patterns, per-turn placeholder map, `Guarded` client wrapper), `hub/usage.py` (counters, caps, report), `hub/privacy.py` (module `privacy`: `GET /api/usage`, `POST /api/redact/preview`), `js/privacy.js` + `css/privacy.css`, docs `docs/api/privacy-usage.md`, guide paragraph in `docs/guide/10-security-and-privacy.md`.
+- Hook: `create_app` wraps the Gemini, claude-login, claude and duo-Gemini clients in `redact.Guarded`; the Claude-API path redacts in `assistant._claude_params` and restores text blocks and `tool_use.input` in `_claude_turns`; `AssistantService.run` opens/closes the per-turn map. Local Ollama is only counted. Audit = counts per kind.
+- Router: `Router.route(choice, text, ollama_up, override_cap)` falls back to local at a cap with a `note` in the meta event; "use gemini anyway" lifts it for one message. Config: `redact_*`, `cloud_daily_cap`, `provider_daily_caps`, `claude_login_5h_soft_cap` (Settings allow-listed; `redact_names` audited without value).
+- `tests/helpers.make_config` now sets a temp `data_dir` so usage.json never lands in the real home. sw.js: files added to SHELL, VERSION NOT bumped.
+- Tests: `tests/test_redact.py`, `tests/test_usage.py` (fakes). UNVERIFIED: the real Anthropic SDK accepting dict text blocks mixed with thinking blocks after redaction, real Gemini/claude-login output with split placeholders, false-positive rate on real documents (regexes are conservative but untested on real data), Council and screen images are NOT redacted, the Settings card, caps sheet and Home gauge in a real browser.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)

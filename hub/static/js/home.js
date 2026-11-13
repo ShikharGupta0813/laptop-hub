@@ -7,6 +7,7 @@
 // card goes skeleton -> content | friendly empty state on its own, so one failure never blanks the page.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { gaugeRow } from "./privacy.js";
 
 // ---- quick actions (also listed in the search overlay) -------------------------------------------
 // open: [view, section] opened with ctx.open; run(ctx): an action. Add one by adding a line.
@@ -279,7 +280,8 @@ export function init(container, ctx) {
     })).catch(() => { /* optional card */ });
   }
 
-  root.append(greet, reactor, hero, setupCard, fridayCard, jump, forYou,
+  const usageGauge = gaugeRow({ onOpen: () => ctx.open("settings") });   // AI requests today (hidden until there are some)
+  root.append(greet, reactor, hero, usageGauge, setupCard, fridayCard, jump, forYou,
     todayCard.node,
     el("section", { class: "hm-sec hm-section", "aria-label": "Quick actions" },
       el("div", { class: "hm-head" }, el("h2", { class: "ui-eyebrow hm-eyebrow" }, el("b", {}, "02"), "Ship"), el("span", { class: "hm-head-rule", "aria-hidden": "true" })), quick),
@@ -510,7 +512,7 @@ export function init(container, ctx) {
   const clockTimer = setInterval(paintClock, 60000);
 
   return {
-    show() { paintClock(); load(false); checkSetup(); },
+    show() { paintClock(); load(false); checkSetup(); usageGauge.refresh(); },
     refresh() { return load(true); },
     destroy() { clearInterval(clockTimer); },
   };

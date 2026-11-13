@@ -27,6 +27,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
+from . import usage
 from .common import Ctx, JsonFile
 
 log = logging.getLogger("hub.council")
@@ -407,6 +408,7 @@ class CouncilManager:
         argv = self.build_argv(spec)
         self.tasks[job["id"]] = asyncio.get_running_loop().create_task(
             self._run(job, argv, spec["notes"] or None))
+        usage.record(self.config, "council")
         self.ctx.audit("council_run", job=job["id"], task_chars=len(spec["task"]), verify=bool(spec["verify"]),
                        resume=bool(spec.get("resume_of")), notes_chars=len(spec["notes"]),
                        escalate=bool(spec["escalate"]))
