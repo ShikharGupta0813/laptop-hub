@@ -176,6 +176,15 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 - Research: `Autopilot.research()`; up to 3 read-only lookups (inbox search by subject keywords, Asana subtasks/comments from the detail already fetched, `/api/search/all` notes/files), 2500 chars cap, only while budget remains; payload `research` label -> badge. 0 extra AI calls.
 - Tests: `tests/test_today.py`. UNVERIFIED: real calendar/inbox/Council data shapes (written from the route code), the phone UI (never opened in a browser), `/api/search/all` quality for research, git commit-time parsing on Windows, "mails replied" counts only Autopilot-sent replies (the Sent folder is not read).
 
+## 3h. Installable skills (2026-11-13)
+
+`hub/skills.py` (feature module `skills`, last in `FEATURE_MODULES`), `hub/skills_tools.py` (5 ExtraTools, one `skills` line in `TOOL_GROUPS`), `js/skills.js` + `css/skills.css` (Apps > Skills), docs `docs/api/skills.md`, `docs/guide/14-skills.md`. sw.js VERSION NOT bumped (the owner's rule here); the new files are in SHELL.
+- Skills = `<data dir>/skills/<name>/SKILL.md` (+ `.hub-skill.json`). Install is GitHub only: `git clone --depth 1` via argv list, temp dir, copy only the skill folder, symlinks refused, 2 MB / 300 files, SKILL.md <= 40 KB, <= 200 skills.
+  Catalog = GitHub contents API (folder names only), cached 1 h, sources in `skills_sources`. Config: `skills_enabled` (Settings), `skills_sources` (hand-edit).
+- Security: skill text is untrusted; `use` fences it with a random code and a never-overrides note; scripts are listed, never run; install and remove are approval-gated (tool `needs_approval` + preview, route needs `confirm: true`, UI confirm).
+- Personas: frontmatter `persona: jarvis|friday|both`; `skills.ACTIVE_PERSONA` (a ContextVar) is set from `session.persona` at the start of each assistant turn and the tools filter by it; `persona_hint` is only a word-based guess.
+- Tests: `tests/test_skills.py` (fake git runner and fake GitHub HTTP). UNVERIFIED: real GitHub clone and API (rate limits), the real layout of hermes-agent / openclaw (default source paths are guesses), the phone UI (never opened in a browser), whether the assistant context var reaches tool calls in every provider path.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
