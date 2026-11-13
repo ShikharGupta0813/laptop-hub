@@ -176,6 +176,16 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 - Research: `Autopilot.research()`; up to 3 read-only lookups (inbox search by subject keywords, Asana subtasks/comments from the detail already fetched, `/api/search/all` notes/files), 2500 chars cap, only while budget remains; payload `research` label -> badge. 0 extra AI calls.
 - Tests: `tests/test_today.py`. UNVERIFIED: real calendar/inbox/Council data shapes (written from the route code), the phone UI (never opened in a browser), `/api/search/all` quality for research, git commit-time parsing on Windows, "mails replied" counts only Autopilot-sent replies (the Sent folder is not read).
 
+## 3i. Deep research with citations (2026-11-13): "Jarvis, research X for me"
+
+`hub/research.py` (feature module `research`, last in `FEATURE_MODULES`; also `research.build()` registered in `server.py` with the other assistant tools), `js/research.js` + `css/research.css` (Apps > Research; added to sw.js SHELL, VERSION not bumped),
+docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabled` (true), `research_max_hops` (3), `research_max_sources` (8), `research_daily_ai_calls` (20), all editable in Settings.
+- Pipeline: plan queries -> search (DuckDuckGo HTML, Wikipedia fallback; injectable) -> fetch (httpx, SSRF guard, 1.5 MB cap, html/text only) -> extract -> report with `[n]` citations -> follow-up hops from gaps. Jobs in `research.sqlite` (cap 200); `POST/GET/DELETE /api/research`, `POST /api/research/{id}/notify`.
+- Two styles: `technical` (Jarvis, cyan) and `brief` (Friday, amber; also reads calendar + Asana through read-only in-process routes). Default from the persona; UI has a Jarvis/Friday chooser.
+- Tool `deep_research` (no approval, read-only; the model has no tools): waits ~25 s, else "I'm on it, the report will be in Research" + ntfy push when done. One `TOOL_GROUPS` line `research`.
+- AI: Autopilot's `pick_provider` (Gemini/local, never Claude, never duo), daily call budget; degrades to sources + snippets.
+- Tests: `tests/test_research.py` (fakes only). UNVERIFIED: real DuckDuckGo HTML shape (it changes; Wikipedia is the fallback), DNS-rebinding between the check and the connect (the host is resolved and checked, then httpx resolves again), real local-model JSON quality, the phone UI (never opened in a browser), the tool with a real model deciding when to pass `style`.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
