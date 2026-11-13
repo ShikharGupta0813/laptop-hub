@@ -163,7 +163,7 @@ class TaintTest(Harness):
         self.assertTrue(tools["laptop_action"].untrusted({"action": "clipboard_read"}))
         self.assertFalse(tools["laptop_action"].untrusted({"action": "battery"}))
         self.assertFalse(tools["reminders_list"].untrusted({}))
-        self.assertTrue(A.AssistantService(self.config, claude=FakeClaude([]))._untrusted("read_file", {}))
+        self.assertFalse(A.AssistantService(self.config, claude=FakeClaude([]))._untrusted("read_file", {}))
 
 
 class StopTest(Harness):

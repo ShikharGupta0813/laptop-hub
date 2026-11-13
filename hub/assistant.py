@@ -374,7 +374,8 @@ def _size(n: float) -> str:
 # The moment a tool returns outside text (UNTRUSTED_BUILTIN below, or an ExtraTool with untrusted set) the
 # turn is tainted, and for the rest of that turn every tool that changes things (needs approval, or marked
 # mutating) is refused, even in Full Control. Read-only tools keep working. The owner confirms in a new message.
-UNTRUSTED_BUILTIN = {"read_file", "search_files"}
+# The owner's own files are not marked: "read this file, then fix it" must keep working in one turn.
+UNTRUSTED_BUILTIN: set = set()
 TAINT_REFUSAL = ("Untrusted content was read this turn; ask the owner to confirm in a new message. "
                  "Nothing was run.")
 TAINT_CARD = "Blocked: untrusted content was read"

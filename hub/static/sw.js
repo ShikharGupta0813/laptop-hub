@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v21-second-brain-2026.11";
+const VERSION = "v22-safety-friday-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
