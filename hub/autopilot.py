@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import email.utils
 import inspect
 import json
 import logging
@@ -586,6 +587,8 @@ class Autopilot:
                 self.store.mark_seen(key, now_ts)
                 continue
             payload = {"from": sender, "subject": subject, "original": text[:TEXT_KEEP], "alert_id": str(alert["id"])}
+            if not is_chat:
+                payload["account"] = self.account_tag("default")
             title = f"{sender}: {subject or text}"[:160] if sender else (subject or text)
             if is_chat and verdict == "reply":
                 background, label = await self.research("chat", subject=f"{subject} {text}")
@@ -609,6 +612,61 @@ class Autopilot:
             return addr_of(str(((data.get("email") or {}).get("address")) or "")).lower()
         return ""
 
+    def account_tag(self, account_id: str = "default") -> str:
+        """personal / company / custom label of a Gmail account (hub/gmailx.py), "personal" when it is not there."""
+        try:
+            from . import gmailx
+            return gmailx.account_tag(self.ctx, account_id)
+        except Exception:  # noqa: BLE001 - guarded: Gmailx is optional
+            return "personal"
+
+    def bodies_to_cloud_ok(self, account_id: str = "default") -> bool:
+        """False when this account's mail text must stay off cloud models and the free AI is a cloud one."""
+        try:
+            from . import gmailx
+            if gmailx.cloud_ai_allowed(self.ctx, account_id):
+                return True
+            return gmailx.provider_is_local(pick_provider(self.config))
+        except Exception:  # noqa: BLE001
+            return True
+
+    async def src_gmailx(self) -> list[dict]:
+        """Unread mail of the extra (OAuth) Gmail accounts, tagged by account. Cards only; no body is fetched and no
+        AI is asked, so company mail never reaches a model here. Silent when no extra account is connected."""
+        try:
+            from . import gmailx
+            accounts = [a for a in await asyncio.to_thread(gmailx.list_accounts, self.ctx)
+                        if a.get("connected") and a.get("kind") == "oauth"]
+        except Exception:  # noqa: BLE001
+            return []
+        made, now_ts = [], self.now_ts()
+        for acct in accounts:
+            try:
+                rows = await asyncio.to_thread(gmailx.search, self.ctx, acct["id"], "is:unread in:inbox newer_than:2d", 15)
+            except Exception:  # noqa: BLE001
+                self.notes[f"gmail-{acct['id']}"] = f"The {acct['label']} Gmail account could not be read."
+                continue
+            self.notes.pop(f"gmail-{acct['id']}", None)
+            for row in reversed(rows):
+                key = f"inbox:{acct['id']}:{row['id']}"
+                if self.store.seen(key) or len(made) >= MAX_NEW_PER_SOURCE:
+                    continue
+                sender_name, sender_addr = email.utils.parseaddr(row.get("sender") or "")
+                subject = clean(row.get("subject"), 200)
+                text = clean(row.get("snippet"), 400, multiline=True)
+                verdict, _ = classify("inbox", sender_addr, subject, text)
+                if verdict == "ignore":
+                    self.store.mark_seen(key, now_ts)
+                    continue
+                name = clean(sender_name, 100) or sender_addr or "unknown sender"
+                payload = {"from": name, "from_addr": sender_addr, "subject": subject, "original": text,
+                           "account": acct["label"]}
+                card = self.new_card(source="inbox", key=key, title=f"{name}: {subject}", summary=text[:300],
+                                     payload=payload, action="none")
+                if card:
+                    made.append(card)
+        return made
+
     async def src_gmail(self) -> list[dict]:
         ok, rows = await self.call("GET", "/api/inbox/messages", params={"unread": "1", "limit": 30})
         if not ok or not isinstance(rows, list):
@@ -623,6 +681,7 @@ class Autopilot:
             key = f"inbox:{uid}"
             if self.store.seen(key) or not self.fresh(row.get("date"), now_ts) or len(made) >= MAX_NEW_PER_SOURCE:
                 continue
+            account_label = self.account_tag("default")
             sender_addr = addr_of(str(row.get("from_addr") or ""))
             if me and same(sender_addr, me):
                 self.store.mark_seen(key, now_ts)                     # mail from the owner's own account
@@ -634,7 +693,7 @@ class Autopilot:
                 self.store.mark_seen(key, now_ts)
                 continue
             text = clean(row.get("snippet"), 400, multiline=True)
-            if verdict == "reply":
+            if verdict == "reply" and self.bodies_to_cloud_ok("default"):
                 ok2, detail = await self.call("GET", f"/api/inbox/messages/{uid}")
                 if ok2 and isinstance(detail, dict) and isinstance(detail.get("text"), str):
                     text = clean(detail["text"], TEXT_KEEP, multiline=True)
@@ -645,7 +704,7 @@ class Autopilot:
                 draft, note = await self.ai_draft("email", self.fence(**{"from": name, "subject": subject,
                                                                           "message": reply_text, "background": background}),
                                                   EMAIL_CHARS)
-                payload = {"from": name, "from_addr": sender_addr, "to": sender_addr, "uid": uid, "subject": subject,
+                payload = {"account": account_label, "from": name, "from_addr": sender_addr, "to": sender_addr, "uid": uid, "subject": subject,
                            "reply_subject": subject if re.match(r"(?i)\s*re\s*:", subject) else f"Re: {subject}",
                            "original": text[:TEXT_KEEP]}
                 if label:
@@ -654,7 +713,7 @@ class Autopilot:
                                      payload=payload, action="send_email" if draft else "none", draft=draft or "",
                                      ai_written=bool(draft), note=note)
             else:
-                payload = {"from": name, "from_addr": sender_addr, "uid": uid, "subject": subject, "original": text}
+                payload = {"account": account_label, "from": name, "from_addr": sender_addr, "uid": uid, "subject": subject, "original": text}
                 card = self.new_card(source="inbox", key=key, title=f"{name}: {subject}", summary=text[:300],
                                      payload=payload, action="none")
             if card:
@@ -798,8 +857,8 @@ class Autopilot:
             expired = self.expire()
             new: list[dict] = []
             failed: list[str] = []
-            for name, fn in (("watch", self.src_watch), ("gmail", self.src_gmail), ("asana", self.src_asana),
-                             ("standup", self.src_standup)):
+            for name, fn in (("watch", self.src_watch), ("gmail", self.src_gmail), ("gmailx", self.src_gmailx),
+                             ("asana", self.src_asana), ("standup", self.src_standup)):
                 try:
                     new += await fn()
                 except asyncio.CancelledError:
@@ -909,6 +968,7 @@ class Autopilot:
         out["sender"] = p.get("from") or ""
         out["unknown_sender"] = self.unknown_sender(card)
         out["research"] = str(p.get("research") or "")
+        out["account"] = str(p.get("account") or "") if card.get("source") in ("inbox", "watch-gmail") else ""
         return out
 
     def counts(self) -> dict:

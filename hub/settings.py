@@ -49,7 +49,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
                "wake_laptop_enabled", "wake_laptop_device", "opps_enabled", "opps_interval_min", "opps_min_score",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
-               "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap")
+               "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -188,8 +188,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled"):
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "applyq_enabled", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "applyq_enabled", "gmail_company_ai_allowed"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -557,6 +556,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "redact_kinds_all": list(redact_mod.KINDS), "redact_names": list(config.redact_names),
             "cloud_daily_cap": config.cloud_daily_cap, "provider_daily_caps": dict(config.provider_daily_caps),
             "claude_login_5h_soft_cap": config.claude_login_5h_soft_cap,
+            "gmail_company_ai_allowed": config.gmail_company_ai_allowed is True,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),

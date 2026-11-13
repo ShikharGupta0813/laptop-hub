@@ -138,6 +138,9 @@ class Config:
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
+    # Gmailx (hub/gmailx.py): company-account mail BODIES may reach a cloud AI only when this is True. Check your company policy first.
+    gmail_company_ai_allowed: bool = False
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
@@ -231,6 +234,7 @@ def save(config: Config, path: Path) -> None:
         "redact_names": list(config.redact_names), "cloud_daily_cap": int(config.cloud_daily_cap or 0),
         "provider_daily_caps": dict(config.provider_daily_caps or {}),
         "claude_login_5h_soft_cap": int(config.claude_login_5h_soft_cap or 0),
+        "gmail_company_ai_allowed": config.gmail_company_ai_allowed is True,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

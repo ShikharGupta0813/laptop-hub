@@ -75,7 +75,7 @@ flowchart TD
 | Screen shows but taps do nothing | Control is off until armed. | Tap **Enable control** |
 | Files: "That folder is read-only" | The folder is not in `writable_roots`. | Add its name to `writable_roots` in `hub.json`, restart |
 | Inbox: Gmail not set up | App password missing. | `python -m hub setup --only gmail` |
-| Gmail login rejected at work | Admin turned off app passwords or IMAP. | Ask the admin, or use a personal Gmail. |
+| Gmail login rejected at work | Admin turned off app passwords or IMAP. | Ask the admin, or use a personal Gmail. Or connect the company mailbox with Google sign-in (guide 05, "Connect a second Gmail account"). |
 | Calendar shows 503 | No Jarvis folder or calendar link. | `python -m hub setup --only jarvis` then `--only calendar` |
 | Update button did nothing | Edited code files, or no network. | Read `update.log` (page 08). Run `git status`. |
 | Update button is missing | The updater was never installed, or the hub was not restarted. | `python -m hub install-updater`, restart hub |

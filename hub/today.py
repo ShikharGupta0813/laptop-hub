@@ -210,7 +210,12 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
         if not ok or not isinstance(data, dict):
             return {"configured": False, "unread": None}
         unread = data.get("unread")
-        return {"configured": bool(data.get("configured")),
+        accounts = []        # per Gmail account (personal / company), counts only; empty when Gmailx has only the one
+        ok2, g = await call("GET", "/api/gmail/summary")
+        if ok2 and isinstance(g, dict) and len(g) > 1:
+            accounts = [{"id": clean(str(k), 40), "label": clean(v.get("label"), 30), "unread": v.get("unread")
+                         if isinstance(v.get("unread"), int) else None} for k, v in g.items() if isinstance(v, dict)]
+        return {"configured": bool(data.get("configured")), "accounts": accounts,
                 "unread": unread if isinstance(unread, int) and not isinstance(unread, bool) else None}
 
     # -- Autopilot

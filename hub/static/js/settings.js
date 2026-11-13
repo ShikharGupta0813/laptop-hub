@@ -5,6 +5,7 @@ import { wakeEnabled, setWakeEnabled, wakeSupported, keepAwakeEnabled, setKeepAw
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
+import { gmailCard } from "./gmailx.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -63,6 +64,7 @@ export function init(container, ctx) {
   let diag = null;         // diagnostics summary (lazy)
   let appearanceCard = null;
   let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
+  let gmailEl = null;      // the "Gmail accounts" card (js/gmailx.js)
 
   // ---- main page ---------------------------------------------------------------------------------
   function appearance() {
@@ -239,7 +241,8 @@ export function init(container, ctx) {
   function paint() {
     appearanceCard = appearanceCard || appearance();
     if (S && !usageEl) usageEl = usageCard({ onEdit: () => capsSheet(S, () => { load(); usageEl.refresh(); }) });
-    root.replaceChildren(...[glance(), usageEl, appearanceCard, ...main()].filter(Boolean));
+    if (S && !gmailEl) gmailEl = gmailCard({ S });
+    root.replaceChildren(...[glance(), usageEl, gmailEl, appearanceCard, ...main()].filter(Boolean));
   }
 
   async function load() {
