@@ -38,3 +38,53 @@ Replies go only to the original sender. Tests: `tests/test_taint.py`.
 denies pending approvals and ends the stream with `{"type":"stopped","message":"Stopped."}`. `stopped` is
 false when nothing was running. Talk has the Stop button; voice mode has a Stop button, the orb, and the
 spoken words "stop" / "cancel".
+
+## Graded safety levels (N1 / N2 / N3)
+Every tool call gets a level from `hub/safety.py` (`classify(tool_name, args)`, a pure function) and the level is
+on the `tool_start` / `approval_needed` events and in the audit log (`assistant_tool` rows carry `level`).
+An `ExtraTool` may declare `level="N3"` (or a function of the arguments); the default is N2 for a tool that needs
+approval or is `mutating`, N1 otherwise. What the arguments show can only raise it.
+
+| Level | Meaning | What happens | Examples |
+|---|---|---|---|
+| N1 | read-only | runs freely | `list_dir`, `read_file`, `system_status`, `laptop_action battery` |
+| N2 | changes something | the normal approval card; automatic in Full Control; can be remembered | `write_file`, `run_command dir`, `git status`, `echo shutdown`, `git push`, `send_email` |
+| N3 | CRITICAL: can lose data or take the laptop away | never automatic (not by auto-approve, Full Control or a remembered approval): typed `CONFIRM`, then a 10 s cancellable delay | `shutdown /s /t 0`, `Stop-Computer`, `Remove-Item -Recurse -Force C:\x`, `cmd /c del /s /q`, `rm -rf`, `format c:`, `reg delete`, `git push -f`, `taskkill /f /im x`, `winget install`, `netsh advfirewall ... off`, reading `~/.ssh` |
+
+N3 covers: shutdown/restart/sleep/hibernate/lock-out; format/diskpart/mkfs/dd; any delete command run through
+`run_command` (`rm`, `del`, `rd`, `ri`, `Remove-Item`, `find -delete`...) except inside the hub trash
+(`~/.laptop-hub/trash/...`); killing processes by name or tree, or system processes; registry writes; anything
+touching the hub's own token/settings (`~/.laptop-hub`, `hub.json`) or credential files (`.ssh`, `.aws`, `.env`...);
+`git push --force/-f/+ref`, `git reset --hard`, `git clean -f`; disabling Tailscale, the firewall or Defender;
+installing or removing software (winget, choco, apt, pip, `npm -g`, msiexec...); encoded PowerShell,
+`Invoke-Expression` and pipes into a shell (cannot be read, so critical). The command line is lower-cased, quotes
+and `^`/backtick evasions are stripped, program paths and `.exe` are ignored and wrappers (`cmd /c`,
+`powershell -c`, `sudo`, `bash -c`, `xargs`, `wsl`...) are looked through. It is deliberately conservative: a
+false alarm costs one typed word. Not N3 means N2 (still asks), never "safe". A refused call (credential read,
+`~/.laptop-hub` write by the file tool) is refused before any card.
+
+### The critical flow (server-enforced)
+1. `approval_needed` carries `critical: true`, `confirm_word: "CONFIRM"`, `delay_seconds`, `command`. The card shows
+   a red "Critical action" banner, the exact command, and a box.
+2. `POST /api/assistant/approve {session_id, call_id, approve: true, confirm_text: "CONFIRM"}`. Without the exact
+   word: 400 and the call keeps waiting. With `voice: true`: 403 and Jarvis says critical actions need the typed
+   confirmation on screen (a spoken yes, or a spoken "CONFIRM", never counts; saying no is fine).
+3. The stream sends `{"type":"countdown","id","seconds":10,"cancelable":true}` and the call runs only after the
+   delay. Approving again meanwhile is 409 and cannot shorten it.
+4. `POST /api/assistant/cancel {session_id, call_id}` (the card's Cancel button) stops it (404 when nothing is
+   counting). Stop, and a spoken "stop"/"cancel" in voice mode, cancel it too. Shutdown and restart are covered
+   the same way.
+5. Fast commands ("run ...") in Full Control go through the same gate: an N3 one asks, it is never direct-run.
+Audit: `assistant_n3_attempt` (with the command), `assistant_n3_confirmed`, `assistant_n3_cancelled`,
+`assistant_n3_refused` (`reason: voice | no_confirm_text`), then the usual `assistant_tool` row with `level: "N3"`.
+
+### Remembered approvals (N2 only)
+An N2 card (`can_remember: true`) offers "Allow this for 1 hour" / "for this session"
+(`approve` with `remember: "hour" | "session"`). A grant is memory-only, keyed by tool + a normalised argument shape
+(`run_command`: the program(s) the line starts + the folder; `write_file`: the folder; `laptop_action`: the action;
+others: the argument names), and expires by itself (1 h, or the chat session). N3 is never remembered. The taint
+gate still wins. Full Control turning on or off clears every grant.
+`GET /api/assistant/permissions` -> `{grants:[{id,tool,label,scope,expires_in}]}`;
+`POST /api/assistant/permissions/revoke {id}` or `{all:true}`. Settings > Account and security > Active permissions
+lists them with Revoke and Revoke all. Audit: `assistant_grant`, `assistant_grant_revoked`; a call that rode on one
+has `remembered: "hour" | "session"`. Tests: `tests/test_safety.py`.

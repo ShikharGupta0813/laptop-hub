@@ -206,3 +206,20 @@
   #view-assistant .as-empty { gap: var(--sp-2); padding: var(--sp-1) 0; }
   #view-assistant .as-empty h2 { font-size: var(--fs-md); }
 }
+
+/* ---- graded safety (docs/api/assistant-safety.md): N3 critical card, N2 remembered approvals ---- */
+#view-assistant .as-tool[data-state="approval"]:has(.as-approval--critical) {
+  border-color: color-mix(in oklab, var(--c-bad) 60%, transparent); background: color-mix(in oklab, var(--c-bad-soft) 70%, var(--c-surface-1));
+}
+#view-assistant .as-critical { display: flex; gap: var(--sp-2); align-items: flex-start; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3);
+  border: 1px solid color-mix(in oklab, var(--c-bad) 55%, transparent); border-radius: var(--r-md, 12px); background: var(--c-bad-soft); color: var(--c-text); }
+#view-assistant .as-critical > .ui-icon { color: var(--c-bad); flex: none; margin-top: 2px; }
+#view-assistant .as-critical strong { color: var(--c-bad); letter-spacing: .04em; text-transform: uppercase; font-size: var(--fs-sm); }
+#view-assistant .as-critical p { margin: var(--sp-1) 0 0; font-size: var(--fs-sm); color: var(--c-text-2); }
+#view-assistant .as-approval--critical .as-code { border-color: color-mix(in oklab, var(--c-bad) 45%, transparent); }
+#view-assistant .as-approval--critical .as-approval-title .ui-icon { color: var(--c-bad); }
+#view-assistant .as-confirm { width: 100%; box-sizing: border-box; margin-top: var(--sp-3); min-height: 48px; padding: 0 var(--sp-3); font: inherit; letter-spacing: .12em;
+  border: 1px solid var(--c-line-strong); border-radius: var(--r-md, 12px); background: var(--c-surface-1); color: var(--c-text); }
+#view-assistant .as-approval--critical .as-approval-status { justify-content: space-between; }
+#view-assistant .as-remember { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); margin-top: var(--sp-2); }
+#view-assistant .as-tool.answered .as-remember { display: none; }

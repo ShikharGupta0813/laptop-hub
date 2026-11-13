@@ -389,6 +389,7 @@ export function openVoiceMode(host) {
   }
 
   // ------------------------------------------------------------------ approvals (inside the overlay)
+  const CRITICAL_VOICE_NOTE = "That is a critical action, so I can't take a spoken yes. Type CONFIRM on the card on your screen, then you get a few seconds to cancel.";
   const hooks = {
     onEvent(ev) {
       if (!alive) return;
@@ -415,6 +416,13 @@ export function openVoiceMode(host) {
       approveBtn.disabled = denyBtn.disabled = false;
       approveBtn.onclick = () => respond(card, true);
       denyBtn.onclick = () => respond(card, false);
+      if (card.critical) {
+        // Critical (N3) actions are never approved from voice mode: the typed CONFIRM and the countdown are on the Talk screen.
+        approveBtn.hidden = true;
+        approvalMsg.textContent = CRITICAL_VOICE_NOTE;
+        denyBtn.disabled = false;
+        say(CRITICAL_VOICE_NOTE, { raw: true });
+      } else approveBtn.hidden = false;
       approval.hidden = false;
       root.classList.add("has-approval");
       cancelSpeech();

@@ -14,6 +14,7 @@ from typing import Any, Callable
 import httpx
 
 from .assistant import ExtraTool, mark_tools
+from .safety import LAPTOP_N3
 from .common import InProcessClient
 
 MAX_LINES = 40
@@ -100,9 +101,11 @@ def fmt_result(data: dict) -> str:
 def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
     hub = Hub(get_app, config)
 
-    def tool(name, description, props, required, run, needs_approval=False, preview=None, untrusted=False):
+    def tool(name, description, props, required, run, needs_approval=False, preview=None, untrusted=False,
+             level=None):
         return ExtraTool({"name": name, "description": description,
-                          "input_schema": _schema(props, required)}, run, needs_approval, preview, untrusted)
+                          "input_schema": _schema(props, required)}, run, needs_approval, preview, untrusted,
+                         level=level)
 
     async def asana_tasks(a):
         ok, d = await hub.call("GET", "/api/work/asana/tasks", params={"filter": a.get("filter") or "today"})
@@ -229,6 +232,8 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
                               "Reading status is free; anything that changes the laptop asks the owner first.",
              {"action": _s("An action id, or 'list'."), "params": {"type": "object"}}, ["action"], laptop_action,
              needs_approval=lambda a: a.get("action") not in FREE_LAPTOP_ACTIONS,
+             # shutdown / restart / sleep / lock are CRITICAL (N3: typed CONFIRM + cancellable delay, hub/safety.py)
+             level=lambda a: "N3" if str(a.get("action", "")).lower() in LAPTOP_N3 else None,
              untrusted=lambda a: any(w in str(a.get("action", "")).lower()
                                      for w in ("clipboard", "screen", "ocr", "window", "read"))),
         tool("type_text", "Type text on the laptop as keystrokes into the window that has focus. Works only while "

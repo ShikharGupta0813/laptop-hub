@@ -483,35 +483,84 @@ export function init(container, ctx) {
     return t.cards.get(ev.id) || makeCard(t, ev.id, ev.name, ev.input);
   }
 
-  function showApproval(t, card) {
+  // `ev` is the approval_needed event: ev.critical (level N3) makes this a red "Critical action" card that needs the
+  // typed word CONFIRM and then a cancellable countdown; ev.can_remember (level N2) adds "Allow this for 1 hour".
+  function showApproval(t, card, ev = {}) {
     const box = card.approvalBox;
     box.hidden = false;
-    setCardState(card, "approval", "Needs OK");
+    card.critical = ev.critical === true;
+    card.level = ev.level || "N2";
+    setCardState(card, "approval", card.critical ? "Critical" : "Needs OK");
+    box.classList.toggle("as-approval--critical", card.critical);
     const what = card.name === "run_command" ? "run this command on your laptop" : `use “${card.name}”`;
-    const approve = ui.button({ variant: "danger", icon: "check", label: "Approve and run", class: "as-approve", onClick: () => answer(t, card, true) });
+    const confirmWord = ev.confirm_word || "CONFIRM";
+    const typed = card.critical ? el("input", { class: "as-confirm", type: "text", autocomplete: "off", autocapitalize: "characters",
+      spellcheck: "false", placeholder: `Type ${confirmWord} to enable`, "aria-label": `Type ${confirmWord} to approve this critical action` }) : null;
+    const approve = ui.button({ variant: "danger", icon: "check", label: card.critical ? "Confirm and start countdown" : "Approve and run", class: "as-approve",
+      onClick: () => answer(t, card, true, card.critical ? { confirm_text: typed.value.trim() } : {}) });
     const deny = ui.button({ variant: "secondary", icon: "x", label: "Deny", class: "as-deny", onClick: () => answer(t, card, false) });
+    const syncConfirm = () => { if (typed && !card.answering) approve.disabled = typed.value.trim() !== confirmWord; };
+    if (typed) { approve.disabled = true; typed.addEventListener("input", syncConfirm); }
     const status = el("div", { class: "as-approval-status", role: "status" },
-      el("span", { class: "as-spinner", "aria-hidden": "true" }), "Waiting for your OK");
+      el("span", { class: "as-spinner", "aria-hidden": "true" }), card.critical ? `Waiting for you to type ${confirmWord}` : "Waiting for your OK");
+    const parts = approvalParts(card.input);
+    const shownParts = card.critical && ev.command && !parts.some((p) => p.text === ev.command)
+      ? [{ label: "Exact command", text: String(ev.command) }, ...parts] : parts;
+    const remember = !card.critical && ev.can_remember === true ? el("div", { class: "as-remember" },
+      ui.button({ variant: "ghost", size: "sm", icon: "clock", label: "Allow this for 1 hour", class: "as-remember-hour", onClick: () => answer(t, card, true, { remember: "hour" }) }),
+      ui.button({ variant: "ghost", size: "sm", icon: "clock", label: "for this session", class: "as-remember-session", onClick: () => answer(t, card, true, { remember: "session" }) })) : null;
     box.replaceChildren(
+      card.critical ? el("div", { class: "as-critical", role: "alert" }, ui.icon("alert"),
+        el("div", {}, el("strong", {}, "Critical action"),
+          el("p", {}, "This can lose data or take the laptop away. It never runs on its own, even in Full Control. "
+            + `Type ${confirmWord}, then you get ${ev.delay_seconds || 10} seconds to cancel.`))) : null,
       el("div", { class: "as-approval-title" }, ui.icon("shield"), `The assistant wants to ${what}`),
-      ...approvalParts(card.input).flatMap((p) => [
+      ...shownParts.flatMap((p) => [
         el("div", { class: "as-label" }, p.label),
         el("pre", { class: "as-pre as-code" }, p.text),
       ]),
+      typed,
       status,
-      el("div", { class: "as-approval-actions" }, deny, approve));
+      el("div", { class: "as-approval-actions" }, deny, approve),
+      remember);
     box.setAttribute("role", "group");
-    box.setAttribute("aria-label", "Approval needed");
-    card.ui = { approve, deny, status };
-    card.respond = (ok) => answer(t, card, ok);
+    box.setAttribute("aria-label", card.critical ? "Critical action: confirmation needed" : "Approval needed");
+    card.ui = { approve, deny, status, typed, syncConfirm, remember };
+    card.respond = (ok) => (card.critical && ok ? Promise.resolve() : answer(t, card, ok));   // a spoken yes never confirms a critical action
     t.pending = card;
     scrollToBottom(true);
     if (t.voice) t.voice.onApproval?.(card);
     else if (!visible) ctx.toast("The assistant is waiting for your OK on the Talk tab.", { kind: "warn" });
+    if (typed && !t.voice) setTimeout(() => typed.focus({ preventScroll: true }), 50);
+  }
+
+  // The server's 10 second delay after CONFIRM: "Running in 10... Cancel". The server enforces it; this only shows it.
+  function startCountdown(t, card, ev) {
+    if (!card.ui) return;
+    clearCountdown(card);
+    let left = Math.max(1, Math.round(ev.seconds || 10));
+    const text = el("span", {});
+    const cancel = ui.button({ variant: "secondary", size: "sm", icon: "x", label: "Cancel", class: "as-cancel", onClick: async () => {
+      cancel.disabled = true;
+      try { await ctx.api("/api/assistant/cancel", { method: "POST", json: { session_id: t.sid, call_id: card.id } }); text.textContent = "Cancelled. Nothing was run."; clearCountdown(card); }
+      catch (error) { cancel.disabled = false; text.textContent = `Could not cancel: ${error.message}`; }
+    } });
+    card.cancelBtn = cancel;
+    const paint = () => { text.textContent = `Running in ${left}…`; };
+    paint();
+    card.ui.status.replaceChildren(text, cancel);
+    card.ui.approve.disabled = true;
+    card.countdownTimer = setInterval(() => { left -= 1; if (left <= 0) { clearCountdown(card); text.textContent = "Running…"; cancel.disabled = true; } else paint(); }, 1000);
+  }
+
+  function clearCountdown(card) {
+    if (card.countdownTimer) { clearInterval(card.countdownTimer); card.countdownTimer = null; }
   }
 
   function resolveApprovalUi(card, text) {
     if (!card.ui) return;
+    clearCountdown(card);
+    card.ui.remember?.remove();
     card.ui.approve.disabled = true;
     card.ui.deny.disabled = true;
     card.ui.status.replaceChildren(text);
@@ -519,20 +568,27 @@ export function init(container, ctx) {
     if (turn && turn.voice && card.approvalShown) { card.approvalShown = false; turn.voice.onApprovalDone?.(card); }
   }
 
-  async function postApprove(sid, callId, approve) {
-    return ctx.api("/api/assistant/approve", { method: "POST", json: { session_id: sid, call_id: callId, approve } });
+  async function postApprove(sid, callId, approve, extra = {}) {
+    return ctx.api("/api/assistant/approve", { method: "POST", json: { session_id: sid, call_id: callId, approve, ...extra } });
   }
 
-  async function answer(t, card, approve) {
+  async function answer(t, card, approve, extra = {}) {
     if (card.answering || !card.ui) return;
     card.answering = true;
     card.ui.approve.disabled = true;
     card.ui.deny.disabled = true;
     card.ui.status.replaceChildren(el("span", { class: "as-spinner", "aria-hidden": "true" }), "Sending your answer…");
     try {
-      await postApprove(t.sid, card.id, approve);
+      await postApprove(t.sid, card.id, approve, extra);
       if (t.pending === card) t.pending = null;
-      if (!card.done) resolveApprovalUi(card, approve ? "You approved this. Running…" : "You declined this.");
+      if (card.critical && approve) {
+        // Confirmed: the countdown event follows from the server. Keep the card open so it can be cancelled.
+        card.ui.status.replaceChildren(el("span", { class: "as-spinner", "aria-hidden": "true" }), "Confirmed. Starting the countdown…");
+        card.ui.typed.disabled = true;
+        t.voice?.onApprovalDone?.(card);
+        return;
+      }
+      if (!card.done) resolveApprovalUi(card, approve ? (extra.remember ? "You approved this and it is remembered (Settings > Active permissions). Running…" : "You approved this. Running…") : "You declined this.");
       t.voice?.onApprovalDone?.(card);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
@@ -543,6 +599,7 @@ export function init(container, ctx) {
         card.answering = false;
         card.ui.approve.disabled = false;
         card.ui.deny.disabled = false;
+        card.ui.syncConfirm?.();
         card.ui.status.replaceChildren(el("span", { class: "as-inline-err", role: "alert" },
           `Your answer did not reach the laptop: ${error.message} Tap Approve or Deny to try again.`));
         t.voice?.onApprovalError?.(card, error);
@@ -552,6 +609,7 @@ export function init(container, ctx) {
 
   function finishCard(card, ev) {
     card.done = true;
+    clearCountdown(card);
     const output = ev.output == null ? "" : String(ev.output);
     const shown = output.length > OUTPUT_LIMIT ? output.slice(0, OUTPUT_LIMIT) + `\n… (${output.length - OUTPUT_LIMIT} more characters not shown)` : output;
     card.outputPre = el("pre", { class: "as-pre as-output" }, shown || "(no output)");
@@ -592,7 +650,11 @@ export function init(container, ctx) {
         closeBubble(t);
         const card = getCard(t, ev);
         card.approvalShown = true;
-        showApproval(t, card);
+        showApproval(t, card, ev);
+        break;
+      }
+      case "countdown": {
+        startCountdown(t, getCard(t, ev), ev);
         break;
       }
       case "tool_result": {

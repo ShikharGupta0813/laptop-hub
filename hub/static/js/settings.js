@@ -155,7 +155,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "inbox", tone: "accent", title: "Notifications", sub: "Everything the hub told you", chevron: true, onClick: () => ctx.open("notifications") })));
     rows.push(group("This phone",
       ui.listRow({ icon: "phone", tone: "teal", title: "Phone capture", sub: capture() ? "Spending and message capture" : "Needs the installed Android app", chevron: true, onClick: () => openSection("capture") })));
-    rows.push(group("Account & security", fullControlRow(), logoutAllRow()));
+    rows.push(group("Account & security", fullControlRow(), permissionsRow(), logoutAllRow()));
     rows.push(group("System",
       ui.listRow({ icon: "activity", tone: "good", title: "Diagnostics", sub: "Is everything set up?", chevron: true, onClick: () => openSection("diagnostics"),
         meta: diag && diag.bad ? ui.badge(`${diag.bad} to fix`, "bad") : diag && diag.warn ? ui.badge(`${diag.warn} tips`, "warn") : null }),
@@ -178,6 +178,39 @@ export function init(container, ctx) {
         if (on) await fc.turnOff(); else await fc.turnOn();
         await load();
       } });
+  }
+
+  // Remembered approvals ("Allow this for 1 hour" on an approval card). Memory only; critical actions are never listed.
+  let grantCount = null;
+  function fmtLeft(g) {
+    if (g.scope !== "hour" || g.expires_in == null) return "this chat session";
+    const m = Math.max(1, Math.ceil(g.expires_in / 60));
+    return `${m} min left`;
+  }
+  function permissionsRow() {
+    return ui.listRow({ icon: "key", tone: "gray", title: "Active permissions", chevron: true,
+      sub: "What you chose to allow without asking again. Each can be revoked.",
+      meta: grantCount ? ui.badge(String(grantCount), "warn") : null,
+      onClick: () => openPermissions() });
+  }
+  function openPermissions() {
+    return drill("Active permissions", async (s) => {
+      const data = await api("/api/assistant/permissions");
+      const grants = Array.isArray(data.grants) ? data.grants : [];
+      grantCount = grants.length;
+      const rows = grants.map((g) => ui.listRow({ icon: "clock", tone: "warn", title: g.label || g.tool, sub: fmtLeft(g),
+        meta: ui.button({ label: "Revoke", size: "sm", variant: "secondary", class: "st-revoke", onClick: async (e) => {
+          e.stopPropagation();
+          try { await api("/api/assistant/permissions/revoke", { method: "POST", json: { id: g.id } }); } catch (error) { if (error.status !== 404) return fail(error); }
+          s.reload();
+        } }) }));
+      const revokeAll = grants.length ? ui.button({ label: "Revoke all", icon: "x", variant: "danger", class: "st-revoke-all", onClick: async () => {
+        try { await api("/api/assistant/permissions/revoke", { method: "POST", json: { all: true } }); s.reload(); } catch (error) { fail(error); }
+      } }) : null;
+      return el("div", { class: "ui-stack ui-stack--lg" },
+        ui.notice(data.full_control ? "Full Control is on, so nothing is asking. Remembered approvals only apply when it is off." : "These are kept in memory only and end by themselves. Turning Full Control off, or restarting the hub, clears them. Critical actions (shutdown, deleting folders, installing software...) can never be remembered.", { icon: "shield" }),
+        rows.length ? group(`Active (${rows.length})`, rows) : ui.notice("Nothing is remembered right now.", { tone: "good" }), revokeAll);
+    }, { tall: false });
   }
 
   let loggingOut = false;
@@ -208,6 +241,7 @@ export function init(container, ctx) {
       S = await api("/api/settings");
       paint();
       api("/api/notifications/settings").then((n) => { notify = n; paint(); }).catch(() => {});
+      api("/api/assistant/permissions").then((p) => { grantCount = Array.isArray(p.grants) ? p.grants.length : 0; paint(); }).catch(() => {});
       api("/api/settings/diagnostics").then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
         diag = { bad: list.filter((r) => r.level === "fail").length, warn: list.filter((r) => r.level === "warn").length };

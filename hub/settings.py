@@ -564,6 +564,11 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
         shown = {k: ({"changed": True} if k in SECRET_KEYS else {"old": old[k], "new": changes[k]})
                  for k in changes if old[k] != changes[k]}
         ctx.audit("settings_change", changes=shown, persisted=persisted)
+        if "full_control" in changes and old.get("full_control") != changes["full_control"]:
+            try:        # remembered approvals never outlive a change of Full Control (docs/api/assistant-safety.md)
+                ctx.get_app().state.assistant.revoke_all()
+            except Exception:  # noqa: BLE001  tests and doubles may have no assistant
+                pass
         info = await full_snapshot()
         info["persisted"] = persisted
         if note:
