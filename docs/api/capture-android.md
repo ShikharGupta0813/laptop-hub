@@ -31,7 +31,7 @@ The plugin is registered in `MainActivity.java` (`registerPlugin(HubCapturePlugi
 
 | Call | Result | What it does |
 |---|---|---|
-| `HubCapture.status()` | `{ listenerEnabled, smsGranted, enabled, watchMail, watchChat, queued, hubOrigin }` | `listenerEnabled`: Android "Notification access" is on for the app. `smsGranted`: RECEIVE_SMS granted. `enabled`: the in-app switch (default `true`). `watchMail` / `watchChat`: Gmail / Google Chat watching (default `false`, see below). `queued`: items waiting to be sent (payments and watch items). `hubOrigin`: the `https://host[:port]` the app was built for, or `null`. |
+| `HubCapture.status()` | `{ listenerEnabled, smsGranted, enabled, watchMail, watchChat, queued, alertsQueued, hubOrigin }` | `listenerEnabled`: Android "Notification access" is on for the app. `smsGranted`: RECEIVE_SMS granted. `enabled`: the in-app switch (default `true`). `watchMail` / `watchChat`: Gmail / Google Chat watching (default `false`, see below). `queued`: items waiting to be sent (payments and watch items). `hubOrigin`: the `https://host[:port]` the app was built for, or `null`. |
 | `HubCapture.openListenerSettings()` | `{}` | Opens Android's Notification access screen. The user switches **Laptop Hub** on. |
 | `HubCapture.requestSms()` | `{ granted }` | Shows Android's SMS permission dialog (RECEIVE_SMS only, never READ_SMS). Optional. |
 | `HubCapture.setEnabled({ enabled: true })` | same as `status()` | Turns capture on or off without touching Android settings. |
@@ -123,3 +123,13 @@ monitoring. Slack and WhatsApp are not watched.
   cap is exceeded the oldest watch item is dropped before any payment item.
 
 The routing rules live in `WatchFilter.java` and are mirrored and checked by `mobile/scripts/test-watch-filter.js`.
+
+## General alerts capture (any app the owner enabled)
+
+Besides payments and the Gmail / Chat watch, the listener forwards notifications from any package on the owner's list to
+`POST /api/alerts/ingest` as `{source:"notification", app, package, app_label, title, sender, text, conversation, group,
+mentioned:"true|false|unknown", mention:true (only when true), key, ts}`. The list is `GET /api/alerts/capture-config`
+(`{mode:"allowlist"|"all-but-blocklist", packages:[{package,label,enabled}], deny:[...], names:[...]}`), cached on the phone
+and refreshed on app start and every ~15 minutes; a 404 or offline hub keeps the cache, and with none a built-in default
+set is used. `HubCapture.refreshAlertConfig()` -> `{updated, mode}` forces a refresh. Unsent events wait in a file queue
+(200, oldest dropped first); `alertsQueued` in `status()` is its size. See `mobile/README.md`.
