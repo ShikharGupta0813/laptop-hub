@@ -50,6 +50,7 @@ export const VIEWS = [
   { id: "research", label: "Research", icon: "search", path: "./research.js", under: "apps" },
   { id: "brain", label: "Memory", icon: "book-open", path: "./brain.js", under: "apps" },
   { id: "buildflow", label: "Build", icon: "wand", path: "./buildflow.js", under: "apps" },
+  { id: "alerts", label: "Alerts", icon: "bell", path: "./alerts.js", under: "home" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
@@ -371,7 +372,21 @@ function startApp() {
     try { history.replaceState({ view: "home" }, "", "#/home"); } catch (_) { /* ignore */ }
     show("home", { push: false }).then(() => { if (target !== "home") show(target, { section }); });
     setTimeout(pollUnread, 800);
+    setTimeout(pollAlerts, 2500);
+    setInterval(pollAlerts, 20000);
   }
+}
+
+// Urgent alerts (hub/alerts.py): while the app is open and visible, read out what the hub flagged urgent, once.
+async function pollAlerts() {
+  if (document.hidden || $("app").hidden) return;
+  try {
+    const { alerts } = await api("/api/alerts/pending");
+    if (!alerts?.length) return;
+    speak(alerts.map((a) => a.speech).join(" "));
+    for (const a of alerts) ui.toast(a.title, { kind: "warn", action: { label: "Open", onClick: () => show("alerts") } });
+    await api("/api/alerts/pending/ack", { method: "POST", json: { ids: alerts.map((a) => a.id) } });
+  } catch (_) { /* module missing or hub asleep: try again next time */ }
 }
 
 // ---- login -----------------------------------------------------------------------------------------

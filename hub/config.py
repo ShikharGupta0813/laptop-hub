@@ -130,6 +130,18 @@ class Config:
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
+    # Urgent-alert triage (hub/alerts.py, hub/asana.py). See docs/api/alerts.md. The Asana token is NOT here (keyring).
+    alerts_enabled: bool = True
+    alerts_vips: list[str] = field(default_factory=list)    # senders (name, number or address fragment) who always matter
+    alerts_sources: list[str] = field(default_factory=lambda: ["whatsapp", "slack", "teams", "gmail", "gchat", "asana", "jira", "email", "sms"])
+    alerts_rules: dict = field(default_factory=dict)        # editable word lists (urgent_words, time_words, ask_words, ignore_words, mention_words); missing = defaults
+    alerts_speak_on_laptop: bool = False                    # say urgent alerts out loud on the laptop speakers
+    alerts_ai: bool = False                                 # let the free AI write the plan (text redacted first)
+    alerts_email_poll: bool = True                          # look at Gmail through hub/gmailx.py when that module exists
+    asana_enabled: bool = False
+    asana_poll_minutes: int = 5
+    asana_workspace: str = ""                               # workspace gid; empty = the first one Asana lists
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
@@ -217,6 +229,12 @@ def save(config: Config, path: Path) -> None:
         "buildflow_enabled": bool(config.buildflow_enabled),
         "wake_laptop_enabled": config.wake_laptop_enabled is True, "wake_laptop_device": str(config.wake_laptop_device or ""),
         "backup_dir": config.backup_dir,
+        "alerts_enabled": config.alerts_enabled is not False, "alerts_vips": list(config.alerts_vips or []),
+        "alerts_sources": list(config.alerts_sources or []), "alerts_rules": dict(config.alerts_rules or {}),
+        "alerts_speak_on_laptop": config.alerts_speak_on_laptop is True, "alerts_ai": config.alerts_ai is True,
+        "alerts_email_poll": config.alerts_email_poll is not False,
+        "asana_enabled": config.asana_enabled is True, "asana_poll_minutes": int(config.asana_poll_minutes or 5),
+        "asana_workspace": str(config.asana_workspace or ""),
         "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
         "redact_names": list(config.redact_names), "cloud_daily_cap": int(config.cloud_daily_cap or 0),
         "provider_daily_caps": dict(config.provider_daily_caps or {}),

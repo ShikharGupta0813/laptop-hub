@@ -987,9 +987,15 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
         except (ValueError, UnicodeDecodeError):
             raise HTTPException(400, "Send the message as JSON.") from None
         try:
-            return await engine.ingest(body)
+            result = await engine.ingest(body)
         except Bad as exc:
             raise bad(exc) from None
+        try:    # alert triage (hub/alerts.py) also sees every captured message; it never replies and never raises
+            from . import alerts as _alerts
+            _alerts.on_watch_ingest(ctx, engine.clean_ingest(body))
+        except Exception:  # noqa: BLE001
+            log.info("alert triage could not look at a captured message")
+        return result
 
     return router
 

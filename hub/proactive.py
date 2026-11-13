@@ -34,7 +34,7 @@ from .common import Ctx, JsonFile
 log = logging.getLogger("hub.proactive")
 
 NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed")
-BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done")
+BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "alert")
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
 MAX_EVENTS = 20
@@ -69,6 +69,10 @@ def classify(event: dict, *, now: dt.datetime | None = None, quiet_start: str = 
     elif kind in ("mail", "asana"):
         flagged = event.get("urgent") is True and (kind == "mail" or event.get("overdue_today") is True)
         base = "now" if flagged else "quiet"
+    elif kind == "alert":      # hub/alerts.py: urgency 2-3 interrupts, 1 is batched, 0 is only listed
+        u = event.get("urgency")
+        u = u if isinstance(u, int) and not isinstance(u, bool) else 0
+        base = "now" if u >= 2 else "batch" if u == 1 else "quiet"
     elif kind in NOW_TYPES:
         base = "now"
     elif kind in BATCH_TYPES:
@@ -76,7 +80,8 @@ def classify(event: dict, *, now: dt.datetime | None = None, quiet_start: str = 
     else:
         base = "quiet"
     if now is not None and base != "quiet" and in_quiet(now, quiet_start, quiet_end):
-        return "now" if base == "now" and kind in QUIET_PASS else "quiet"
+        passes = kind in QUIET_PASS or (kind == "alert" and event.get("urgency") == 3)   # only a P0-grade alert wakes you
+        return "now" if base == "now" and passes else "quiet"
     return base
 
 
@@ -91,7 +96,10 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     bak = sum(1 for e in events if e.get("type") == "backup_done")
     cc = [e for e in events if e.get("type") == "cc_waiting"]
     bld = sum(1 for e in events if e.get("type") == "build_done")
+    alr = sum(1 for e in events if e.get("type") == "alert")
     parts = []
+    if alr:
+        parts.append("1 alert is waiting in Alerts" if alr == 1 else f"{alr} alerts are waiting in Alerts")
     if ap:
         parts.append("1 Autopilot draft is waiting for you" if ap == 1 else f"{ap} Autopilot drafts are waiting for you")
     if res:
@@ -175,7 +183,8 @@ class Proactive:
             link = event.get("link") if isinstance(event.get("link"), str) else None
             at = now.isoformat(timespec="seconds")
             if decision == "now":
-                self._push(title or "Friday", body, "warn" if event.get("urgent") else "info", link)
+                level = event.get("level") if event.get("level") in ("info", "warn", "error") else ("warn" if event.get("urgent") else "info")
+                self._push(title or "Friday", body, level, link)
             elif decision == "batch":
                 d["pending"].append({"type": str(event.get("type")), "title": title,
                                      "count": event.get("count") or 1, "at": at})
