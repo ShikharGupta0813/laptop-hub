@@ -34,7 +34,7 @@ from .common import Ctx, JsonFile
 log = logging.getLogger("hub.proactive")
 
 NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed")
-BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting")
+BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done")
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
 MAX_EVENTS = 20
@@ -90,6 +90,7 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     res = sum(1 for e in events if e.get("type") == "research_done")
     bak = sum(1 for e in events if e.get("type") == "backup_done")
     cc = [e for e in events if e.get("type") == "cc_waiting"]
+    bld = sum(1 for e in events if e.get("type") == "build_done")
     parts = []
     if ap:
         parts.append("1 Autopilot draft is waiting for you" if ap == 1 else f"{ap} Autopilot drafts are waiting for you")
@@ -101,6 +102,8 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
         parts.append(str(cc[0].get("title") or "Claude is waiting on you").rstrip("."))
     elif cc:
         parts.append(f"Claude is waiting on you in {len(cc)} sessions")
+    if bld:
+        parts.append("your build is finished" if bld == 1 else f"{bld} builds are finished")
     return f"{call}, {_join(parts)}." if parts else ""
 
 

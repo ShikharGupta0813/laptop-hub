@@ -112,6 +112,8 @@ class Config:
     # Claude Code sessions (hub/ccsessions.py): watch the owner's Claude Code transcripts, nudge one from the phone.
     ccsessions_enabled: bool = True
     ccsessions_dir: str = ""                # "" = ~/.claude/projects
+    # Build flow: spec-first delegation (brainstorm, spec, plan, Council builds step by step). See docs/api/buildflow.md.
+    buildflow_enabled: bool = True
 
     backup_dir: str = ""                    # where `python -m hub backup` writes; empty = Documents/REDLINE-backups
 
@@ -199,6 +201,7 @@ def save(config: Config, path: Path) -> None:
         "research_search_backend": str(config.research_search_backend),
         "brain_enabled": bool(config.brain_enabled), "brain_context": bool(config.brain_context),
         "ccsessions_enabled": bool(config.ccsessions_enabled), "ccsessions_dir": str(config.ccsessions_dir or ""),
+        "buildflow_enabled": bool(config.buildflow_enabled),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")

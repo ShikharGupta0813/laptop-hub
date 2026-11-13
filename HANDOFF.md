@@ -218,6 +218,13 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Send = `claude --resume <id> -p <msg> --output-format json` via argv list in the project folder, ANTHROPIC_API_KEY removed, 600 s, background thread + job id; refused while the session is working. Route needs `confirm: true`.
 - Proactive: `Watcher` (60 s, only while enabled and the folder exists) -> one `cc_waiting` batch event per waiting episode; `proactive.py` got `cc_waiting` in `BATCH_TYPES` and a sentence.
 - Tests: `tests/test_ccsessions.py` (fake transcripts, `subprocess.run` mocked). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the real transcript shapes (assumed, listed in the API doc), `claude --resume -p` on Windows (.cmd shim, quoting), whether an unanswered tool_use is really a permission prompt, the Claude screen in a real browser.
+## 3i. Build flow: spec-first delegation (2026-11-13), Jarvis
+
+`hub/buildflow.py` (module `buildflow`, last in `FEATURE_MODULES`), `hub/buildflow_tools.py` (7 tools in server.py `extra_tools`), `js/buildflow.js` + `css/buildflow.css` (Apps > Build), docs `docs/api/buildflow.md`, `docs/guide/15-build-flow.md`.
+- Flow in `buildflow.sqlite`: brainstorm (free AI, one question at a time, max 6) -> spec file -> checkbox plan file -> Council per step. Files live INSIDE a shared root (`roots`), never overwritten (`-2`). The plan file is the truth (steps re-parsed on every look, hand edits fine).
+- Delegation reuses `POST /api/council/run` / `GET /api/council/jobs/{id}` in-process; a run `accepted` ticks the box, anything else records the reason. 20 s poll in `start(ctx)` plus a settle on every look. Finish: Brain `decision` item + proactive `build_done` batch event (added to `BATCH_TYPES` and `batch_sentence`).
+- Preview/approve split: `spec`/`plan`/`next` routes take `{preview: true}`; tools `build_spec|build_plan|build_next` are approval-gated + `mutating` (taint gate). One `"buildflow"` TOOL_GROUPS entry. Config `buildflow_enabled` (Settings).
+- Tests: `tests/test_buildflow.py` (fake AI, fake council caller, temp workspace). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the Build screen in a real browser, real AI question/spec/plan quality, a real Council run ticking a box, Windows paths, the Council having no working-directory option (the task text names the folder, the lab is trusted to obey).
 
 ## 4. Still to do (in this order)
 

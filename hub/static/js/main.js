@@ -49,6 +49,7 @@ export const VIEWS = [
   { id: "skills", label: "Skills", icon: "layers", path: "./skills.js", under: "apps" },
   { id: "research", label: "Research", icon: "search", path: "./research.js", under: "apps" },
   { id: "brain", label: "Memory", icon: "book-open", path: "./brain.js", under: "apps" },
+  { id: "buildflow", label: "Build", icon: "wand", path: "./buildflow.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);

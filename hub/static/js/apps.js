@@ -119,6 +119,9 @@ const ENTRIES = [
   view("brain", "Memory", "Jarvis and Friday remember RCAs, decisions and what people asked you, and judge new tasks.",
     "monitor", ["memory", "remember", "rca", "decision", "recall", "task", "follow up", "brain", "who asked"],
     { view: "brain" }, { icon: "book-open", isNew: true }),
+  view("buildflow", "Build", "Tell Jarvis what to build: he asks a few questions, writes a spec and a plan, then the Council builds it step by step.",
+    "monitor", ["build", "spec", "plan", "project", "new project", "build me", "council", "delegate", "steps"],
+    { view: "buildflow" }, { icon: "wand", isNew: true }),
   view("notifications", "Notifications", "Everything the hub has told you, in one place.", "monitor",
     ["alerts", "bell", "messages", "unread", "inbox"], { view: "notifications" }, { icon: "bell" }),
 
