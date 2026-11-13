@@ -8,7 +8,7 @@ const SHELL = [
   "/css/expenses.css", "/css/fileops.css", "/css/files.css", "/css/focus.css", "/css/habits.css", "/css/home.css",
   "/css/hub.css", "/css/inbox.css", "/css/journal.css", "/css/kb.css", "/css/learn.css", "/css/notes.css",
   "/css/notifications.css", "/css/reminders.css", "/css/screen.css", "/css/settings.css", "/css/shell.css",
-  "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/js/today.js", "/css/skills.css", "/js/skills.js",
+  "/css/terminal.css", "/css/todos.css", "/css/tools.css", "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js", "/css/autopilot.css", "/js/autopilot.js", "/js/today.js", "/css/research.css", "/js/research.js", "/css/skills.css", "/js/skills.js",
   "/js/fullcontrol.js", "/js/wheel.js", "/css/wheel.css", "/vendor/fonts/orbitron-var-latin.woff2",
   "/js/speechchunk.js", "/js/wake.js", "/js/wakephrase.js", "/css/wake.css",
   "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js", "/js/bookmarks.js", "/js/boot.js",

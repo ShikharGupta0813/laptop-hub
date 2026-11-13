@@ -86,6 +86,11 @@ class Config:
     # Today: one read-only timeline of the day (meetings, tasks, spending, mail, what you did) plus a spoken summary.
     today_enabled: bool = True
     today_evening_time: str = "19:30"       # weekday time of the evening summary (needs Autopilot on); "" = off
+    # Deep research with citations (hub/research.py): multi-hop web investigation, free AI only, daily AI-call budget.
+    research_enabled: bool = True
+    research_max_hops: int = 3
+    research_max_sources: int = 8
+    research_daily_ai_calls: int = 20
 
     # Skills: community skills (markdown instructions) installed from GitHub. See docs/api/skills.md.
     skills_enabled: bool = True
@@ -167,6 +172,9 @@ def save(config: Config, path: Path) -> None:
         "autopilot_tone": config.autopilot_tone, "autopilot_research": bool(config.autopilot_research),
         "today_enabled": bool(config.today_enabled), "today_evening_time": config.today_evening_time,
         "skills_enabled": bool(config.skills_enabled), "skills_sources": list(config.skills_sources),
+        "research_enabled": bool(config.research_enabled), "research_max_hops": int(config.research_max_hops),
+        "research_max_sources": int(config.research_max_sources),
+        "research_daily_ai_calls": int(config.research_daily_ai_calls),
         "backup_dir": config.backup_dir,
     }
     tmp = path.with_suffix(".tmp")

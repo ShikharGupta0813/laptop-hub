@@ -21,6 +21,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 13. [12 · Autopilot](12-autopilot.md): drafts that wait for your one tap.
 14. [13 · Today](13-today.md): your whole day on one page.
 15. [14 · Skills](14-skills.md): add community skills for Jarvis and Friday.
+15. [14 · Research](14-research.md): ask once, get a report with numbered sources.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).
 

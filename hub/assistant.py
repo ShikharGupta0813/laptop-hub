@@ -166,6 +166,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "skills": ({"skills_list", "skill_search", "skill_install", "skill_use", "skill_remove"},
                re.compile(r"\bskills?\b|\binstall the .{1,40} skill\b|\buse the .{1,40} skill\b", re.I)),
     "today": ({"today_summary", "autopilot_pending", "autopilot_decide"}, re.compile(r"\bsummar(?:y|i[sz]e)\b|\bmy day\b|\bday(?:'s)? (?:end|start|summary|wrap|review|recap)\b|\b(?:end|start) of (?:the |my )?day\b|\bwhat(?:'s| is) the update\b|\bany updates?\b|\bwhat (?:did i|have i|happened)\b|\brecap\b|\bwrap(?:ping)? up\b|\bapprove\b|\bskip (?:it|the|number|card|\d)|\bpending\b|\bwhat(?:'s| is) waiting\b", re.I)),
+    "research": ({"deep_research"}, re.compile(r"\bresearch\b|\blook(?:ing)? (?:it |that |this )?up\b|\bfind out\b|\binvestigat\w*|\bdeep[- ]?dive\b|\bwhat should i know before\b|\bbackground (?:on|check)\b", re.I)),
     "notes": ({"search_notes", "read_note", "add_note"},
               re.compile(r"\bnotes?\b|\btags?\b|\bjot\b|\bwrite (?:this|that) down\b", re.I)),
     "reminders": ({"reminder_add", "reminders_list"},
