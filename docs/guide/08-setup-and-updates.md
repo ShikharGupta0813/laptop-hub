@@ -128,6 +128,16 @@ python -m hub update --restart
 
 Use `python -m hub update` (no `--restart`) to pull without restarting.
 
+If the hub is not running as the `LaptopHub` task, the updater starts `python -m hub serve` itself after pulling, and writes the outcome to `update.log` (the phone shows it in Settings).
+
+### Checks and one-shot setup
+
+```powershell
+python -m hub doctor          # one line per thing: git, packages, hub, Tailscale, tasks, keys
+python -m hub fix-deps        # installs requirements through python -m pip (never pip.exe)
+python -m hub setup --all     # updater, watchdog and backup tasks, no questions
+```
+
 Your settings, notes and data live in `C:\Users\YOU\.laptop-hub` and are **not** touched by an update.
 
 > ⚠️ **Careful:** The phone app (APK) only needs rebuilding if the `mobile/` folder changed or your Tailscale address changed. A normal update does not need a new APK.

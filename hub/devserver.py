@@ -88,7 +88,12 @@ class FakeAssistant:
     def __init__(self):
         self.waiting: dict[tuple[str, str], asyncio.Future] = {}
 
-    async def run(self, session_id, text, provider, auto_approve):
+    async def run(self, session_id, text, provider, auto_approve, *, persona="", voice=False, context="", **_ignored):
+        # persona / voice / context are accepted (the real assistant takes them) so Talk and voice mode work here.
+        if voice:
+            yield {"type": "text", "t": "Pretend voice reply. " + (f"(persona {persona}) " if persona else "")}
+            yield {"type": "text", "t": "Done."}
+            return
         yield {"type": "text", "t": "Let me look. "}
         await asyncio.sleep(0.1)
         yield {"type": "tool_start", "id": "c1", "name": "list_dir",

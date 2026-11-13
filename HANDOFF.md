@@ -196,7 +196,7 @@ Goal: use Claude as little as possible; local + Gemini carry the load. Config (h
 ## 3i. Deep research with citations (2026-11-13): "Jarvis, research X for me"
 
 `hub/research.py` (feature module `research`, last in `FEATURE_MODULES`; also `research.build()` registered in `server.py` with the other assistant tools), `js/research.js` + `css/research.css` (Apps > Research; added to sw.js SHELL, VERSION not bumped),
-docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabled` (true), `research_max_hops` (3), `research_max_sources` (8), `research_daily_ai_calls` (20), all editable in Settings.
+docs `docs/api/research.md`, `docs/guide/15-research.md`. Config `research_enabled` (true), `research_max_hops` (3), `research_max_sources` (8), `research_daily_ai_calls` (20), all editable in Settings.
 - Pipeline: plan queries -> search (DuckDuckGo HTML, Wikipedia fallback; injectable) -> fetch (httpx, SSRF guard, 1.5 MB cap, html/text only) -> extract -> report with `[n]` citations -> follow-up hops from gaps. Jobs in `research.sqlite` (cap 200); `POST/GET/DELETE /api/research`, `POST /api/research/{id}/notify`.
 - Two styles: `technical` (Jarvis, cyan) and `brief` (Friday, amber; also reads calendar + Asana through read-only in-process routes). Default from the persona; UI has a Jarvis/Friday chooser.
 - Tool `deep_research` (no approval, read-only; the model has no tools): waits ~25 s, else "I'm on it, the report will be in Research" + ntfy push when done. One `TOOL_GROUPS` line `research`.
@@ -204,7 +204,7 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Tests: `tests/test_research.py` (fakes only). UNVERIFIED: real DuckDuckGo HTML shape (it changes; Wikipedia is the fallback), DNS-rebinding between the check and the connect (the host is resolved and checked, then httpx resolves again), real local-model JSON quality, the phone UI (never opened in a browser), the tool with a real model deciding when to pass `style`.
 ## 3h. Brain: long-term memory + task desk (2026-11-13), both personas
 
-`hub/brain.py` (module `brain`, last in `FEATURE_MODULES`), `hub/brain_tools.py` (5 assistant tools, registered in server.py `extra_tools`), `js/brain.js` + `css/brain.css` (Apps > Memory), docs `docs/api/brain.md`, `docs/guide/14-memory.md`.
+`hub/brain.py` (module `brain`, last in `FEATURE_MODULES`), `hub/brain_tools.py` (5 assistant tools, registered in server.py `extra_tools`), `js/brain.js` + `css/brain.css` (Apps > Memory), docs `docs/api/brain.md`, `docs/guide/16-memory.md`.
 - SQLite `brain.sqlite` in the data dir, FTS5 with LIKE fallback; items carry a `persona` (jarvis = technical kinds, friday = people/time, both = notes). Time phrases go through the Reminders parser/service (real push) and the reminder id is stored.
 - Hooks in `hub/assistant.py` (kept tiny): ONE `"brain"` TOOL_GROUPS entry; `_brain_save` ("remember ..."/"note ..." answered "Saved." with no model; not for questions or text naming a time); `_brain_memory` -> `brain.context_for` (question-like text, score >= 0.6, <= 600 chars) injected by `_framed` via `session.memory`.
 - `persona.py`: one sentence each (Jarvis: recall for technical questions; Friday: recall + follow-ups, mention due follow-ups). Today: `brain` source, `followup` timeline rows, a Follow-ups section, a "Follow-ups due" sentence in the brief text.
@@ -213,14 +213,14 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 
 ## 3i. Claude Code sessions: watch and steer (2026-11-13)
 
-`hub/ccsessions.py` (module `ccsessions`, last in `FEATURE_MODULES`; 3 tools registered in server.py `extra_tools`), `js/ccsessions.js` + `css/ccsessions.css` (Apps > Claude), docs `docs/api/ccsessions.md`, `docs/guide/15-claude-sessions.md`. Config `ccsessions_enabled` (true), `ccsessions_dir` ("" = ~/.claude/projects), hub.json only.
+`hub/ccsessions.py` (module `ccsessions`, last in `FEATURE_MODULES`; 3 tools registered in server.py `extra_tools`), `js/ccsessions.js` + `css/ccsessions.css` (Apps > Claude), docs `docs/api/ccsessions.md`, `docs/guide/18-claude-sessions.md`. Config `ccsessions_enabled` (true), `ccsessions_dir` ("" = ~/.claude/projects), hub.json only.
 - Read-only core: tail (256 KB) of `<dir>/<project>/<id>.jsonl`, status working/waiting/idle inferred from the tail + mtime, <= 50 sessions. Tools `cc_sessions`, `cc_session_read` (untrusted) and `cc_session_send` (needs_approval + mutating, untrusted; the taint gate applies, no new bypass). One `ccsessions` TOOL_GROUPS entry.
 - Send = `claude --resume <id> -p <msg> --output-format json` via argv list in the project folder, ANTHROPIC_API_KEY removed, 600 s, background thread + job id; refused while the session is working. Route needs `confirm: true`.
 - Proactive: `Watcher` (60 s, only while enabled and the folder exists) -> one `cc_waiting` batch event per waiting episode; `proactive.py` got `cc_waiting` in `BATCH_TYPES` and a sentence.
 - Tests: `tests/test_ccsessions.py` (fake transcripts, `subprocess.run` mocked). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the real transcript shapes (assumed, listed in the API doc), `claude --resume -p` on Windows (.cmd shim, quoting), whether an unanswered tool_use is really a permission prompt, the Claude screen in a real browser.
 ## 3i. Build flow: spec-first delegation (2026-11-13), Jarvis
 
-`hub/buildflow.py` (module `buildflow`, last in `FEATURE_MODULES`), `hub/buildflow_tools.py` (7 tools in server.py `extra_tools`), `js/buildflow.js` + `css/buildflow.css` (Apps > Build), docs `docs/api/buildflow.md`, `docs/guide/15-build-flow.md`.
+`hub/buildflow.py` (module `buildflow`, last in `FEATURE_MODULES`), `hub/buildflow_tools.py` (7 tools in server.py `extra_tools`), `js/buildflow.js` + `css/buildflow.css` (Apps > Build), docs `docs/api/buildflow.md`, `docs/guide/17-build-flow.md`.
 - Flow in `buildflow.sqlite`: brainstorm (free AI, one question at a time, max 6) -> spec file -> checkbox plan file -> Council per step. Files live INSIDE a shared root (`roots`), never overwritten (`-2`). The plan file is the truth (steps re-parsed on every look, hand edits fine).
 - Delegation reuses `POST /api/council/run` / `GET /api/council/jobs/{id}` in-process; a run `accepted` ticks the box, anything else records the reason. 20 s poll in `start(ctx)` plus a settle on every look. Finish: Brain `decision` item + proactive `build_done` batch event (added to `BATCH_TYPES` and `batch_sentence`).
 - Preview/approve split: `spec`/`plan`/`next` routes take `{preview: true}`; tools `build_spec|build_plan|build_next` are approval-gated + `mutating` (taint gate). One `"buildflow"` TOOL_GROUPS entry. Config `buildflow_enabled` (Settings).

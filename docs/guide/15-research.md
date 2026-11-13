@@ -1,4 +1,4 @@
-# 14 · Research: ask once, get a report with sources
+# 15 · Research: ask once, get a report with sources
 
 **What this page is for:** how to have Jarvis or Friday look something up on the web for you, so you do not have to search.
 

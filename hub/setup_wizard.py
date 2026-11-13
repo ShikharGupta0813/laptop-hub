@@ -1309,6 +1309,10 @@ def run_setup(args, wizard: Wizard | None = None) -> int:
     path = Path(args.config) if getattr(args, "config", None) else cfg.default_path()
     w = wizard or Wizard(path)
     check = bool(getattr(args, "check", False))
+    if getattr(args, "all", False):
+        # No questions: the three scheduled tasks (updater, watchdog, backup) in one go.
+        w.confirm = lambda prompt, default=True: True   # type: ignore[method-assign]
+        return run_wizard(w, "updater,watchdog,backup", check, None)
     if not check and not w.system.isatty():
         w.say("Setup is interactive and needs a real terminal (it asks for secrets with hidden input). "
               "Open PowerShell and run: python -m hub setup")

@@ -83,6 +83,8 @@ flowchart TD
 | Push says "Tailscale is logged out" | Tailscale needs you to sign in (it needs a browser). | Open the laptop, click the Tailscale icon, sign in. |
 | Need an old file back | Backup zips are in `Documents\REDLINE-backups`. | `python -m hub backup --restore ZIP` (page 08) |
 | Council says it is not set up | `council_dir` is empty. | `python -m hub setup --only council`, restart hub |
+| Packages missing or `pip.exe` blocked | Windows Application Control blocks `pip.exe`. | `python -m hub fix-deps` (uses `python -m pip`) |
+| Other new-feature problems | First-run snags. | See [99 · Troubleshooting new features](99-troubleshooting-new-features.md) |
 
 > ✅ **Check:** After any fix to `hub.json` or a new package, restart the hub.
 
