@@ -6,7 +6,7 @@ bars, and a native microphone permission. All logic stays on your laptop.
 
 Why a shell and not a rewrite: the whole interface is already built and tested as a web app. A shell reuses
 all of it, builds in minutes, and stays in sync with the laptop. Features that need real native code (a
-background "Hey Jarvis" wake word, notifications) are listed under **Later** below.
+background "Hey Jarvis" wake word, notifications) are native plugins; see the sections below and **Later**.
 
 ## Easiest: let GitHub build it (no Android Studio, nothing to install)
 
@@ -129,13 +129,51 @@ The app handles files natively (`android/.../HubWeb.java`). The page must **navi
 - `target=_blank` / `window.open` to the hub origin loads in the app (or downloads if `download=1`); other http(s), mailto: and tel: links open in the system browser; other schemes are refused. Foreign origins never load inside the app.
 - Not compiled here (no Android SDK); the GitHub Actions build is the first compile.
 
+## Hey Jarvis in the background
+
+An optional, **off by default** native feature: the phone keeps listening with the screen off and the app closed, and
+opens the app in voice mode when you say "Hey Jarvis" or "Hey Friday" (plus the rest of the sentence, if you say one).
+
+**Turn it on:** open the app, **Settings**, the card **Always-on Hey Jarvis (background)**. Press **Download voice model**
+(one time, about 40 MB, from `alphacephei.com/vosk/models`, kept in the app's private storage), then switch it on and allow
+the microphone and notifications when Android asks. A notification "Listening for Hey Jarvis or Hey Friday" with a **Stop**
+button stays up while it listens.
+
+**Privacy.** Recognition is offline with [Vosk](https://alphacephei.com/vosk/) (Apache-2.0) on the phone. Sound is never
+stored or sent anywhere. Only the text after the wake phrase reaches your hub, the same as if you had typed it.
+**Battery.** Continuous listening costs battery (a wake lock keeps the CPU awake). It has not been measured; if it is too
+much, switch it off or use the browser wake word while the app is open.
+
+**How it works** (`android/app/src/main/java/dev/shikhar/laptophub/wake/`): `WakeService` (foreground service, type
+`microphone`, `AudioRecord` 16 kHz) feeds a Vosk recognizer limited to a small grammar of the wake phrases. On a match it
+vibrates, re-listens for up to 4 s with free recognition to catch the rest of the sentence, stores it in memory, tries to
+open the app and posts a high-priority "tap to talk" notification (with a full-screen intent). It then pauses 10 s so it
+does not hear itself. The page (`hub/static/js/wakebridge.js`) asks the plugin `consumePending()` whenever it becomes
+visible and calls `voicemode.setPreload(text, persona)`; a `#/voice?persona=jarvis&text=...` link does the same.
+Plugin `HubWake`: `status / enable / disable / modelStatus / downloadModel / consumePending`.
+Pure logic with JVM tests (`app/src/test/java/dev/shikhar/laptophub/wake/WakeLogicTest.java`): phrase matching, URL
+encoding (300 character cap), zip-slip-safe unzip, the model state machine. Dependency: `com.alphacephei:vosk-android:0.3.75`
+(Maven Central, no extra repository needed). The model is `vosk-model-small-en-us-0.15`.
+
+**Limits you should know.**
+- There is **no start-at-boot**: Android 14 and newer do not let an app start a microphone service from the background or
+  from boot. After a reboot (or if Android kills the app) open the app and switch it on again. The service is not restarted by
+  the system for the same reason.
+- Android 10 and newer restrict apps from opening a screen from the background. The app tries, and also posts a
+  notification with a full-screen intent. If the app does not open by itself, tap the notification; on some phones also
+  allow **Display over other apps** / **Full screen notifications** for Laptop Hub in Android settings.
+- Some makers (Xiaomi, Oppo, Vivo, OnePlus, Samsung) kill background services; set Laptop Hub's battery to Unrestricted.
+- While another app is using the microphone (a call), Android may silence it.
+- **Not tested:** the Android code was compile-checked against the Android API 36 stubs and the real Vosk library classes
+  in a sandbox, but the full Gradle build (the first real one is the GitHub Actions run) and a real phone have not been
+  tried. Accuracy with an Indian accent, battery drain and the Android 14 service rules are unverified.
+
 ## Changing the hub address later
 
 Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address is built into the app.
 
 ## Later (not built yet)
 
-- Background wake word ("Hey Jarvis") that works with the screen off: needs a native plugin.
 - Push notifications for approvals and reminders.
 - A custom splash screen (the launcher icon is the Laptop Hub icon; regenerate it with `python scripts/make-icons.py`).
 - A release-signed build with a keystore kept in GitHub secrets, so updates install over the old app (today's builds are debug-signed for your own phone).

@@ -8,6 +8,10 @@ const wanted = [
   "android.permission.RECORD_AUDIO",          // voice notes, talking to the assistant, English practice
   "android.permission.MODIFY_AUDIO_SETTINGS", // lets the web view open the microphone
   "android.permission.RECEIVE_SMS",           // optional bank-SMS capture (asked at runtime; never READ_SMS)
+  // Background "Hey Jarvis" (HubWake plugin). No BOOT_COMPLETED: Android 14+ will not start a microphone service from boot.
+  "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+  "android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK", "android.permission.VIBRATE",
+  "android.permission.USE_FULL_SCREEN_INTENT",
 ];
 let changed = false;
 for (const name of wanted) {
@@ -44,6 +48,15 @@ const components = [
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
+`,
+  },
+  {
+    marker: ".wake.WakeService",
+    xml: `        <!-- Background wake word. Runs only after the owner switches it on in the app. -->
+        <service
+            android:name=".wake.WakeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 `,
   },
 ];
