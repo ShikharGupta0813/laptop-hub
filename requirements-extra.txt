@@ -1,0 +1,4 @@
+# Optional extras (pip install -r requirements-extra.txt).
+# pypdf reads PDF resumes in the Opportunities profile; without it a small built-in reader is tried and,
+# when it cannot read the file, the screen asks you to paste the text instead.
+pypdf>=4.0

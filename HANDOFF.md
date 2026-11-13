@@ -439,3 +439,8 @@ python -m hub.devserver --port 8799                 # fake models and a harmless
 - `hub/safety.py` `classify()` + `ExtraTool(level=...)`; the gate lives in `AssistantService._call_tool` (`resolve(..., confirm_text, remember, voice)`, `cancel_critical`, grants API). Routes: `/api/assistant/approve` (new optional `confirm_text`, `remember`, `voice`), `/cancel`, `/permissions`, `/permissions/revoke`. UI: assistant.js approval card (red banner, CONFIRM box, countdown, remember buttons), voicemode.js (no spoken approve for N3), settings.js "Active permissions". Details: docs/api/assistant-safety.md. No sw.js bump, no new files in SHELL.
 - Behaviour changes: every executed tool call now audits `assistant_tool` with `level` (N1 calls too); Full Control still asks for N3. Any delete via `run_command` is N3 (outside hub trash), even a single file: intentional.
 - UNVERIFIED: the real 10 s countdown on a phone, voice-mode wording read aloud, ARC-Glass look of the red banner on a device (only source-checked), real Windows shutdown/lock paths (tests use fakes; `laptop_action` shutdown/restart/sleep/lock_screen are N3 by id).
+
+## 3l. Opportunities finder (2026-11-13)
+`hub/opps.py` (sources, finder loop, ranking, routes, tools), `hub/opps_vet.py` (scam flags), `hub/profile.py` (private profile, `get_profile(ctx)`), screen `js/opps.js`.
+Docs: `docs/api/opps.md`, `docs/guide/19-opportunities.md`. Settings: `opps_enabled` (off), `opps_interval_min`, `opps_min_score`. Pushes to `applyq.add_item` via guarded import.
+Unverified: every starter feed/API address (no network when built); PDF parsing without pypdf; the UI was not run in a browser.

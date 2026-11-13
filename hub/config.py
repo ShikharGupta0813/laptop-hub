@@ -118,6 +118,10 @@ class Config:
     # Laptop-side wake word (hub/wakeword.py): listen on the laptop microphone for "Hey Jarvis". Off by default.
     wake_laptop_enabled: bool = False
     wake_laptop_device: str = ""            # sounddevice name or index; "" = the default microphone
+    # Opportunities finder (hub/opps.py): public job/freelance sources, off until the owner turns it on.
+    opps_enabled: bool = False
+    opps_interval_min: int = 120
+    opps_min_score: int = 40
 
     # Privacy redaction (hub/redact.py): hide emails, phones, cards, keys... before text goes to a CLOUD model.
     redact_enabled: bool = True
@@ -217,6 +221,8 @@ def save(config: Config, path: Path) -> None:
         "buildflow_enabled": bool(config.buildflow_enabled),
         "wake_laptop_enabled": config.wake_laptop_enabled is True, "wake_laptop_device": str(config.wake_laptop_device or ""),
         "backup_dir": config.backup_dir,
+        "opps_enabled": config.opps_enabled is True, "opps_interval_min": int(config.opps_interval_min),
+        "opps_min_score": int(config.opps_min_score),
         "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
         "redact_names": list(config.redact_names), "cloud_daily_cap": int(config.cloud_daily_cap or 0),
         "provider_daily_caps": dict(config.provider_daily_caps or {}),

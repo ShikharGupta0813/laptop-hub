@@ -47,7 +47,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
                "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
-               "wake_laptop_enabled", "wake_laptop_device",
+               "wake_laptop_enabled", "wake_laptop_device", "opps_enabled", "opps_interval_min", "opps_min_score",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap")
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
@@ -188,9 +188,14 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key in ("opps_interval_min", "opps_min_score"):
+            low, high = (15, 1440) if key == "opps_interval_min" else (0, 100)
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                raise HTTPException(400, f"{key} must be a whole number from {low} to {high}.")
             changes[key] = value
         elif key == "today_evening_time":
             if not isinstance(value, str) or not (value == "" or re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value)):
@@ -539,6 +544,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "proactive_quiet_start": config.proactive_quiet_start, "proactive_quiet_end": config.proactive_quiet_end,
             "proactive_batch_minutes": config.proactive_batch_minutes,
             "buildflow_enabled": config.buildflow_enabled,
+            "opps_enabled": config.opps_enabled is True, "opps_interval_min": config.opps_interval_min,
+            "opps_min_score": config.opps_min_score,
             "wake_laptop_enabled": config.wake_laptop_enabled, "wake_laptop_device": config.wake_laptop_device,
             "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
             "redact_kinds_all": list(redact_mod.KINDS), "redact_names": list(config.redact_names),
