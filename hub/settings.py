@@ -745,6 +745,14 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
 
     # ---- backups ------------------------------------------------------------------------------------------------------------
 
+    def _backup_event(ok: bool, size: int) -> None:
+        try:
+            from . import backup as backup_mod
+            from .proactive import submit_or_notify
+            submit_or_notify(ctx, backup_mod.proactive_event(ok, size))
+        except Exception:  # noqa: BLE001 - telling the owner must never change the backup's result
+            pass
+
     @router.post("/backup")
     async def create_backup(body: BackupBody):
         if not body.confirm:
@@ -754,9 +762,11 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
         try:
             result = await asyncio.to_thread(make_backup, config, audit_path(), config_file())
         except OSError:
+            _backup_event(False, 0)
             raise HTTPException(500, "The backup could not be written. Check there is free space on the laptop.") from None
         finally:
             backup_lock.release()
+        _backup_event(True, result.get("size") or 0)
         ctx.audit("backup_create", name=result["name"], size=result["size"], files=result["files"])
         return result
 

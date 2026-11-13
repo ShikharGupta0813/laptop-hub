@@ -54,7 +54,10 @@ HTTP_TIMEOUT = 10.0
 GITHUB_HOSTS = ("github.com", "www.github.com")
 PERSONAS = ("jarvis", "friday", "both")
 SCRIPT_EXT = (".py", ".sh", ".bash", ".js", ".mjs", ".ts", ".ps1", ".bat", ".cmd", ".rb", ".pl", ".exe")
-DEFAULT_SOURCES = ["NousResearch/hermes-agent/skills", "openclaw/skills"]
+# Verified against the real repos (2026-11-13): hermes-agent keeps skills/<category>/<skill>/SKILL.md, so its source ends
+# in "/*" (list the categories, open one to list its skills); openclaw/openclaw keeps skills/<skill>/SKILL.md flat.
+# ("openclaw/skills" is not a public repo.)
+DEFAULT_SOURCES = ["NousResearch/hermes-agent/skills/*", "openclaw/openclaw/skills"]
 META_FILE = ".hub-skill.json"
 
 # Which assistant voice is using the tools right now ("jarvis" | "friday"); the assistant sets it per turn.
@@ -420,8 +423,11 @@ class SkillStore:
 
     # catalog
     def catalog(self, source: str, refresh: bool = False) -> list[dict]:
-        src = parse_source(source)
-        key = src["source"]
+        """Sub-folders of a GitHub folder. A source ending in "/*" holds categories (one level): its entries have
+        kind 'category' and their `source` is the folder to open next; otherwise entries are kind 'skill'."""
+        plain, categories = split_source(source)
+        src = parse_source(plain)
+        key = src["source"] + ("/*" if categories else "")
         now = self.clock()
         cached = self._catalog.get(key)
         if cached and not refresh and now - cached[0] < CATALOG_TTL:
@@ -444,7 +450,7 @@ class SkillStore:
                 continue
             full = f"{src['owner']}/{src['repo']}/" + (src["path"] + "/" if src["path"] else "") + name
             items.append({"name": normalise_name(name), "folder": name, "source": full,
-                          "persona_hint": hint_persona(name)})
+                          "kind": "category" if categories else "skill", "persona_hint": hint_persona(name)})
             if len(items) >= CATALOG_MAX:
                 break
         self._catalog[key] = (now, items)
@@ -463,7 +469,7 @@ class SkillStore:
             except SkillError as exc:
                 failed.append(f"{src}: {exc}")
                 continue
-            catalog += [dict(r, installed=r["name"] in have) for r in rows if hit(r["name"]) or hit(r["folder"])][:20]
+            catalog += [dict(r, installed=r["kind"] == "skill" and r["name"] in have) for r in rows if hit(r["name"]) or hit(r["folder"])][:20]
         return {"installed": installed[:20], "catalog": catalog[:40], "failed": failed}
 
 
@@ -488,12 +494,20 @@ def store_for(config, runner: Runner | None = None, http: HttpGet | None = None)
     return SkillStore(config.data_path() / "skills", runner=runner, http=http)
 
 
+def split_source(raw: Any) -> tuple[Any, bool]:
+    """'owner/repo/skills/*' -> ('owner/repo/skills', True): the trailing /* marks a folder of categories."""
+    if isinstance(raw, str) and raw.strip().endswith("/*"):
+        return raw.strip()[:-2], True
+    return raw, False
+
+
 def sources_of(config) -> list[str]:
     raw = getattr(config, "skills_sources", None)
     out = []
     for item in raw if isinstance(raw, list) else DEFAULT_SOURCES:
         try:
-            out.append(parse_source(item)["source"])
+            plain, categories = split_source(item)
+            out.append(parse_source(plain)["source"] + ("/*" if categories else ""))
         except SkillError:
             continue
     return out[:10]
@@ -527,7 +541,9 @@ def make_router(ctx: Ctx, *, runner: Runner | None = None, http: HttpGet | None 
         src = source or (sources_of(ctx.config) or [""])[0]
         items = await _thread(guard, store.catalog, src, refresh)
         have = {s["name"] for s in await _thread(store.list)}
-        return {"source": parse_source(src)["source"], "skills": [dict(i, installed=i["name"] in have) for i in items]}
+        plain, categories = split_source(src)
+        return {"source": parse_source(plain)["source"] + ("/*" if categories else ""),
+                "skills": [dict(i, installed=i["kind"] == "skill" and i["name"] in have) for i in items]}
 
     @router.get("/search")
     async def search(q: str = Query("", max_length=80), persona: str = Query("", max_length=10)):

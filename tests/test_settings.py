@@ -502,6 +502,16 @@ class BackupTest(Base):
         self.assertFalse(any(n.startswith("data/backups") for n in names))
         self.assertEqual([r["name"] for r in self.audit_rows() if r["event"] == "backup_create"], [body["name"]])
 
+    def test_backup_tells_the_dispatcher(self):
+        from unittest import mock
+        with mock.patch("hub.proactive.submit_or_notify") as sub:
+            self.assertEqual(self.make().status_code, 200)
+        self.assertEqual(sub.call_args[0][1]["type"], "backup_done")
+        with mock.patch("hub.proactive.submit_or_notify") as sub, \
+                mock.patch("hub.settings.make_backup", side_effect=OSError("disk")):
+            self.assertEqual(self.make().status_code, 500)
+        self.assertEqual(sub.call_args[0][1]["type"], "backup_failed")
+
     def test_secrets_are_excluded(self):
         data = self.config.data_path()
         (data / "hub.json").write_text(self.config_path.read_text())

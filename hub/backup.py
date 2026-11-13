@@ -283,6 +283,14 @@ def restore(zip_path: Path, config_path: Path, *, confirm: Callable[[str], str] 
     return EXIT_FAILED if failed else EXIT_OK
 
 
+def proactive_event(ok: bool, size: int = 0) -> dict:
+    """The event the hub's dispatcher gets for a backup: done is 'batch', failed is 'now' (see hub/proactive.py)."""
+    if ok:
+        return {"type": "backup_done", "title": "Backup done", "body": f"Backup done: {human_size(size)}", "link": "settings"}
+    return {"type": "backup_failed", "title": "Backup failed", "body": "The backup failed. Look at the laptop.",
+            "link": "settings", "urgent": True}
+
+
 def run(args, *, now: Callable[[], dt.datetime] = dt.datetime.now, confirm: Callable[[str], str] = input,
         push: Callable[..., bool] | None = None) -> int:
     """Entry point for `python -m hub backup`."""

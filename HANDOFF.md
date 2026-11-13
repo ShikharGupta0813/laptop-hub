@@ -400,3 +400,9 @@ python -m hub.devserver --port 8799                 # fake models and a harmless
   brain, about 30 fixed actions, email/calendar/chat helpers). The hub reuses its helper modules; it does
   not replace it.
 - `ShikharGupta0813/AI-Task-Agent`: the Asana-to-PR agent. Its `task_agent/asana.py` shows the Asana API usage.
+
+## 3j. Loose ends closed (2026-11-13)
+- Proactive hooks: Friday's meeting check (10 min lead, once per meeting via `dedupe`) now goes through `proactive.submit_or_notify` (falls back to `ctx.notify`), so one push only. In-hub backup (`POST /api/settings/backup`) sends `backup_done` (batch) / `backup_failed` (now, new type). `python -m hub backup` and the watchdog are separate processes with no dispatcher: they KEEP their direct ntfy.
+- Skills catalog: hermes-agent is `skills/<category>/<skill>/SKILL.md`, openclaw/openclaw is `skills/<skill>/SKILL.md`; `openclaw/skills` is not public. Defaults are now `NousResearch/hermes-agent/skills/*` (trailing `/*` = categories, `kind: category`) and `openclaw/openclaw/skills`. Verified by clone into temp dirs.
+- Research: `research_search_backend` (auto|ddg|wikipedia). DDG parser now pairs title/snippet per block. UNVERIFIED: the real DDG page (html.duckduckgo.com is blocked from the agent sandbox; the test fixture is hand-written from the known shape, not a saved live response). No second backend added (nothing else reachable).
+- Update button: Settings card + `POST /api/update {confirm:true}` -> `updater.start_update` (task LaptopHubUpdate if it exists, else detached `python -m hub [--config X] update --restart`). Audited `update_start`. UNVERIFIED on real Windows (a detached child may still die when `schtasks /End LaptopHub` kills the task's process tree).

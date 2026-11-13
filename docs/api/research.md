@@ -23,6 +23,7 @@ context through the hub's read-only routes (`GET /api/work/calendar`, `GET /api/
 | `research_enabled` | `true` | routes, tool and screen |
 | `research_max_hops` | `3` | search rounds (1-5) |
 | `research_max_sources` | `8` | pages read in total (1-20) |
+| `research_search_backend` | `"auto"` | `auto` (DuckDuckGo, then Wikipedia), `ddg` or `wikipedia`; hand-edit |
 | `research_daily_ai_calls` | `20` | model calls per day (0-500); planning and each writing round count, a JSON retry counts |
 
 ## Routes

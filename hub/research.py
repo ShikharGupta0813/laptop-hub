@@ -291,20 +291,33 @@ async def ddg_search(query: str, limit: int = 8, *, transport=None) -> list[dict
 
 
 def parse_ddg(markup: str) -> list[dict]:
+    """Results of html.duckduckgo.com/html/. Each hit is a `result` block with an `a.result__a` (title + redirect
+    link `//duckduckgo.com/l/?uddg=<real url>`) and an `.result__snippet`; ads (`result--ad`, `y.js` links) and
+    blocks without a usable http(s) link are skipped. Title and snippet are paired inside their own block, so a block
+    missing its snippet never shifts the others."""
     out = []
-    pattern = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.S)
-    snippets = re.findall(r'class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</(?:a|td|div)>', markup, re.S)
-    for i, m in enumerate(pattern.finditer(markup)):
-        href = html.unescape(m.group(1))
+    link = re.compile(r'<a\b[^>]*\bclass="[^"]*\bresult__a\b[^"]*"[^>]*>(.*?)</a>', re.S)
+    href_of = re.compile(r'\bhref="([^"]*)"')
+    snip = re.compile(r'class="[^"]*\bresult__snippet\b[^"]*"[^>]*>(.*?)</(?:a|td|div|span)>', re.S)
+    starts = [m.start() for m in re.finditer(r'<a\b[^>]*\bclass="[^"]*\bresult__a\b', markup)]
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(markup)
+        block = markup[start:end]
+        m = link.match(block)
+        if not m:
+            continue
+        h = href_of.search(block[:m.start(1)])
+        href = html.unescape(h.group(1)) if h else ""
         if href.startswith("//"):
             href = "https:" + href
         query = parse_qs(urlsplit(href).query)
         if "uddg" in query:
             href = unquote(query["uddg"][0])
-        if not href.startswith(("http://", "https://")) or "duckduckgo.com/y.js" in href:
+        if not href.startswith(("http://", "https://")) or "duckduckgo.com/y.js" in href or "ad_provider" in href:
             continue    # ads and relative links
-        tag = lambda s: clean(html.unescape(re.sub(r"<[^>]+>", "", s)), 300)  # noqa: E731
-        out.append({"title": tag(m.group(2)), "url": href, "snippet": tag(snippets[i]) if i < len(snippets) else ""})
+        sm = snip.search(block[m.end():])
+        tag = lambda t: clean(html.unescape(re.sub(r"<[^>]+>", "", t)), 300)  # noqa: E731
+        out.append({"title": tag(m.group(1)), "url": href, "snippet": tag(sm.group(1)) if sm else ""})
     return out
 
 
@@ -321,14 +334,21 @@ async def wikipedia_search(query: str, limit: int = 8, *, transport=None) -> lis
             for r in rows if isinstance(r, dict) and r.get("title")]
 
 
-async def web_search(query: str, limit: int = 8) -> list[dict]:
-    """DuckDuckGo first; Wikipedia when DuckDuckGo fails or finds nothing."""
-    try:
-        rows = await ddg_search(query, limit)
-        if rows:
-            return rows
-    except Exception as exc:  # noqa: BLE001 - DDG changes its page now and then; fall back
-        log.info("duckduckgo search failed (%s)", type(exc).__name__)
+BACKENDS = ("auto", "ddg", "wikipedia")
+
+
+async def web_search(query: str, limit: int = 8, backend: str = "auto") -> list[dict]:
+    """`auto`: DuckDuckGo first, Wikipedia when DuckDuckGo fails or finds nothing. `ddg` / `wikipedia`: only that one."""
+    backend = backend if backend in BACKENDS else "auto"
+    if backend in ("auto", "ddg"):
+        try:
+            rows = await ddg_search(query, limit)
+            if rows or backend == "ddg":
+                return rows
+        except Exception as exc:  # noqa: BLE001 - DDG changes its page now and then; fall back
+            log.info("duckduckgo search failed (%s)", type(exc).__name__)
+            if backend == "ddg":
+                return []
     try:
         return await wikipedia_search(query, limit)
     except Exception as exc:  # noqa: BLE001
@@ -478,12 +498,15 @@ def write_prompt(question: str, style: str, sources: list[dict], owner_context: 
 class Researcher:
     """Runs research jobs. `search`, `fetch`, `ask` and `caller` are injectable so tests use fakes and no network."""
 
+    async def _configured_search(self, query: str, limit: int = 8) -> list[dict]:
+        return await web_search(query, limit, str(getattr(self.config, "research_search_backend", "auto")))
+
     def __init__(self, ctx: Ctx, *, search: Search | None = None, fetch: Fetch | None = None, ask: Ask | None = None,
                  caller=None, clock: Callable[[], dt.datetime] | None = None):
         self.ctx = ctx
         self.config = ctx.config
         self.store = Store(ctx.config.data_path() / "research.sqlite")
-        self.search = search or web_search
+        self.search = search or self._configured_search
         self.fetch = fetch or fetch_page
         self._ask = ask
         self._caller = caller

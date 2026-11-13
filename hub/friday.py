@@ -52,7 +52,7 @@ MAX_FOLLOWED_TASKS = 6           # followed (not assigned) task details read per
 SECTION_CAP = 8
 FILE_SCAN_VISITS = 3000
 MEETING_SOON = dt.timedelta(hours=2)
-MEETING_ALERT = dt.timedelta(minutes=12)   # "about ten minutes": the loop runs every 3 minutes
+MEETING_ALERT = dt.timedelta(minutes=10)   # matches proactive.MEETING_MINUTES; the loop runs every 3 minutes
 BODY_SNIPPET = 120
 
 SECTIONS = [("urgent", "Needs you now"), ("tagged", "You were tagged"), ("tasks", "Tasks"),
@@ -1123,7 +1123,7 @@ class Engine:
             del self.data["seen"][:len(self.data["seen"]) - MAX_SEEN]
 
     def raise_alert(self, key: str, kind: str, title: str, body: str, level: str, now: dt.datetime,
-                    notify: bool = True) -> dict | None:
+                    notify: bool = True, event: dict | None = None) -> dict | None:
         if self._seen(key):
             return None
         self._remember(key)
@@ -1138,7 +1138,11 @@ class Engine:
             alert["batched"] = True   # recorded, but folded into the round's "and N more" notification
         else:
             try:
-                self.ctx.notify(title, body=body, level=level, link="friday", source="friday")
+                if event is not None:     # goes through the interrupt-vs-batch rule (one push per meeting)
+                    from .proactive import submit_or_notify
+                    submit_or_notify(self.ctx, {**event, "title": title, "body": body, "source": "friday"})
+                else:
+                    self.ctx.notify(title, body=body, level=level, link="friday", source="friday")
                 alert["notified"] = True
             except Exception:  # noqa: BLE001
                 log.warning("friday notify failed")
@@ -1260,8 +1264,10 @@ class Engine:
                 mins = max(1, round(lead.total_seconds() / 60))
                 body = f"{m['title']} at {m['start']:%H:%M}" + (f". Join: {m['link']}" if m["link"] else "")
                 # A meeting about to start always gets its own notification: it cannot wait.
-                sent(self.raise_alert("m:" + _hash(m["start"].isoformat(), m["title"])[:20], "meeting",
-                                      f"{Address}, {m['title'][:60]} starts in {mins} minutes", body, "info", now))
+                mkey = "m:" + _hash(m["start"].isoformat(), m["title"])[:20]
+                sent(self.raise_alert(mkey, "meeting",
+                                      f"{Address}, {m['title'][:60]} starts in {mins} minutes", body, "info", now,
+                                      event={"type": "meeting", "minutes": mins, "dedupe": mkey, "link": "friday"}))
 
         if held and not in_quiet(self.settings["quiet_hours"], now):
             try:
