@@ -880,4 +880,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         deep_research,
         # Read-only: it fetches public pages (SSRF-guarded), writes only its own research history, and the model
         # behind it has no tools. Nothing on the laptop or an account changes, so no approval card is needed.
-        needs_approval=False)]
+        needs_approval=False, untrusted=True)]

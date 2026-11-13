@@ -118,6 +118,9 @@ class FakeAssistant:
             return True
         return False
 
+    def stop(self, session_id):
+        return False
+
     def reset(self, session_id):
         pass
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .assistant import ExtraTool
+from .assistant import ExtraTool, mark_tools
 from .common import InProcessClient
 
 MAX_ITEMS = 25
@@ -235,7 +235,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         ok, d = await hub.call("GET", "/api/search", params={"q": str(a["query"])[:200], "limit": 12})
         return ok, fmt_hits(d) if ok else d
 
-    return [
+    return mark_tools([
         tool("reminders_list", "The owner's open reminders. Read-only.", {}, [], reminders_list),
         tool("reminder_add", "Create a reminder, alarm or timer from plain words, like 'tomorrow 9am call mom', "
                              "'in 10 minutes check the oven' or 'every weekday 8:30 standup'. The owner is asked first.",
@@ -270,4 +270,4 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         tool("search_everything", "Search across notes, files, to-dos, reminders, bookmarks, cards, mail subjects and "
                                   "more in one go. Read-only.",
              {"query": _s()}, ["query"], search_everything),
-    ]
+    ], untrusted=['inbox_unread', 'notifications_recent', 'search_everything', 'search_files', 'watch_alerts'], mutating=[])
