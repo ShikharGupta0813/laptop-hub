@@ -44,6 +44,7 @@ export const VIEWS = [
   { id: "watch", label: "Watch", icon: "eye", path: "./watch.js", under: "apps" },
   { id: "council", label: "Council", icon: "users", path: "./council.js", under: "apps" },
   { id: "autopilot", label: "Autopilot", icon: "zap", path: "./autopilot.js", under: "apps" },
+  { id: "ccsessions", label: "Claude", icon: "code", path: "./ccsessions.js", under: "apps" },
   { id: "today", label: "Today", icon: "clock", path: "./today.js", under: "home" },
   { id: "skills", label: "Skills", icon: "layers", path: "./skills.js", under: "apps" },
   { id: "research", label: "Research", icon: "search", path: "./research.js", under: "apps" },

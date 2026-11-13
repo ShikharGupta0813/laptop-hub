@@ -211,6 +211,14 @@ docs `docs/api/research.md`, `docs/guide/14-research.md`. Config `research_enabl
 - Intake uses `autopilot.pick_provider` (Gemini or local, never the paid Claude API). Config `brain_enabled`, `brain_context` (Settings).
 - Tests: `tests/test_brain.py` (fakes only). sw.js: files added to SHELL, VERSION NOT bumped (orchestrator). UNVERIFIED: the Memory screen in a real browser, real AI verdict quality, real ntfy push from a brain reminder, FTS5 on the laptop's SQLite build, Windows.
 
+## 3i. Claude Code sessions: watch and steer (2026-11-13)
+
+`hub/ccsessions.py` (module `ccsessions`, last in `FEATURE_MODULES`; 3 tools registered in server.py `extra_tools`), `js/ccsessions.js` + `css/ccsessions.css` (Apps > Claude), docs `docs/api/ccsessions.md`, `docs/guide/15-claude-sessions.md`. Config `ccsessions_enabled` (true), `ccsessions_dir` ("" = ~/.claude/projects), hub.json only.
+- Read-only core: tail (256 KB) of `<dir>/<project>/<id>.jsonl`, status working/waiting/idle inferred from the tail + mtime, <= 50 sessions. Tools `cc_sessions`, `cc_session_read` (untrusted) and `cc_session_send` (needs_approval + mutating, untrusted; the taint gate applies, no new bypass). One `ccsessions` TOOL_GROUPS entry.
+- Send = `claude --resume <id> -p <msg> --output-format json` via argv list in the project folder, ANTHROPIC_API_KEY removed, 600 s, background thread + job id; refused while the session is working. Route needs `confirm: true`.
+- Proactive: `Watcher` (60 s, only while enabled and the folder exists) -> one `cc_waiting` batch event per waiting episode; `proactive.py` got `cc_waiting` in `BATCH_TYPES` and a sentence.
+- Tests: `tests/test_ccsessions.py` (fake transcripts, `subprocess.run` mocked). sw.js: files added to SHELL, VERSION NOT bumped. UNVERIFIED: the real transcript shapes (assumed, listed in the API doc), `claude --resume -p` on Windows (.cmd shim, quoting), whether an unanswered tool_use is really a permission prompt, the Claude screen in a real browser.
+
 ## 4. Still to do (in this order)
 
 ### 4a. Phone screens for round 2: BUILT (checked with Playwright against the devserver, Midnight + Daylight)
