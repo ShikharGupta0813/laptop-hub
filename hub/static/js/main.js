@@ -355,6 +355,7 @@ function buildChrome() {
   mountWheel($("views"), ctx);   // the floating assistant wheel, above the tab bar
   mountWake(ctx, { bar });       // "Hey Jarvis" / "Hey Friday" (off until switched on in Settings)
   import("./presence.js").then((m) => m.mountPresence(ctx)).catch(() => {});   // tells the hub when this app is open (docs/api/presence.md)
+  import("./panic.js").then((m) => m.mountPanic(ctx, { bar })).catch(() => {});   // the always-reachable Panic button + paused banner
   import("./wakebridge.js").then((m) => m.mountWakeBridge(ctx)).catch(() => {});   // Android app only: background wake word
 
   // "/" or Ctrl+K opens search on a keyboard.

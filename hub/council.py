@@ -29,6 +29,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from . import usage
 from .common import Ctx, JsonFile
+from . import panic as _panic
 
 log = logging.getLogger("hub.council")
 
@@ -690,6 +691,13 @@ def make_router(ctx: Ctx, *, runner: Runner | None = None, clock: Callable[[], f
     router = APIRouter(prefix="/api/council", dependencies=[Depends(ctx.need_auth)])
     router.manager = mgr  # type: ignore[attr-defined]
 
+    async def _panic_stop():
+        running = [j for j, t in mgr.tasks.items() if not t.done()]
+        if running:
+            await mgr.shutdown()
+        return f"{len(running)} council run(s) cancelled" if running else None
+    _panic.register("Council runs", _panic_stop, ctx=ctx)   # hub/panic.py
+
     def refuse(exc: CouncilError) -> HTTPException:
         return HTTPException(exc.status, str(exc))
 
@@ -699,6 +707,7 @@ def make_router(ctx: Ctx, *, runner: Runner | None = None, clock: Callable[[], f
 
     @router.post("/run")
     async def run(body: Any = Body(default=None)):
+        _panic.guard(ctx.config)
         try:
             return mgr.start(body)
         except CouncilError as exc:

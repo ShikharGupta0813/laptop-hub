@@ -1,0 +1,12 @@
+/* Panic button, "Agent paused" banner and the trust-rule rows (js/panic.js, js/trust.js). Tokens only. */
+.pn-btn { color: var(--c-bad); border-color: color-mix(in srgb, var(--c-bad) 55%, transparent); }
+.pn-btn.is-active { background: color-mix(in srgb, var(--c-bad) 25%, transparent); }
+.pn-banner { position: fixed; z-index: 60; left: var(--sp-3); right: var(--sp-3); top: calc(env(safe-area-inset-top, 0px) + 56px);
+  display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-xl); background: var(--c-glass-strong, var(--c-surface-1));
+  border: 1px solid color-mix(in srgb, var(--c-bad) 60%, transparent); color: var(--c-text); box-shadow: 0 8px 30px -12px var(--c-bad); }
+.pn-banner[hidden] { display: none; }
+.pn-banner__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.pn-banner__title { margin: 0; font-weight: 700; letter-spacing: .08em; }
+.pn-banner ul { margin: 0; padding-left: 1.1em; font-size: var(--fs-sm); color: var(--c-text-2); overflow-wrap: anywhere; }
+.tr-card { display: grid; gap: var(--sp-2); }
+.tr-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }

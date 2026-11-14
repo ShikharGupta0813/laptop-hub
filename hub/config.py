@@ -196,6 +196,12 @@ class Config:
     # Presence-aware delivery (hub/presence.py): where the owner is decides how each notification reaches them.
     presence_enabled: bool = True           # False = every notification goes out the old way; 'unknown' presence does too
     presence_laptop_toasts: bool = False    # also show a Windows toast (title only) when a rule says toast-on-laptop
+    # Agent controls (hub/panic.py, hub/trust.py): the panic button and the trust ladder.
+    panic_active: bool = False              # persistent: set by the Panic button, cleared only by Resume (never by Settings)
+    panic_confirm: bool = False             # True = Panic asks "are you sure" first; False = one tap works in an emergency
+    panic_phrases: list | None = None       # spoken/typed panic phrases; None = the built-in list
+    trust_enabled: bool = True              # the trust ladder (suggest "do this automatically" after repeated approvals)
+    trust_threshold: int = 10               # approvals of one shape, with no denial in 30 days, before it is suggested
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -316,6 +322,9 @@ def save(config: Config, path: Path) -> None:
         "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
         "formfill_never": list(config.formfill_never or []),
         "presence_enabled": config.presence_enabled is not False, "presence_laptop_toasts": config.presence_laptop_toasts is True,
+        "panic_active": config.panic_active is True, "panic_confirm": config.panic_confirm is True,
+        "panic_phrases": config.panic_phrases, "trust_enabled": config.trust_enabled is not False,
+        "trust_threshold": int(config.trust_threshold or 10),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

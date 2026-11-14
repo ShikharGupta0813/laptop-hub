@@ -32,6 +32,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from . import providers, usage
 from .common import Ctx, InProcessClient, JsonFile
+from . import panic as _panic
 from .llm import LLMError
 from .provlist import ID_RE, clean
 
@@ -882,6 +883,13 @@ def make_router(ctx: Ctx, *, council: Any = None, think: Any = None, model_for: 
     router = APIRouter(prefix="/api/lanes", dependencies=[Depends(ctx.need_auth)])
     router.service = svc  # type: ignore[attr-defined]
 
+    async def _panic_stop():
+        running = [r for r, t in svc.tasks.items() if not t.done()]
+        if running:
+            await svc.shutdown()
+        return f"{len(running)} work lane run(s) cancelled" if running else None
+    _panic.register("Work lanes", _panic_stop, ctx=ctx)   # hub/panic.py
+
     def refuse(exc: LaneError) -> HTTPException:
         return HTTPException(exc.status, str(exc))
 
@@ -912,6 +920,7 @@ def make_router(ctx: Ctx, *, council: Any = None, think: Any = None, model_for: 
 
     @router.post("/run")
     async def run(body: Any = Body(default=None)):
+        _panic.guard(ctx.config)
         try:
             return await svc.start(body)
         except LaneError as exc:

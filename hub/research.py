@@ -46,6 +46,7 @@ from . import usage
 from .assistant import ExtraTool
 from .autopilot import pick_provider
 from .common import Ctx, InProcessClient, parse_json
+from . import panic as _panic
 from .llm import LLMError
 
 log = logging.getLogger("hub.research")
@@ -810,6 +811,13 @@ def engine_for(ctx: Ctx, **kwargs) -> Researcher:
 
 def make_router(ctx: Ctx, **kwargs) -> APIRouter:
     engine = engine_for(ctx, **kwargs)
+
+    def _panic_stop():
+        running = [t for t in list(engine.tasks.values()) if not t.done()]
+        for t in running:
+            t.cancel()
+        return f"{len(running)} research job(s) cancelled" if running else None
+    _panic.register("Research jobs", _panic_stop, ctx=ctx)   # hub/panic.py
     router = APIRouter(prefix="/api/research", dependencies=[Depends(ctx.need_auth)])
 
     def need_on() -> None:
@@ -826,6 +834,7 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
     @router.post("/")
     async def start(body: dict = Body(...)):
         need_on()
+        _panic.guard(ctx.config)
         question = clean(body.get("question"), 600) if isinstance(body, dict) else ""
         if len(question) < 3:
             raise HTTPException(400, "Write the question to research (at least 3 characters).")

@@ -38,6 +38,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from . import opps_vet, profile as profile_mod
 from .assistant import ExtraTool, mark_tools
 from .common import Ctx, InProcessClient, JsonFile
+from . import panic as _panic
 from .research import BlockedURL, check_url, extract_text
 
 try:  # the ready-to-send queue is built by another module; this one works without it
@@ -536,7 +537,7 @@ class Opps:
     # config (live, so Settings changes apply at once)
     @property
     def enabled(self) -> bool:
-        return getattr(self.config, "opps_enabled", False) is True
+        return getattr(self.config, "opps_enabled", False) is True and not _panic.on(self.config)
 
     @property
     def interval_min(self) -> int:
@@ -975,6 +976,7 @@ def engine_for(ctx: Ctx, **kwargs) -> Opps:
 
 def make_router(ctx: Ctx, **kwargs) -> APIRouter:
     engine = engine_for(ctx, **kwargs)
+    _panic.register_flag(ctx, "Opportunities finder", "opps_enabled", False)   # Panic pauses it, Resume restarts it (hub/panic.py)
     router = APIRouter(prefix="/api/opps", dependencies=[Depends(ctx.need_auth)])
 
     def source_or_404(source_id: str) -> dict:
@@ -1059,6 +1061,7 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
 
     @router.post("/run")
     async def run(body: dict = Body(default={})):
+        _panic.guard(ctx.config)
         source_id = body.get("source_id") if isinstance(body, dict) else None
         if source_id is not None:
             source_or_404(str(source_id))
