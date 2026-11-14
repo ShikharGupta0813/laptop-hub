@@ -210,6 +210,9 @@ class Config:
     meetings_keep_audio: bool = False       # True also writes WAV files beside the transcript (a warning is shown)
     meetings_max_minutes: int = 120         # a recording stops by itself after this long (1 to 480)
     meetings_model: str = "base"            # local Whisper model for meetings: tiny | base | small | medium
+    # Playbooks (hub/playbooks.py): "when X happens, do Y" rules. The feature is on but there are no playbooks until the owner writes one.
+    playbooks_enabled: bool = True          # False: no playbook runs (the list stays); Panic pauses them too
+    playbooks_max_concurrent: int = 3       # playbook runs at the same time, across all playbooks (1 to 20)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -339,6 +342,7 @@ def save(config: Config, path: Path) -> None:
         "tts_enabled": config.tts_enabled is not False, "tts_engine": str(config.tts_engine or "browser"),
         "meetings_enabled": config.meetings_enabled is True, "meetings_keep_audio": config.meetings_keep_audio is True,
         "meetings_max_minutes": int(config.meetings_max_minutes or 120), "meetings_model": str(config.meetings_model or "base"),
+        "playbooks_enabled": config.playbooks_enabled is not False, "playbooks_max_concurrent": int(config.playbooks_max_concurrent or 3),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

@@ -55,6 +55,7 @@ export const VIEWS = [
   { id: "devto", label: "Posts", icon: "pen", path: "./posts.js", under: "apps" },
   { id: "alerts", label: "Alerts", icon: "bell", path: "./alerts.js", under: "home" },
   { id: "meetings", label: "Meetings", icon: "mic", path: "./meetings.js", under: "apps" },
+  { id: "playbooks", label: "Playbooks", icon: "zap", path: "./playbooks.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
