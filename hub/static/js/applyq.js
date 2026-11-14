@@ -223,6 +223,7 @@ export function init(container, ctx) {
         item.channel === "email"
           ? ui.button({ label: "Send", icon: "send", variant: "primary", size: "sm", disabled: !item.contact_email || !!(item.missing || []).length, onClick: () => send(item, acct.value()) })
           : ui.button({ label: "Copy", icon: "copy", variant: "primary", size: "sm", onClick: () => copy([d.cover_note, d.body, ...Object.entries(d.answers || {}).map(([q, a]) => `${q}: ${a}`)].filter(Boolean).join("\n\n")) }),
+        web && !fill.enabled && item.draft && /^https:/.test(item.url || "") ? ui.button({ label: "Turn on form filling", icon: "laptop", variant: "ghost", size: "sm", onClick: async () => { try { await api("/api/settings", { method: "PATCH", json: { formfill_enabled: true } }); ui.toast("Form filling is on. It still waits for your tap before submitting.", { kind: "good" }); load(); } catch (error) { fail(error); } } }) : null,
         web && fill.enabled && fill.playwright && item.draft && /^https:/.test(item.url || "") ? ui.button({ label: "Fill the form on my laptop", icon: "laptop", variant: "tonal", size: "sm", onClick: () => fillForm(item) }) : null,
         web && item.url && /^https?:/.test(item.url) ? ui.button({ label: "Open", icon: "external", variant: "tonal", size: "sm", onClick: () => window.open(item.url, "_blank", "noopener,noreferrer") }) : null,
         item.channel === "email" ? ui.button({ label: "Copy", icon: "copy", variant: "ghost", size: "sm", onClick: () => copy(`${d.subject || ""}\n\n${d.body || ""}`) }) : null,

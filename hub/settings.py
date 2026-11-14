@@ -47,7 +47,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
                "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
-               "wake_laptop_enabled", "wake_laptop_device", "opps_enabled", "opps_interval_min", "opps_min_score",
+               "wake_laptop_enabled", "wake_laptop_device", "formfill_enabled", "formfill_headed", "opps_enabled", "opps_interval_min", "opps_min_score",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
@@ -202,7 +202,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "applyq_enabled", "gmail_company_ai_allowed"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value

@@ -9,6 +9,7 @@ import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
 import { gmailCard } from "./gmailx.js";
 import { OWNER_SECTIONS } from "./ownerlists.js";
 import { providersCard } from "./provlists.js";
+import { mcpCard } from "./mcp.js";
 import { modelsPanel } from "./models.js";
 import { dictationRow } from "./dictation.js";
 
@@ -70,6 +71,7 @@ export function init(container, ctx) {
   let appearanceCard = null;
   let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
   let gmailEl = null;      // the "Gmail accounts" card (js/gmailx.js)
+  let mcpEl = null;        // the "MCP servers" card (js/mcp.js)
   let providersEl = null;  // the "Providers" card: search, vision, AI endpoints (js/provlists.js)
 
   // ---- main page ---------------------------------------------------------------------------------
@@ -256,7 +258,8 @@ export function init(container, ctx) {
     if (S && !usageEl) usageEl = usageCard({ onEdit: () => capsSheet(S, () => { load(); usageEl.refresh(); }) });
     if (S && !gmailEl) gmailEl = gmailCard({ S });
     if (S && !providersEl) providersEl = providersCard();
-    root.replaceChildren(...[glance(), usageEl, gmailEl, providersEl, appearanceCard, ...main()].filter(Boolean));
+    if (S && !mcpEl) mcpEl = mcpCard();
+    root.replaceChildren(...[glance(), usageEl, gmailEl, providersEl, mcpEl, appearanceCard, ...main()].filter(Boolean));
   }
 
   async function load() {

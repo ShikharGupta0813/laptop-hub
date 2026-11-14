@@ -1,0 +1,14 @@
+/* MCP servers sheet (js/mcp.js). Tokens only; no hex. */
+.mcp, .mcp-sheet { min-width: 0; }
+.mcp > *, .mcp-tool > * { min-width: 0; }
+.mcp-field { display: grid; gap: 6px; }
+.mcp-field input, .mcp-field select, .mcp-field textarea { width: 100%; }
+.mcp-field textarea { font-family: var(--font-mono, ui-monospace, monospace); }
+.mcp-cmd, .mcp-out, .mcp-tool__desc, .mcp-tool__name { overflow-wrap: anywhere; word-break: break-word; }
+.mcp-tool { padding: var(--sp-4); display: grid; gap: var(--sp-2); }
+.mcp-tool.is-off { opacity: .65; }
+.mcp-tool__name { margin: 0; font-size: var(--fs-md, 1rem); }
+.mcp-badges, .mcp-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.mcp-switches { display: grid; gap: var(--sp-2); }
+.mcp-sw { display: flex; align-items: center; gap: var(--sp-3); }
+.mcp-sw > span { min-width: 0; overflow-wrap: anywhere; }

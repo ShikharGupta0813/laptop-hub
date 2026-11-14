@@ -1142,7 +1142,7 @@ class Formfill:
         ok = self._available() or self.driver_factory is not None
         return {"enabled": self.enabled(), "playwright": ok, "headed": self.headed(), "never": self.never_hosts(),
                 "install": None if ok else INSTALL_HINT, "busy": self.run is not None and self.run.state in ("ready", "login", "submitting"),
-                "reason": "" if self.enabled() else "Set formfill_enabled to true in hub.json to turn this on."}
+                "reason": "" if self.enabled() else "Turn on form filling from the application card (Settings key formfill_enabled)."}
 
     # -- plumbing -------------------------------------------------------------------------------------------------
     async def call(self, fn, *args):
