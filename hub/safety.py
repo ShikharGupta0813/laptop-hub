@@ -649,4 +649,4 @@ def classify(tool_name: str, args: Any = None, *, base: str | None = None) -> st
 
 # Tools that send something out to other people (email, an application, a public post). They need the owner's tap EVERY
 # time: Full Control, auto-approve and remembered approvals do not apply to them. (N3 is stricter: typed CONFIRM.)
-ALWAYS_ASK = frozenset({"send_email", "send_application", "post_publish"})
+ALWAYS_ASK = frozenset({"send_email", "send_application", "post_publish", "submit_form"})

@@ -2,3 +2,6 @@
 # pypdf reads PDF resumes in the Opportunities profile; without it a small built-in reader is tried and,
 # when it cannot read the file, the screen asks you to paste the text instead.
 pypdf>=4.0
+# playwright fills application forms in a browser on the laptop (Applications > "Fill the form on my laptop"). It stops before
+# Submit and waits for your tap. After pip install, run once:  python -m playwright install chromium
+playwright>=1.40

@@ -1,4 +1,5 @@
 // Applications (APPLYQ): drafts that are ready for YOU to send. Nothing here sends by itself: every Send is a tap.
+// "Fill the form on my laptop" (hub/formfill.py) opens a review sheet; only its separate "Submit now" button submits.
 // Routes: docs/api/applyq.md. Everything shown is text (textContent), never HTML.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
@@ -16,16 +17,17 @@ export function init(container, ctx) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
   const root = el("div", { class: "aq ui-stack ui-stack--lg" });
   container.append(root);
-  let tab = "ready", items = [], summary = null, accounts = [], loadError = "", seq = 0;
+  let tab = "ready", items = [], summary = null, accounts = [], loadError = "", seq = 0, fill = { enabled: false, playwright: false };
   const editing = new Set();
   const slot = { head: el("div", { class: "aq-head" }), list: el("div", { class: "ui-stack" }) };
 
   async function load() {
     const mine = ++seq;
     try {
-      const [list, acc] = await Promise.all([api(`/api/applyq?tab=${tab}`), api("/api/applyq/accounts").catch(() => ({ accounts: [] }))]);
+      const [list, acc, st] = await Promise.all([api(`/api/applyq?tab=${tab}`), api("/api/applyq/accounts").catch(() => ({ accounts: [] })),
+        api("/api/formfill/status").catch(() => ({ enabled: false }))]);
       if (mine !== seq) return;
-      items = list.items || []; summary = list.summary || null; accounts = acc.accounts || []; loadError = "";
+      items = list.items || []; summary = list.summary || null; accounts = acc.accounts || []; fill = st || { enabled: false }; loadError = "";
     } catch (error) {
       if (mine !== seq) return;
       loadError = error instanceof ApiError && error.status === 404 ? "off" : error.message;
@@ -54,6 +56,113 @@ export function init(container, ctx) {
       else ui.toast(r.error || "Not sent.", { kind: "warn" });
       load();
     } catch (error) { fail(error); load(); }
+  }
+
+
+  // ---- fill the form on the laptop (docs/api/formfill.md) -------------------------------------------------
+  // Opens a review sheet. Nothing is submitted by anything on this sheet except the separate "Submit now" button, which
+  // needs the tick AND a confirm, and which the hub refuses if the page changed since the screenshot you looked at.
+  const FF = (item, id = "") => `/api/applyq/${item.id}/formfill${id ? "/" + id : ""}`;
+
+  async function fillForm(item) {
+    let run = null, closing = false, submitted = false, shotLoaded = false;
+    const wrap = el("div", { class: "aqff ui-stack" });
+    const post = (tail, json) => api(FF(item, `${run.run}/${tail}`), { method: "POST", json: json || {} });
+    const sheet = ui.sheet({ title: "Fill the form on my laptop", class: "aqff-sheet", content: wrap, onClose: () => { if (run && !submitted && !closing) api(FF(item, `${run.run}/cancel`), { method: "POST", json: {} }).catch(() => {}); } });
+    const say = (text) => wrap.replaceChildren(el("p", { class: "ui-hint" }, text));
+    say("Opening the page on your laptop...");
+    try {
+      try { run = await api(FF(item, "start"), { method: "POST", json: {} }); } catch (error) {
+        if (!(error instanceof ApiError && error.status === 409)) throw error;
+        if (!(await ui.confirm({ title: "Over your daily cap", message: error.message, confirmLabel: "Fill anyway", danger: true, icon: "alert" }))) { closing = true; sheet.close(); return; }
+        run = await api(FF(item, "start"), { method: "POST", json: { confirm_over_cap: true } });
+      }
+    } catch (error) { closing = true; sheet.close(); fail(error); return; }
+    paintRun();
+
+    function rows(list, withValue) {
+      return el("div", { class: "aqff-rows" }, ...list.map((f) => el("div", { class: "aqff-row" },
+        el("span", { class: "aqff-n" }, String(f.n)), el("div", { class: "aqff-main" },
+          el("b", {}, f.label + (f.required ? " *" : "")), withValue ? el("span", {}, f.value) : el("span", { class: "aqff-why" }, f.reason)))));
+    }
+    function group(title, tone, list, withValue, open = true) {
+      if (!list.length) return null;
+      const box = el("details", { class: "aqff-group", ...(open ? { open: "" } : {}) }, el("summary", {}, ui.badge(String(list.length), tone), " " + title), rows(list, withValue));
+      return box;
+    }
+    async function reload(path = "") {
+      try { run = await api(FF(item, run.run)); } catch (error) { fail(error); closing = true; sheet.close(); return; }
+      paintRun();
+    }
+    async function guardedPost(tail, json, okText) {
+      try { run = await post(tail, json); if (okText) ui.toast(okText, { kind: "good" }); paintRun(); } catch (error) {
+        fail(error);
+        if (error instanceof ApiError && (error.status === 409 || error.status === 422)) await reload();
+        else if (error instanceof ApiError && (error.status === 410 || error.status === 404)) { closing = true; sheet.close(); load(); }
+      }
+    }
+    function paintRun() {
+      shotLoaded = false;
+      const f = run.fields || [];
+      const filled = f.filter((x) => x.status === "filled"), need = f.filter((x) => x.status === "needs_you"), skipped = f.filter((x) => x.status === "skipped");
+      const nodes = [];
+      nodes.push(el("p", { class: "ui-hint" }, `${run.host}. ${run.step?.label || (run.kind === "login" ? "Login window open on your laptop." : "")} Nothing is submitted yet. It closes by itself after 5 idle minutes.`));
+      for (const b of run.blockers || []) nodes.push(el("p", { class: "aq-missing" }, b.message));
+      if (run.kind === "login") {
+        nodes.push(el("p", {}, "Log in in the window on your laptop. Your password stays in that browser. When you are done, close this sheet, then tap Fill again."));
+        wrap.replaceChildren(...nodes);
+        return;
+      }
+      const img = el("img", { class: "aqff-shot", alt: "Screenshot of the form as filled", src: `${run.screenshot_url}?t=${Date.now()}` });
+      img.addEventListener("load", () => { shotLoaded = true; tick.disabled = false; });
+      nodes.push(el("div", { class: "aqff-shotbox" }, img));
+      const refresh = ui.button({ label: "Refresh screenshot", icon: "refresh", variant: "tonal", size: "sm", onClick: () => ui.busy(refresh, () => guardedPost("refresh", {}, "Screenshot updated.")) });
+      const login = ui.button({ label: "Open login window", icon: "external", variant: "ghost", size: "sm", onClick: async () => {
+        if (!(await ui.confirm({ title: "Open a login window?", message: "This closes the filled form. Log in on the laptop, then fill again.", confirmLabel: "Open it", icon: "external" }))) return;
+        try { await post("cancel"); run = await api(FF(item, "login"), { method: "POST", json: {} }); paintRun(); } catch (error) { fail(error); }
+      } });
+      const actions = el("div", { class: "aq-actions" }, refresh, login);
+      if (run.can_next) {
+        const next = ui.button({ label: "Next step", icon: "check", variant: "tonal", size: "sm", onClick: async () => {
+          if (!(await ui.confirm({ title: "Go to the next step?", message: "I will click Next on the page and fill the new step. Nothing is submitted.", confirmLabel: "Next step" }))) return;
+          await ui.busy(next, () => guardedPost("next", { confirm: true }));
+        } });
+        actions.append(next);
+      }
+      nodes.push(actions);
+      nodes.push(group("Needs you (I did not fill these)", "warn", need, false), group("Filled", "good", filled, true), group("Skipped", "", skipped, false, false));
+      const tick = el("input", { type: "checkbox", id: "aqff-tick", disabled: "" });
+      const submit = ui.button({ label: "Submit now", icon: "send", variant: "danger", disabled: true, onClick: async () => {
+        if (!(await ui.confirm({ title: "Submit this application?", message: `This clicks Submit on ${run.host}. It cannot be undone.`, confirmLabel: "Submit now", danger: true, icon: "send" }))) return;
+        await ui.busy(submit, async () => {
+          try {
+            const r = await post("submit", { confirm: true, field_digest: run.digest });
+            submitted = true; run = r; closing = true;
+            ui.toast(r.result === "applied" ? "Submitted. The page says it worked." : "Clicked Submit, but the page did not clearly confirm it. Check the site.", { kind: r.result === "applied" ? "good" : "warn" });
+            resultView(r); load();
+          } catch (error) {
+            fail(error);
+            if (error instanceof ApiError && (error.status === 409 || error.status === 422)) await reload();
+            else if (error instanceof ApiError && (error.status === 410 || error.status === 404)) { closing = true; sheet.close(); load(); }
+          }
+        });
+      } });
+      const updateSubmit = () => { submit.disabled = !(tick.checked && shotLoaded && run.can_submit); };
+      tick.addEventListener("change", updateSubmit);
+      img.addEventListener("load", updateSubmit);
+      const why = !run.can_submit ? el("p", { class: "aq-missing" }, run.submit_ambiguous ? "I could not tell which button submits. Submit it yourself in the laptop window." : "No Submit button is ready on this step.") : null;
+      nodes.push(el("section", { class: "aqff-submit ui-card ui-stack" }, ui.eyebrow("!", "Submit"),
+        el("p", { class: "ui-hint" }, "Look at the screenshot first. If anything on the page changes after it, I will refuse and show you a new one."),
+        el("label", { class: "aqff-tick" }, tick, el("span", {}, "I have looked at it")), why, submit));
+      wrap.replaceChildren(...nodes.filter(Boolean));
+    }
+    function resultView(r) {
+      const ok = r.result === "applied";
+      const nodes = [el("p", {}, ok ? "Submitted. This application is marked applied." : "I clicked Submit but the page did not clearly say it worked. The item stays in Ready with a needs-check flag. Check the site before applying again.")];
+      if (r.screenshot_url) nodes.push(el("img", { class: "aqff-shot", alt: "The page after Submit", src: `${r.screenshot_url}?t=${Date.now()}` }));
+      const done = ui.button({ label: "Done", variant: "primary", onClick: () => { api(FF(item, `${r.run}/cancel`), { method: "POST", json: {} }).catch(() => {}); sheet.close(); } });
+      wrap.replaceChildren(...nodes, done);
+    }
   }
 
   function header() {
@@ -114,6 +223,7 @@ export function init(container, ctx) {
         item.channel === "email"
           ? ui.button({ label: "Send", icon: "send", variant: "primary", size: "sm", disabled: !item.contact_email || !!(item.missing || []).length, onClick: () => send(item, acct.value()) })
           : ui.button({ label: "Copy", icon: "copy", variant: "primary", size: "sm", onClick: () => copy([d.cover_note, d.body, ...Object.entries(d.answers || {}).map(([q, a]) => `${q}: ${a}`)].filter(Boolean).join("\n\n")) }),
+        web && fill.enabled && fill.playwright && item.draft && /^https:/.test(item.url || "") ? ui.button({ label: "Fill the form on my laptop", icon: "laptop", variant: "tonal", size: "sm", onClick: () => fillForm(item) }) : null,
         web && item.url && /^https?:/.test(item.url) ? ui.button({ label: "Open", icon: "external", variant: "tonal", size: "sm", onClick: () => window.open(item.url, "_blank", "noopener,noreferrer") }) : null,
         item.channel === "email" ? ui.button({ label: "Copy", icon: "copy", variant: "ghost", size: "sm", onClick: () => copy(`${d.subject || ""}\n\n${d.body || ""}`) }) : null,
         ui.button({ label: "I applied", icon: "check", variant: "tonal", size: "sm", onClick: () => act(item, "applied", "Marked applied.") }),

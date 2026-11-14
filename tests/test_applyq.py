@@ -392,14 +392,14 @@ class ToolTest(Base):
 
     def test_specs_levels_and_approval(self):
         names = {t.spec["name"] for t in self.tools}
-        self.assertEqual(names, {"list_ready_applications", "show_application", "draft_application", "mark_applied",
+        self.assertEqual(names, {"list_ready_applications", "show_application", "draft_application", "mark_applied", "fill_application_form", "submit_form",
                                  "skip_application", "send_application"})
         send = self.tool("send_application")
         self.assertTrue(send.needs_approval({"id": "x"}))
         self.assertEqual(send.declared_level({"id": "x"}), "N2")
         self.assertEqual(safety.classify("send_application", {"id": "x"}, base="N2"), "N2")      # voice may approve N2
         self.assertEqual(send.spec["input_schema"]["required"], ["id"])
-        for n in names - {"send_application"}:
+        for n in names - {"send_application", "fill_application_form", "submit_form"}:
             self.assertFalse(self.tool(n).needs_approval({}), n)
 
     def test_routing_group(self):

@@ -24,3 +24,23 @@
 #view-applyq .aq-answer { display: flex; align-items: center; gap: var(--sp-2); justify-content: space-between; color: var(--c-text-2); overflow-wrap: anywhere; }
 #view-applyq .aq-answer span { min-width: 0; }
 @media (max-width: 480px) { #view-applyq .aq-stat { flex: 1 1 4.2rem; } }
+
+/* Fill the form on my laptop: the review sheet lives on <body>, so it is scoped by its own class. */
+.aqff-sheet .ui-sheet__body { display: block; }
+.aqff { min-width: 0; }
+.aqff > * { min-width: 0; }
+.aqff .aq-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.aqff .aq-missing { margin: 0; color: var(--c-warn, #d99a1d); overflow-wrap: anywhere; }
+.aqff-shotbox { max-height: 55vh; overflow: auto; border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); }
+.aqff-shot { display: block; width: 100%; height: auto; }
+.aqff-group { border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); padding: var(--sp-2) var(--sp-3); background: var(--c-surface-2); }
+.aqff-group > summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; gap: var(--sp-2); color: var(--c-text); }
+.aqff-rows { display: grid; gap: var(--sp-2); padding: var(--sp-2) 0; }
+.aqff-row { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.aqff-n { flex: 0 0 1.6rem; color: var(--c-text-3); font-size: var(--fs-sm); text-align: right; }
+.aqff-main { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; color: var(--c-text-2); }
+.aqff-main b { color: var(--c-text); font-weight: 600; }
+.aqff-why { color: var(--c-text-3); font-size: var(--fs-sm); }
+.aqff-submit { padding: var(--sp-4); border: 1px solid var(--c-line); margin-top: var(--sp-3); }
+.aqff-tick { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; cursor: pointer; }
+.aqff-tick input { width: 22px; height: 22px; }

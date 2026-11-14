@@ -3,7 +3,7 @@
 Each tool calls the hub's own /api/applyq route in-process. Only `send_application` can send, it names ONE item
 by id, needs the owner's approval (level N2) and shows the recipient and subject on the card. Posting text is
 data from outside, so list/show taint the turn: a send is refused in the same turn that read posting text, and
-the owner has to ask again ("send application <id>").
+the owner has to ask again ("send application <id>"). `fill_application_form` (N2) and `submit_form` (safety.ALWAYS_ASK) drive hub/formfill.py: see docs/api/formfill.md.
 """
 from __future__ import annotations
 
@@ -56,7 +56,8 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         if not ok:
             return False, d
         dr = d.get("draft") or {}
-        return True, (fmt(d) + f"\nTo: {d.get('contact_email') or 'no email'}; link {d.get('url')}\nSubject: {dr.get('subject', '')}\n"
+        hint = "\nFor a web application you can offer: want me to fill it on the laptop? (fill_application_form)" if d.get("channel") == "web" else ""
+        return True, (fmt(d) + hint + f"\nTo: {d.get('contact_email') or 'no email'}; link {d.get('url')}\nSubject: {dr.get('subject', '')}\n"
                       f"{_short(dr.get('body'), 1200)}\nMissing info: {', '.join(d.get('missing') or []) or 'none'}")
 
     async def draft(a):
@@ -108,6 +109,60 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
                       "title": d.get("title"), "account": d.get("account") or "default Gmail account",
                       "note": "Email cannot be undone."}
 
+    def summarize(v: dict) -> str:
+        c = v.get("counts") or {}
+        bits = [f"{c.get('filled', 0)} filled", f"{c.get('needs_you', 0)} need you", f"{c.get('skipped', 0)} skipped"]
+        need = [f.get("label") for f in v.get("fields") or [] if f.get("status") == "needs_you"][:8]
+        text = f"Form on {v.get('host')} ({(v.get('step') or {}).get('label') or 'opened'}): " + ", ".join(bits) + "."
+        if need:
+            text += " Needs you: " + "; ".join(_short(n, 50) for n in need) + "."
+        for b in v.get("blockers") or []:
+            text += " Blocker: " + _short(b.get("message"), 160)
+        return text + " Nothing is submitted. The owner looks at the screenshot in Applications and taps Submit."
+
+    async def fill_form(a):
+        i = need_id(a)
+        if not i:
+            return False, "Give the application id."
+        ok, d = await hub.call("POST", f"/api/applyq/{i}/formfill/start", body={})
+        return (True, summarize(d)) if ok else (False, d)
+
+    async def current_run(i):
+        ok, d = await hub.call("GET", f"/api/applyq/{i}/formfill")
+        if not ok:
+            return False, d
+        if not d.get("run"):
+            return False, "No form is open for that application. Fill it first."
+        return True, d
+
+    async def submit_preview(a):
+        i = need_id(a)
+        if not i:
+            return False, "Say which application to submit (its id)."
+        ok, d = await current_run(i)
+        if not ok:
+            return False, d
+        if not d.get("can_submit"):
+            return False, "That form cannot be submitted right now (no Submit button found, or a captcha is waiting for you)."
+        if not d.get("seen"):
+            return False, "The owner has not looked at the current screenshot yet. Ask them to open Applications and look, then ask again."
+        c = d.get("counts") or {}
+        return True, {"site": d.get("host"), "filled": c.get("filled", 0), "needs_you": c.get("needs_you", 0),
+                      "note": "This submits the application on the website. It cannot be undone."}
+
+    async def submit_form(a):
+        i = need_id(a)
+        if not i:
+            return False, "Say which application to submit (its id)."
+        ok, d = await current_run(i)
+        if not ok:
+            return False, d
+        ok, r = await hub.call("POST", f"/api/applyq/{i}/formfill/{d['run']}/submit", body={"confirm": True, "field_digest": d.get("digest")})
+        if not ok:
+            return False, r
+        return True, ("Submitted and the page says it worked; marked applied." if r.get("result") == "applied"
+                      else "Clicked Submit, but the page did not clearly confirm it. Marked as needs check; look at the site.")
+
     props = {"id": {"type": "string", "description": "The application id (from list_ready_applications)."}}
     return mark_tools([
         tool("list_ready_applications", "List the applications that are ready to send, best score first, and how many were sent today.",
@@ -119,4 +174,11 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         tool("send_application", "Send ONE ready application by email from the owner's Gmail. Needs the owner's approval. "
              "Only call it for a specific application the owner named; never to 'send all'.", props, ["id"], send,
              needs_approval=True, preview=preview, level="N2"),
-    ], untrusted=["list_ready_applications", "show_application"], mutating=["draft_application", "mark_applied", "skip_application"])
+        tool("fill_application_form", "Open a WEB application on the owner's laptop browser and fill the safe fields from their profile. "
+             "It never submits. Sensitive or unknown fields are left for the owner. Offer it first: 'want me to fill it on the laptop?'",
+             props, ["id"], fill_form, needs_approval=True, level="N2"),
+        tool("submit_form", "Click Submit on a form that was filled on the laptop. Only after the owner looked at the screenshot. "
+             "Needs the owner's tap every time, even in Full Control.", props, ["id"], submit_form,
+             needs_approval=True, preview=submit_preview, level="N2"),
+    ], untrusted=["list_ready_applications", "show_application", "fill_application_form"],
+        mutating=["draft_application", "mark_applied", "skip_application"])

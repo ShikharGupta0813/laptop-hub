@@ -59,6 +59,7 @@ VERSION = "1.0"
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
 FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov", "cliprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
+FEATURE_MODULES = FEATURE_MODULES + ("formfill",)   # browser form pre-fill for the application queue (docs/api/formfill.md)
 FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull, deep thinking, bench (docs/api/models.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
