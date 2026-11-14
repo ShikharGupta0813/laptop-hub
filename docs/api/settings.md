@@ -51,3 +51,6 @@ accepted: they are edited by hand in hub.json. `GET` lists them by name in `lock
 - `GET /api/settings/about` → `{version, uptime_s, python, platform}`.
 
 Not here: `POST /logout-all` (the server does it).
+
+## Lists the owner edits (no new keys)
+Settings has five list editors that store their own files in the hub data folder and have their own routes, so `ALLOWED_KEYS` did not change: Assistants (`assistants.json`, docs/api/assistants.md), Notification preferences (`proactive_prefs.json`, docs/api/notify.md), My safety rules (`safety_rules.json`, docs/api/assistant-safety.md), My redaction rules (`redact_rules.json`, docs/api/privacy-usage.md) and Memory kinds (`brain_kinds.json`, docs/api/brain.md). They all use the shared widget `js/listeditor.js` (`listEditor` for the rows: add, edit, delete, on/off, reset to defaults; `formSheet` for the add/edit form; text goes in with `textContent` only). Other lists can adopt it the same way: build rows from `rowOf(item)` and call `ed.set(items)` after each save.

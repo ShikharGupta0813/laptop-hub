@@ -6,6 +6,7 @@
 import { el } from "./api.js";
 import * as ui from "./ui.js";
 import { matchWake } from "./wakephrase.js";
+import { loadedAssistants, refreshAssistants } from "./assistants.js";
 
 const KEY = "hub.wake";
 const KEEP_KEY = "hub.wake.keepawake";      // "0" = off; anything else (or unset) = on while wake is on
@@ -83,6 +84,7 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
     if (nameLoaded) return;
     nameLoaded = true;
     import("./fullcontrol.js").then((fc) => fc.refresh()).then((info) => { if (info?.jarvis_name) jarvisName = info.jarvis_name; }).catch(() => {});
+    refreshAssistants().catch(() => {});            // the owner's assistants; Jarvis and Friday until it answers
   }
 
   function stopRec() {
@@ -107,7 +109,7 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
   function onResult(e) {
     let best = null, final = false;
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
-      const m = matchWake(e.results[i][0]?.transcript || "", { jarvisName });
+      const m = matchWake(e.results[i][0]?.transcript || "", { jarvisName, assistants: loadedAssistants() });
       if (m) { best = m; final = !!e.results[i].isFinal; }
     }
     fails = 0;

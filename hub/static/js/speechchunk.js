@@ -1,6 +1,7 @@
 // Pure text helpers for voice mode (no DOM, no imports, so node can test them): the markdown-to-speech
 // cleaner, the streaming sentence splitter, and the leading-name router ("Jarvis, ..." / "Friday, ...").
 // The name router mirrors hub/persona.py; keep the two in step.
+import { wakeTable } from "./wakephrase.js";   // pure too, so node can still run this file
 export const SPEAK_CAP = 700;
 
 // Markdown to plain speakable text, capped at a sentence boundary.
@@ -53,14 +54,18 @@ export function splitStream(buffer, { final = false, minChars = 28 } = {}) {
 
 // "Jarvis, run the tests" -> {persona: "jarvis", text: "run the tests"}. persona is "" when nobody is named.
 const NOT_A_NAME = "(?:at|is|was|we|i|the|morning|afternoon|evening|night|next|this|last|after|before|during|off|and)";
-export function splitName(input, jarvisName = "Jarvis") {
+// `assistants` is the owner's list (assistants.js): their names and wake words route instead of Jarvis and Friday only.
+export function splitName(input, jarvisName = "Jarvis", assistants = null) {
   const raw = String(input || "");
-  const names = [...new Set(["jarvis", String(jarvisName || "Jarvis").trim().toLowerCase(), "friday"].filter(Boolean))]
-    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const table = Array.isArray(assistants) && assistants.length ? wakeTable(assistants) : null;   // word -> assistant id
+  const words = table ? Object.keys(table) : [...new Set(["jarvis", String(jarvisName || "Jarvis").trim().toLowerCase(), "friday"].filter(Boolean))];
+  if (!words.length) return { persona: "", text: raw.trim() };
+  const who = (w) => (table ? table[w.toLowerCase()] : w.toLowerCase() === "friday" ? "friday" : "jarvis");
+  const names = words.sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   const lead = new RegExp(`^\\s*(?:(?:hey|hi|ok|okay|yo)[,\\s]+)?(${names})(?![\\w'\u2019])(?:([\\s]*[,:;.!?\\-\u2014]+\\s*)|(\\s+)(?!${NOT_A_NAME}\\b)|\\s*$)`, "i");
   const m = lead.exec(raw);
-  if (m) return { persona: m[1].toLowerCase() === "friday" ? "friday" : "jarvis", text: raw.slice(m[0].length).trim() };
+  if (m) return { persona: who(m[1]), text: raw.slice(m[0].length).trim() };
   const tail = new RegExp(`,\\s*(${names})\\s*[.!?]*\\s*$`, "i").exec(raw);
-  if (tail) return { persona: tail[1].toLowerCase() === "friday" ? "friday" : "jarvis", text: raw.slice(0, tail.index).trim() };
+  if (tail) return { persona: who(tail[1]), text: raw.slice(0, tail.index).trim() };
   return { persona: "", text: raw.trim() };
 }

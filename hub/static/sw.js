@@ -14,7 +14,7 @@ const SHELL = [
   "/css/skills.css", "/js/skills.js", "/css/brain.css", "/js/brain.js", "/css/buildflow.css", "/js/buildflow.js",
   "/css/applyq.css", "/js/applyq.js", "/js/privacy.js", "/css/privacy.css", "/js/fullcontrol.js", "/js/wheel.js",
   "/css/wheel.css", "/vendor/fonts/orbitron-var-latin.woff2", "/js/gmailx.js", "/js/speechchunk.js", "/js/wake.js",
-  "/js/wakephrase.js", "/css/wake.css", "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js",
+  "/js/wakephrase.js", "/js/assistants.js", "/js/listeditor.js", "/js/ownerlists.js", "/css/wake.css", "/js/api.js", "/js/apps.js", "/js/assistant.js", "/js/automations.js",
   "/js/bookmarks.js", "/js/boot.js", "/js/cards.js", "/js/english.js", "/js/expenses.js", "/js/fileeditor.js",
   "/js/files.js", "/js/focus.js", "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js",
   "/js/jarvis.js", "/js/journal.js", "/js/kb.js", "/js/laptop.js", "/js/learn.js", "/js/main.js", "/css/setup.css",

@@ -88,3 +88,16 @@ gate still wins. Full Control turning on or off clears every grant.
 `POST /api/assistant/permissions/revoke {id}` or `{all:true}`. Settings > Account and security > Active permissions
 lists them with Revoke and Revoke all. Audit: `assistant_grant`, `assistant_grant_revoked`; a call that rode on one
 has `remembered: "hour" | "session"`. Tests: `tests/test_safety.py`.
+
+## My safety rules (owner-editable, only ever stricter)
+Settings > My safety rules. Extra rules on top of the built-in checks: `{pattern, regex, applies_to: command|tool|path, level: N2|N3, note, enabled}`.
+"Treat anything touching D:\\payroll as critical" is one rule: pattern `D:\\payroll`, applies to `path`, level N3.
+
+- A rule can only RAISE a level (`worst()` of the built-in level and every rule that matches); it can never lower one. Levels are N2 (ask) or N3 (typed CONFIRM, then the countdown).
+- `command` looks at the command line (and a script name); `path` looks at file arguments (`path`, `src`, `dest`, `cwd`, ...) and also at command lines, since a command names paths; `tool` looks at the tool name.
+- Plain patterns are case-insensitive substrings (slash and backslash count the same); `regex: true` makes it a regular expression.
+- Validation (`hub/safepattern.py`): at most 200 characters, must compile, no repeat inside a repeat, no repeat over alternatives, no back-references, counted repeats up to 100, and matching runs on at most 4000 characters, so a pattern cannot hang the hub. At most 50 rules. A bad rule is a 400 and nothing is saved.
+- When a rule fires, the audit log gets `assistant_custom_rule` with the tool, the level and the rule ids (never the command or path). The N3 card shows the rule's note as the reason. Saving is audited as `safety_rules_update` (counts only).
+- Stored in `safety_rules.json` in the hub data folder; `AssistantService._level` reloads it when the file changes. Code: `safety.classify_with_custom`, `safety.apply_custom`, `safety.custom_hits`, `safety.load_custom_rules`, `safety.save_custom_rules` (all new; `classify` and `ALWAYS_ASK` are unchanged).
+
+Routes (login needed): `GET /api/safety/rules` -> `{rules[], applies_to[], levels[], max}`; `PUT /api/safety/rules {rules: [...]}` replaces the list; `POST /api/safety/rules/test {kind: command|path|tool, text, rules?}` -> `{level, built_in, rules[], reason}` (the Settings test box: "type a command to see its level"; `rules` tries an unsaved draft).

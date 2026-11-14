@@ -40,14 +40,21 @@ from .llm import LLMError
 
 log = logging.getLogger("hub.brain")
 
-KINDS = ("note", "fact", "decision", "rca", "task", "research")
+KINDS = ("note", "fact", "decision", "rca", "task", "research")      # the ready-made memory kinds (the owner's list may differ)
 PERSONAS = ("jarvis", "friday", "both")
+# Memory kinds are a list the owner edits (Settings > Memory kinds): id, label and which assistant sees it by default.
+DEFAULT_KINDS = ({"id": "note", "label": "Note", "persona": "both"}, {"id": "fact", "label": "Fact", "persona": "jarvis"},
+                 {"id": "decision", "label": "Decision", "persona": "jarvis"}, {"id": "rca", "label": "RCA", "persona": "jarvis"},
+                 {"id": "task", "label": "Task", "persona": "jarvis"}, {"id": "research", "label": "Research", "persona": "jarvis"})
+MAX_KINDS = 30
+KIND_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,19}$")
 STATUSES = ("open", "done", "blocked", "dropped")
 DOABLE = ("yes", "partly", "no")
 MAX_BODY = 8000
 MAX_TITLE = 200
 MAX_ITEMS = 5000
-MAX_TAGS = 10
+MAX_TAGS = 20
+MAX_TAG_LEN = 30
 INTAKE_TIMEOUT = 90
 CONTEXT_CHARS = 600
 CONTEXT_MIN_SCORE = 0.6
@@ -88,8 +95,16 @@ def tokens(text: str) -> list[str]:
     return out
 
 
-def persona_for(kind: str, who: str = "", has_reminder: bool = False) -> str:
-    """Who owns an item by default: technical kinds to Jarvis, people and time to Friday, plain notes to both."""
+def persona_for(kind: str, who: str = "", has_reminder: bool = False, kinds: list[dict] | None = None) -> str:
+    """Who owns an item by default: technical kinds to Jarvis, people and time to Friday, plain notes to both.
+
+    With `kinds` (the owner's list) a kind whose default persona the owner changed, or a kind the owner added,
+    uses that choice. A ready-made kind left as it was keeps the rules below."""
+    entry = next((k for k in (kinds or ()) if k["id"] == kind), None)
+    if entry is not None:
+        ready = next((d for d in DEFAULT_KINDS if d["id"] == kind), None)
+        if ready is None or entry["persona"] != ready["persona"]:
+            return entry["persona"]
     if kind in ("rca", "decision", "fact", "research"):
         return "jarvis"
     if kind == "task":
@@ -97,13 +112,16 @@ def persona_for(kind: str, who: str = "", has_reminder: bool = False) -> str:
     return "friday" if has_reminder else "both"
 
 
-def guess_kind(text: str) -> str:
+def guess_kind(text: str, kinds: list[dict] | None = None) -> str:
     t = text.lower()
+    guess = "note"
     if re.search(r"\brca\b|root cause|post-?mortem", t):
-        return "rca"
-    if re.search(r"\bdecid(?:e|ed|ing)\b|\bdecision\b|\bwe (?:agreed|chose|will go with)\b", t):
-        return "decision"
-    return "note"
+        guess = "rca"
+    elif re.search(r"\bdecid(?:e|ed|ing)\b|\bdecision\b|\bwe (?:agreed|chose|will go with)\b", t):
+        guess = "decision"
+    if kinds and not any(k["id"] == guess for k in kinds):      # the owner removed that kind: the first one is the plain default
+        return next((k["id"] for k in kinds if k["id"] == "note"), kinds[0]["id"])
+    return guess
 
 
 def short(text: str, n: int) -> str:
@@ -118,7 +136,7 @@ def _tags(value: Any) -> list[str]:
         return []
     out: list[str] = []
     for t in value:
-        t = clean(str(t), 30).lower().strip("# ")
+        t = clean(str(t).replace(",", " ").replace(";", " "), MAX_TAG_LEN).lower().strip("# ")
         if t and t not in out:
             out.append(t)
     return out[:MAX_TAGS]
@@ -233,15 +251,18 @@ class BrainStore:
             row = c.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
         return self.public(row) if row else None
 
-    def _where(self, kind: str, status: str, persona: str) -> tuple[str, list]:
+    def _where(self, kind: str, status: str, persona: str, tags: list[str] | None = None) -> tuple[str, list]:
         parts, args = [], []
         if kind:
             parts.append("kind=?")
             args.append(kind)
+        for tag in tags or ():                      # every tag asked for must be on the item
+            parts.append("instr(',' || tags || ',', ?) > 0")
+            args.append(f",{tag},")
         if status and status != "all":
             parts.append("status=?")
             args.append(status)
-        if persona in ("jarvis", "friday"):
+        if persona and persona != "both":
             parts.append("persona IN (?, 'both')")
             args.append(persona)
         return (" AND ".join(parts), args)
@@ -264,10 +285,10 @@ class BrainStore:
             return c.execute(sql, [*(f"%{w}%" for w in words), *args, limit]).fetchall()
 
     def search(self, query: str = "", *, kind: str = "", status: str = "open", persona: str = "",
-               limit: int = 20) -> list[dict]:
+               limit: int = 20, tags: list[str] | None = None) -> list[dict]:
         """Ranked matches (best first), each with `score` 0..1 (share of the query words found, titles count most).
         An empty query lists the newest items."""
-        where, args = self._where(kind, status, persona)
+        where, args = self._where(kind, status, persona, _tags(tags) if tags else None)
         words = tokens(query)
         if not words:
             with self.lock, self._conn() as c:
@@ -278,12 +299,26 @@ class BrainStore:
         scored = []
         for r in rows:
             s = score_row(r, words)
-            if persona in ("jarvis", "friday") and r["persona"] == persona:
+            if persona and persona != "both" and r["persona"] == persona:
                 s = min(1.0, s + 0.05)
             if s > 0:
                 scored.append((s, r["created"], r))
         scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
         return [self.public(r, s) for s, _c, r in scored[:limit]]
+
+    def tag_counts(self) -> list[dict]:
+        """Every tag in use with how many items carry it, most used first."""
+        counts: dict[str, int] = {}
+        with self.lock, self._conn() as c:
+            for row in c.execute("SELECT tags FROM items WHERE tags<>''"):
+                for t in str(row[0]).split(","):
+                    if t:
+                        counts[t] = counts.get(t, 0) + 1
+        return [{"tag": t, "count": n} for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+    def kind_counts(self) -> dict[str, int]:
+        with self.lock, self._conn() as c:
+            return {r[0]: r[1] for r in c.execute("SELECT kind, COUNT(*) FROM items GROUP BY kind")}
 
     def due(self, until: str) -> list[dict]:
         """Open items whose follow-up time is at or before `until` (local ISO), oldest first."""
@@ -330,6 +365,80 @@ def store_for(config) -> BrainStore:
         if store is None:
             store = _STORES[str(path)] = BrainStore(path)
         return store
+
+
+# ---- the owner's list of memory kinds --------------------------------------------------------------------------------
+
+def _persona_ids(config) -> list[str]:
+    try:
+        from .assistants import load
+        return ["both", *[a["id"] for a in load(config)]]
+    except Exception:  # noqa: BLE001
+        return list(PERSONAS)
+
+
+def default_kinds() -> list[dict]:
+    return [dict(k) for k in DEFAULT_KINDS]
+
+
+def clean_kinds(items: Any, personas: list[str] | None = None) -> list[dict]:
+    """The list validated: unique ids, short labels, a default persona that exists. BrainError when it cannot be used."""
+    personas = personas or list(PERSONAS)
+    if not isinstance(items, list) or not items:
+        raise BrainError("There must be at least one memory kind.")
+    if len(items) > MAX_KINDS:
+        raise BrainError(f"At most {MAX_KINDS} memory kinds.")
+    out, seen = [], set()
+    for raw in items:
+        if not isinstance(raw, dict):
+            raise BrainError("A memory kind must be an object.")
+        kid = str(raw.get("id") or "").strip().lower()
+        if not kid:
+            kid = re.sub(r"[^a-z0-9]+", "-", str(raw.get("label") or "").lower()).strip("-")[:20]
+        if not KIND_ID_RE.match(kid):
+            raise BrainError("A kind id is 2 to 20 characters: letters, digits, - or _, starting with a letter.")
+        if kid in seen:
+            raise BrainError(f"The kind '{kid}' is listed twice.")
+        seen.add(kid)
+        label = clean(str(raw.get("label") or ""), 30) or kid.capitalize()
+        persona = str(raw.get("persona") or "both").strip().lower()
+        if persona not in personas:
+            raise BrainError("A kind's default persona must be both or one of your assistants.")
+        out.append({"id": kid, "label": label, "persona": persona})
+    return out
+
+
+def load_kinds(config) -> list[dict]:
+    """The owner's memory kinds, or the six ready-made ones. Never raises."""
+    try:
+        data = json.loads((Path(config.data_path()) / "brain_kinds.json").read_text(encoding="utf-8"))
+        return clean_kinds(data.get("kinds"), _persona_ids(config) + [k["persona"] for k in data.get("kinds", []) if isinstance(k, dict) and isinstance(k.get("persona"), str)])
+    except (OSError, ValueError, AttributeError, TypeError, BrainError):
+        return default_kinds()
+
+
+def save_kinds(config, items: Any, in_use: dict[str, int] | None = None) -> list[dict]:
+    """Validate and save. A kind that items still use cannot be removed (BrainError says how many)."""
+    import os
+    clean_list = clean_kinds(items, _persona_ids(config))
+    keep = {k["id"] for k in clean_list}
+    for kid, n in (in_use or {}).items():
+        if n and kid not in keep:
+            raise BrainError(f"{n} saved item(s) are kind '{kid}'. Change them to another kind before removing it.")
+    path = Path(config.data_path()) / "brain_kinds.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"version": 1, "kinds": clean_list}, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return clean_list
+
+
+def reset_kinds(config) -> list[dict]:
+    try:
+        (Path(config.data_path()) / "brain_kinds.json").unlink()
+    except OSError:
+        pass
+    return default_kinds()
 
 
 def enabled(config) -> bool:
@@ -396,12 +505,14 @@ class Brain:
         if not (title or body):
             raise BrainError("There is nothing to remember. Say what to save.")
         title = title or short(body, 80)
-        kind = (kind or guess_kind(body or title)).strip().lower()
-        if kind not in KINDS:
-            raise BrainError("kind must be one of: " + ", ".join(KINDS) + ".")
+        kinds = load_kinds(self.config)
+        ids = [k["id"] for k in kinds]
+        kind = (kind or guess_kind(body or title, kinds)).strip().lower()
+        if kind not in ids:
+            raise BrainError("kind must be one of: " + ", ".join(ids) + ".")
         persona = (persona or "").strip().lower()
-        if persona and persona not in PERSONAS:
-            raise BrainError("persona must be jarvis, friday or both.")
+        if persona and persona not in _persona_ids(self.config):
+            raise BrainError("persona must be both or one of your assistants.")
         if status not in STATUSES:
             raise BrainError("status must be one of: " + ", ".join(STATUSES) + ".")
         who = clean(who, 80)
@@ -410,7 +521,7 @@ class Brain:
             remind, rid = self._link(remind_at, title)
         item = self.store.add({
             "kind": kind, "title": title, "body": body, "tags": _tags(tags), "who": who,
-            "project": clean(project, 80), "persona": persona or persona_for(kind, who, bool(remind)),
+            "project": clean(project, 80), "persona": persona or persona_for(kind, who, bool(remind), kinds),
             "created": self.clock().isoformat(timespec="seconds"), "remind_at": remind or None,
             "reminder_id": rid or None, "status": status, "source": clean(source, 40) or "app",
             "meta": json.dumps(meta) if meta else ""})
@@ -426,16 +537,21 @@ class Brain:
             f["body"] = clean(body["body"], MAX_BODY, multiline=True)
         if "tags" in body:
             f["tags"] = _tags(body["tags"])
+        elif body.get("add_tags") or body.get("remove_tags"):
+            drop = set(_tags(body.get("remove_tags")))
+            f["tags"] = _tags([*item["tags"], *_tags(body.get("add_tags"))])
+            f["tags"] = [t for t in f["tags"] if t not in drop]
         for key, limit in (("who", 80), ("project", 80)):
             if key in body:
                 f[key] = clean(body[key], limit)
         if "kind" in body:
-            if body["kind"] not in KINDS:
-                raise BrainError("kind must be one of: " + ", ".join(KINDS) + ".")
+            ids = [k["id"] for k in load_kinds(self.config)]
+            if body["kind"] not in ids:
+                raise BrainError("kind must be one of: " + ", ".join(ids) + ".")
             f["kind"] = body["kind"]
         if "persona" in body:
-            if body["persona"] not in PERSONAS:
-                raise BrainError("persona must be jarvis, friday or both.")
+            if body["persona"] not in _persona_ids(self.config):
+                raise BrainError("persona must be both or one of your assistants.")
             f["persona"] = body["persona"]
         if "status" in body:
             if body["status"] not in STATUSES:
@@ -607,12 +723,13 @@ def fast_save(config, text: str, source: str = "voice") -> str:
     body = m.group("body").strip()
     if len(body) < 3 or body.endswith("?") or _FAST_NOT.match(body) or _HAS_TIME.search(body):
         return ""
-    kind = guess_kind(body)
+    kinds = load_kinds(config)
+    kind = guess_kind(body, kinds)
     store = store_for(config)
     try:
         store.add({"kind": kind, "title": short(clean(body, MAX_BODY).split("\n", 1)[0], 80),
                    "body": clean(body, MAX_BODY, multiline=True), "tags": [], "who": "", "project": "",
-                   "persona": persona_for(kind), "created": dt.datetime.now().isoformat(timespec="seconds"),
+                   "persona": persona_for(kind, kinds=kinds), "created": dt.datetime.now().isoformat(timespec="seconds"),
                    "remind_at": None, "reminder_id": None, "status": "open", "source": source, "meta": ""})
     except BrainError as exc:
         return str(exc)
@@ -700,16 +817,19 @@ def make_router(ctx: Ctx, *, clock: Callable[[], dt.datetime] | None = None,
 
     @router.get("/items")
     async def items(q: str = Query("", max_length=200), kind: str = Query("", max_length=20),
-                    status: str = Query("open", max_length=20), persona: str = Query("", max_length=10),
-                    limit: int = Query(30, ge=1, le=100)):
+                    status: str = Query("open", max_length=20), persona: str = Query("", max_length=24),
+                    tag: str = Query("", max_length=200), limit: int = Query(30, ge=1, le=100)):
         need_on()
-        if kind and kind not in KINDS:
-            raise HTTPException(400, "kind must be one of: " + ", ".join(KINDS) + ".")
+        ids = [k["id"] for k in load_kinds(ctx.config)]
+        if kind and kind not in ids:
+            raise HTTPException(400, "kind must be one of: " + ", ".join(ids) + ".")
         if status not in (*STATUSES, "all"):
             raise HTTPException(400, "status must be open, done, blocked, dropped or all.")
-        if persona and persona not in PERSONAS:
-            raise HTTPException(400, "persona must be jarvis, friday or both.")
-        found = await asyncio.to_thread(brain.store.search, q, kind=kind, status=status, persona=persona, limit=limit)
+        if persona and persona not in _persona_ids(ctx.config):
+            raise HTTPException(400, "persona must be both or one of your assistants.")
+        wanted = _tags(tag)                          # tag=a,b means the item carries both
+        found = await asyncio.to_thread(brain.store.search, q, kind=kind, status=status, persona=persona, limit=limit,
+                                        tags=wanted or None)
         return {"items": found, "count": len(found), "total": await asyncio.to_thread(brain.store.count),
                 "fts": brain.store.fts}
 
@@ -740,6 +860,41 @@ def make_router(ctx: Ctx, *, clock: Callable[[], dt.datetime] | None = None,
         need_on()
         guard(lambda: brain.delete(item_id))
         return {"ok": True}
+
+    @router.get("/tags")
+    async def tags():
+        need_on()
+        return {"tags": await asyncio.to_thread(brain.store.tag_counts)}
+
+    @router.get("/kinds")
+    async def get_kinds():
+        need_on()
+        counts = await asyncio.to_thread(brain.store.kind_counts)
+        return {"kinds": [{**k, "count": counts.get(k["id"], 0)} for k in load_kinds(ctx.config)],
+                "personas": _persona_ids(ctx.config), "max": MAX_KINDS}
+
+    @router.put("/kinds")
+    async def put_kinds(body: dict = Body(default_factory=dict)):
+        need_on()
+        counts = await asyncio.to_thread(brain.store.kind_counts)
+        saved = guard(lambda: save_kinds(ctx.config, body.get("kinds"), counts))
+        brain._audit("brain_kinds_update", count=len(saved))
+        return {"kinds": [{**k, "count": counts.get(k["id"], 0)} for k in saved],
+                "personas": _persona_ids(ctx.config), "max": MAX_KINDS}
+
+    @router.post("/kinds/reset")
+    async def reset_kinds_route():
+        need_on()
+        counts = await asyncio.to_thread(brain.store.kind_counts)
+        ready = {k["id"] for k in DEFAULT_KINDS}
+        stuck = {k: n for k, n in counts.items() if n and k not in ready}
+        if stuck:
+            raise HTTPException(400, f"{sum(stuck.values())} saved item(s) use your own kinds ({', '.join(sorted(stuck))}). "
+                                     "Change them to another kind before resetting.")
+        reset_kinds(ctx.config)
+        brain._audit("brain_kinds_reset")
+        return {"kinds": [{**k, "count": counts.get(k["id"], 0)} for k in default_kinds()],
+                "personas": _persona_ids(ctx.config), "max": MAX_KINDS}
 
     @router.post("/intake")
     async def intake(body: dict = Body(default_factory=dict)):

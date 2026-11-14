@@ -4,6 +4,7 @@
 import { el, ApiError } from "./api.js";
 import { providerLabel } from "./providers.js";
 import { speakable, splitStream, splitName } from "./speechchunk.js";
+import { assistantById, loadedAssistants, refreshAssistants } from "./assistants.js";
 
 const SILENCE_MS_DEFAULT = 1200;   // quiet this long after speech ends the recording
 const MAX_UTTERANCE_MS = 30000;    // a single spoken message is cut at this length
@@ -35,7 +36,7 @@ export { speakable };
 // Non-empty text is sent as if it had just been spoken; with no text voice mode simply starts listening.
 let preload = null;
 export function setPreload(text, persona = "") {
-  preload = { text: String(text || "").trim(), persona: persona === "friday" ? "friday" : persona === "jarvis" ? "jarvis" : "", at: Date.now() };
+  preload = { text: String(text || "").trim(), persona: /^[a-z][a-z0-9_-]{1,23}$/.test(String(persona || "")) ? String(persona) : "", at: Date.now() };
 }
 function takePreload() { const p = preload; preload = null; return p && p.text && Date.now() - p.at < 15000 ? p : null; }
 function peekPreload() { return preload && Date.now() - preload.at < 15000 ? preload : null; }
@@ -165,6 +166,8 @@ export function openVoiceMode(host) {
     const key = p === "friday" ? "friday" : "jarvis";
     root.dataset.persona = key;
     who.textContent = key === "friday" ? (fr?.personaName?.() || "Friday") : names.jarvis;
+    const other = p && p !== "jarvis" && p !== "friday" ? assistantById(p) : null;     // an assistant the owner added
+    if (other) who.textContent = other.name;
   }
   const wakePersona = peekPreload()?.text ? peekPreload().persona : "";   // opened by the wake word with words to send
   root.dataset.persona = wakePersona || (host.friday ? "friday" : "jarvis");
@@ -382,6 +385,14 @@ export function openVoiceMode(host) {
         u.onboundary = () => { bump = 1; };
         u.onend = () => { clearTimeout(guard); next(); };
         u.onerror = () => { clearTimeout(guard); finish(); };
+        try {   // the speaking assistant's voice settings (Settings > Assistants); nothing changes at the defaults
+          const v = assistantById(root.dataset.persona)?.voice;
+          if (v) {
+            if (v.rate && v.rate !== 1) u.rate = v.rate;
+            if (typeof v.pitch === "number" && v.pitch !== 1) u.pitch = v.pitch;
+            if (v.voice) { const found = synth.getVoices().find((x) => x.name === v.voice); if (found) u.voice = found; }
+          }
+        } catch (_) { /* default voice */ }
         try { synth.speak(u); } catch (_) { finish(); }
       };
       next();
@@ -587,6 +598,7 @@ export function openVoiceMode(host) {
       fcMod = await import("./fullcontrol.js");
       const info = await fcMod.refresh();
       if (info) names = { jarvis: info.jarvis_name || "Jarvis", call: info.display_name || "" };
+      refreshAssistants().catch(() => {});
     } catch (_) { /* older hub: names stay default */ }
     if (!alive) return;
     setPersona(wakePersona || (host.friday ? "friday" : "jarvis"));
@@ -642,7 +654,7 @@ export function openVoiceMode(host) {
       }
 
       // "Jarvis, ..." goes to the laptop operator, "Friday, ..." to the day assistant; no name keeps the old behaviour.
-      const routed = pre ? { persona: "", text } : splitName(text, names.jarvis);
+      const routed = pre ? { persona: "", text } : splitName(text, names.jarvis, loadedAssistants());
       let persona = pre?.persona || (host.friday ? "friday" : "");
       if (pre?.persona) setPersona(persona);
       if (!pre && routed.persona) {

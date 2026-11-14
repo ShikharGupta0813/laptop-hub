@@ -1,11 +1,13 @@
 // Settings: grouped inset lists that drill into sheets.
 // Routes: docs/api/settings.md, docs/api/notify.md (push), docs/api/capture-android.md (HubCapture plugin).
-// Sections (openSection): appearance, models, folders, push (alias notifications), capture, diagnostics, audit, backup, about.
+// Sections (openSection): appearance, models, folders, push (alias notifications), capture, diagnostics, audit, backup, about,
+// and the owner's lists (js/ownerlists.js): assistants, notifyprefs, safetyrules, redactrules, memorykinds.
 import { wakeEnabled, setWakeEnabled, wakeSupported, keepAwakeEnabled, setKeepAwake, wakeLockSupported } from "./wake.js";
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
 import { gmailCard } from "./gmailx.js";
+import { OWNER_SECTIONS } from "./ownerlists.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -157,6 +159,12 @@ export function init(container, ctx) {
       ui.listRow({ icon: "shield", tone: "good", title: "Privacy redaction", chevron: true, onClick: () => redactionSheet(S, load),
         sub: S.redact_enabled === false ? "Off: cloud AI sees your text as it is" : "Hides emails, numbers, keys and your own words from cloud AI",
         meta: ui.badge(S.redact_enabled === false ? "Off" : "On", S.redact_enabled === false ? "warn" : "good") })));
+    rows.push(group("Assistants and rules",
+      ui.listRow({ icon: "jarvis", tone: "accent", title: "Assistants", sub: "Jarvis, Friday and any you add: names, wake words, prompts", chevron: true, onClick: () => openSection("assistants") }),
+      ui.listRow({ icon: "bell", tone: "orange", title: "Notification preferences", sub: "Now, batch, quiet only or off, for each kind of alert", chevron: true, onClick: () => openSection("notifyprefs") }),
+      ui.listRow({ icon: "shield", tone: "bad", title: "My safety rules", sub: "Make anything touching a path or command stricter", chevron: true, onClick: () => openSection("safetyrules") }),
+      ui.listRow({ icon: "eye-off", tone: "good", title: "My redaction rules", sub: "Words and patterns cloud AI must never see", chevron: true, onClick: () => openSection("redactrules") }),
+      ui.listRow({ icon: "tag", tone: "info", title: "Memory kinds", sub: "What kinds of memory exist and who sees them", chevron: true, onClick: () => openSection("memorykinds") })));
     rows.push(group("Alerts",
       ui.listRow({ icon: "bell", tone: "bad", title: "Phone push", sub: notify ? (notify.ntfy_enabled ? "On. Alerts reach your phone." : "Off. Alerts stay in the app.") : "Alerts on your phone through ntfy", chevron: true, onClick: () => openSection("push") }),
       ui.listRow({ icon: "eye", tone: "info", title: "Mail and chat watching", sub: "Rules for important mail and chat", chevron: true, onClick: () => ctx.open("watch") }),
@@ -693,7 +701,7 @@ export function init(container, ctx) {
   }
 
   // ---- sections ----------------------------------------------------------------------------------
-  const OPENERS = { models: openModels, folders: openFolders, push: openPush, capture: openCapture, diagnostics: openDiagnostics, audit: openAudit, backup: openBackup, about: openAbout };
+  const OPENERS = { models: openModels, folders: openFolders, push: openPush, capture: openCapture, diagnostics: openDiagnostics, audit: openAudit, backup: openBackup, about: openAbout, ...OWNER_SECTIONS };
   function openSection(name) {
     const key = SECTION_ALIAS[name] || name;
     if (key === "appearance") {

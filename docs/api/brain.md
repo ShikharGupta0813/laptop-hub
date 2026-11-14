@@ -37,3 +37,10 @@ Chosen automatically from kind/who/remind_at, or set by hand. `persona=jarvis|fr
 
 ## Today
 `GET /api/today` gains `brain: {due[], tasks[]}`, timeline entries of kind `followup`, numbers `followups_due` and `memory_tasks`; the morning text says "Follow-ups due: N, starting with ..." (so the Friday brief reads them), the evening text lists what is still open. The Today screen shows a Follow-ups section.
+
+## Tags and memory kinds (owner-editable)
+- **Tags**: every item carries any number of free-form tags (lower case, up to 20 per item, 30 characters each; commas and semicolons split them). Edit them on the item (`PATCH ... {tags}` replaces, `{add_tags, remove_tags}` change). Filter with `GET /api/brain/items?tag=payroll` (`tag=a,b` = the item must carry both); `GET /api/brain/tags` -> `{tags: [{tag, count}]}`. The Memory screen has a tag filter row, clickable `#tags` on each card and a Tags editor.
+- **Assistant tools**: `remember(..., tags?)`, `recall(query, kind?, tags?, persona?)` (only items carrying all the tags), `task_update(id, ..., tags?)` (adds tags). `kind` and `persona` are free text checked against the owner's lists.
+- **Memory kinds**: Settings > Memory kinds is a list `{id, label, persona}`; the six ready-made kinds (note, fact, decision, rca, task, research) are the default. `persona` is the assistant who sees a new item of that kind by default (`both` or any assistant id). A ready-made kind left as it was keeps the old rules (a task from a person and anything with a follow-up time go to Friday). Routes: `GET /api/brain/kinds` -> `{kinds[] (with count), personas[], max}`, `PUT /api/brain/kinds {kinds: [...]}` (a kind that items still use cannot be removed), `POST /api/brain/kinds/reset` (refused while items use your own kinds). Stored in `brain_kinds.json`.
+- **Migration**: none needed. The tags column always existed and the kind of an existing item is kept as it is; items saved before the list keep reading and filtering.
+- The persona filter (`persona=`) and `persona` field accept any assistant id from Settings > Assistants (see docs/api/assistants.md), plus `both`.

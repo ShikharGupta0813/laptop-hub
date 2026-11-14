@@ -46,3 +46,18 @@ Quiet hours and `min_level` hold back the phone push only. The in-app list alway
 send you fake notifications. Use a long random name (for example 24 or more random letters and digits), never a
 word like `alerts`, and do not put secrets in titles or bodies. The hub never sends file contents, tokens or
 command output to ntfy, only the title and body that the module that raised the notification chose.
+
+## Notification preferences (per type)
+Settings > Notification preferences. The proactive engine (`hub/proactive.py`) decides how each kind of event reaches the owner. The built-in rule is unchanged (meetings within 10 minutes, urgent mail, alert urgency...); the owner may override it per type with one of:
+
+| Choice | Effect |
+|---|---|
+| `now` | push at once (quiet hours still hold it back, except meetings and reminders) |
+| `batch` | collected into one short sentence at most every `proactive_batch_minutes` |
+| `quiet-only` | listed in the app (Today), never pushed |
+| `off` | dropped: nothing stored, nothing pushed |
+| default | no entry: the built-in rule, shown as "Default (now)" etc. For `meeting`, `mail`, `asana` and `alert` the default is "smart": it looks inside the event |
+
+Every known type is listed with its channel switch, including the ones other modules added (`applyq_*`, `devto_*`, `alert`...). A module announces its own type with `proactive.register_type(name, label, default)` (never raises; `default` is now, batch, quiet-only, off or auto); a type that was never registered is added the first time an event of that type is submitted, so no module needs to change. A batched type with no sentence template gets a generic one ("a weather warnings update is waiting").
+Quiet hours stay in Settings (`proactive_quiet_start`, `proactive_quiet_end`, same screen).
+Routes (login needed): `GET /api/proactive/prefs` -> `{types: [{type, label, default, value, custom}], channels[], quiet, enabled}`; `PUT /api/proactive/prefs {prefs: {type: now|batch|quiet-only|off|default}}` (merges; `default` removes the choice); `POST /api/proactive/prefs/reset`. Stored in `proactive_prefs.json`. "Always notify me about X" for a keyword or sender is the alerts module's job, not this list.

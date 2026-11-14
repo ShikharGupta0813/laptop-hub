@@ -62,3 +62,14 @@ returns `local` with a decision `{routed_to: "local", capped: true, note: "Daily
 `/api/ask` and `/api/assistant/message` send it as the `meta` event (`reason` and `note`). It applies to explicit picks and
 to the auto router, and never switches to another paid provider. One-turn override: say "use gemini anyway" (or
 claude / claude login / duo) in the message, or send `override_cap: true`.
+
+## My redaction rules (owner-defined)
+Settings > My redaction rules. Besides the built-in kinds and `redact_names`, the owner adds rules `{label, pattern, regex, kind, enabled}`:
+plain words (one per line or comma-separated, matched as whole words, any capitalisation) or, with `regex: true`, a pattern; `kind` is the placeholder, for example `CLIENT` -> `[CLIENT_1]` (2 to 16 capital letters or digits; built-in names such as EMAIL are refused; empty = made from the label).
+
+- Same limits as safety rules (hub/safepattern.py): 200 characters, must compile, no runaway shapes. At most 50 rules.
+- Custom rules run first, so the owner's words win over the built-ins. The reply (and streamed text and tool-call arguments) has the placeholders put back, exactly like the built-in kinds.
+- `POST /api/redact/preview` covers them automatically (it builds the same redactor). `POST /api/redact/rules/test {text, rules?}` previews with an unsaved draft.
+- Audit: `redaction` rows hold COUNTS per kind (for example `{"client": 2}`), never values; saving rules is audited as `redact_rules_update` with a count only.
+- Routes (login needed): `GET /api/redact/rules` -> `{rules[], max, builtin_kinds[]}`; `PUT /api/redact/rules {rules: [...]}` replaces the list. Stored in `redact_rules.json` in the hub data folder.
+- Like everything here it matches patterns, not meaning; it cannot hide what no rule describes.

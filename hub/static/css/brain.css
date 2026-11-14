@@ -25,3 +25,6 @@
 #view-brain .bn-verdict { text-transform: uppercase; letter-spacing: .12em; }
 #view-brain .bn-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 #view-brain .bn-spoken { margin: 0; color: var(--c-text); overflow-wrap: anywhere; }
+
+#view-brain .bn-tag { background: none; border: 0; padding: 0; color: var(--c-accent-text); font: inherit; cursor: pointer; }
+#view-brain .bn-tag.is-on { text-decoration: underline; }
