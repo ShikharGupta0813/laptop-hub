@@ -3,7 +3,9 @@
 // a tool approval shows big Approve / Deny buttons here and the loop simply waits for the tap.
 import { el, ApiError } from "./api.js";
 import { providerLabel } from "./providers.js";
-import { speakable, splitStream, splitName } from "./speechchunk.js";
+import { speakable, splitStream, splitName, createSpeechPlanner } from "./speechchunk.js";
+import { createSpeechQueue } from "./speechqueue.js";
+import { loadVoiceStatus, profileFor, hubSynth, createAudioPlayer } from "./hubtts.js";
 import { assistantById, loadedAssistants, refreshAssistants } from "./assistants.js";
 
 const SILENCE_MS_DEFAULT = 1200;   // quiet this long after speech ends the recording
@@ -13,6 +15,12 @@ const IDLE_ROLL_MS = 20000;        // with no speech, restart the recorder so it
 const SPEAK_CAP = 700;             // characters read aloud at most (per turn, across streamed sentences)
 const WARM_EVERY_MS = 8 * 60 * 1000; // keep the models loaded while voice mode is open
 const TICK_MS = 50;
+// Barge-in (talking over the assistant). The mic is judged against the level of the assistant's own sound that leaks in
+// (speakFloor), after a short deaf window when speech starts. Speaker mode needs a louder, longer voice than headphones mode.
+const BARGE_MUTE_MS = 700;         // ignore the mic this long after speech starts (echo of the first words)
+const BARGE_MS = { speaker: 380, headphones: 250 };
+const BARGE_MIN = { speaker: 0.09, headphones: 0.045 };
+const BARGE_FACTOR = { speaker: 3.5, headphones: 2.2 };
 
 function loadCss() {
   if (document.querySelector('link[data-css="voicemode"]')) return;
@@ -57,7 +65,7 @@ function normalise(text) {
 }
 function commandFor(text) {
   const n = normalise(text);
-  if (/^(please )?(stop|cancel|never ?mind|be quiet|quiet|enough|stop talking)( please)?$/.test(n)) return "stop";
+  if (/^(please )?(stop|cancel|never ?mind|be quiet|quiet|enough|stop talking)( please)?$/.test(n) || /^ok(ay)?( ok(ay)?)+$/.test(n)) return "stop";
   if (/^(please )?(new chat|new conversation|start (a )?new chat|start over|reset( the)? chat|clear( the)? chat)$/.test(n)) return "new";
   if (/^(close|exit|quit|end)( voice( mode)?)?$|^(good ?bye|bye|that's all|that is all)$/.test(n)) return "close";
   return "";
@@ -93,8 +101,11 @@ export function openVoiceMode(host) {
   let audioCtx = null, analyser = null, stream = null, source = null, wakeLock = null;
   let vad = null;      // set while listening: called every tick with the current level
   let wake = null;     // resolves a wait that tapping the orb or closing should end early
-  let utter = null;    // current speech job {cancel}
-  const tts = { q: [], buf: "", busy: false, cancelled: false, chars: 0, capped: false, waiters: [], any: false };
+  let utter = null;    // the phone's own voice, current job {cancel}
+  const tts = { cancelled: false, any: false };
+  let voiceStatus = null;               // GET /api/tts/status (profiles per assistant), loaded once per voice mode
+  let capturing = false, carry = "";    // barge-in while a reply is still being made: we listen on the side, then carry the words over
+  let bargeHeard = false, speakSince = 0, speakFloor = 0.02, bargeLoud = 0;
   let names = { jarvis: "Jarvis", call: "" };   // from /api/assistant/info
   let fcMod = null;    // fullcontrol.js, once loaded: isOn() says whether nothing needs approving
   let warmTimer = null;
@@ -142,11 +153,16 @@ export function openVoiceMode(host) {
 
   const stopBtn = ui.button({ variant: "danger", size: "md", icon: "stop", label: "Stop", class: "vm-stop", hidden: true,
     "aria-label": "Stop the assistant", onClick: () => { cancelSpeech(); aiCap.dataset.raw = ""; host.stopTurn(); } });
+  const talkStop = ui.button({ variant: "secondary", size: "md", icon: "stop", label: "Stop talking", class: "vm-talkstop", hidden: true,
+    "aria-label": "Stop talking", onClick: () => bargeIn("tap") });
+  const speakWhat = el("span", {}, "Speaking");
+  const speakInd = el("div", { class: "vm-speaking", hidden: true, role: "status", "aria-live": "polite" },
+    el("span", { class: "vm-speaking__bars", "aria-hidden": "true" }, el("i"), el("i"), el("i"), el("i")), speakWhat);
   const errBox = el("div", { class: "vm-error", hidden: true, role: "alert" });
-  const foot = el("p", { class: "vm-foot" }, "Say “stop”, “cancel” or “new chat”. Tap the orb to interrupt.");
+  const foot = el("p", { class: "vm-foot" }, "Say “stop”, “cancel” or “new chat”. Talk over me or tap the orb to interrupt.");
 
   const root = el("div", { class: "vm", id: "vm-overlay", role: "dialog", "aria-modal": "true", "aria-labelledby": "vm-title", "data-state": "listening" },
-    top, el("div", { class: "vm-stage" }, who, orb, wave, title, hint, captions, stopBtn, errBox), frPanel, approval, foot);
+    top, el("div", { class: "vm-stage" }, who, orb, wave, title, hint, captions, speakInd, talkStop, stopBtn, errBox), frPanel, approval, foot);
   document.body.append(root);
   document.documentElement.classList.add("vm-open");
   release = ui.pushLayer(() => close(true));
@@ -158,7 +174,7 @@ export function openVoiceMode(host) {
     soundBtn.replaceChildren(ui.icon(on ? "volume" : "volume-off"));
     soundBtn.setAttribute("aria-pressed", String(!on));
     soundBtn.setAttribute("aria-label", on ? "Spoken replies on" : "Spoken replies off");
-    if (!on) cancelSpeech();
+    if (!on) { try { cancelSpeech(); } catch (_) { /* the speech queue is built a little further down */ } }
   }
   setTts(ttsOn);
 
@@ -241,7 +257,7 @@ export function openVoiceMode(host) {
     if (tickTimer) return;
     tickTimer = setInterval(() => {
       let raw = 0;
-      if (analyser && state === "listening" && !paused) {
+      if (analyser && ((state === "listening" && !paused) || capturing || (state === "speaking" && queue.speaking))) {
         analyser.getFloatTimeDomainData(buf);
         let sum = 0;
         for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
@@ -254,6 +270,7 @@ export function openVoiceMode(host) {
       if (state === "speaking") shown = Math.max(shown, 0.18 + bump * 0.6 + 0.12 * Math.sin(performance.now() / 160));
       root.style.setProperty("--lvl", shown.toFixed(3));
       if (vad && !paused) vad(raw);
+      else if (state === "speaking" && queue.speaking && !capturing) bargeCheck(raw);
     }, TICK_MS);
   }
   function stopTick() { clearInterval(tickTimer); tickTimer = null; vad = null; }
@@ -321,51 +338,91 @@ export function openVoiceMode(host) {
         }
       };
       begin();
+      if (bargeHeard) { bargeHeard = false; heard = true; speechStart = lastLoud = performance.now(); root.classList.add("is-heard"); }   // they were already talking over the assistant
     });
   }
   let listenError = null;
 
   // ------------------------------------------------------------------ speaking
+  // Sentences go to the speech queue (js/speechqueue.js) the moment they are complete: the hub makes the audio in
+  // the assistant's own voice (js/hubtts.js, Settings > Voices), the next sentence is already being made while one plays,
+  // and the phone's voice covers any sentence the hub is too slow for (3 s) or cannot make. Text on screen is untouched.
+  const planner = createSpeechPlanner({ cap: SPEAK_CAP });
+  const player = createAudioPlayer({ onPulse: () => { bump = 1; } });
+  const queue = createSpeechQueue({
+    synth: (text, meta, signal) => {
+      const p = profileFor(voiceStatus, meta.persona);
+      return p && p.hub ? hubSynth(text, { assistant: meta.persona, signal }) : { kind: "browser" };
+    },
+    play: (blob) => player.play(blob),
+    playBrowser: (text) => speakBrowser(text),
+    stop: () => { player.stop(); stopBrowser(); },
+    onItem: (_item, r) => {
+      if (state === "thinking") setState("speaking");
+      speakWhat.textContent = r.kind === "audio" ? "Speaking · laptop voice" : "Speaking · phone voice";
+    },
+    onActive: (on) => {
+      root.classList.toggle("is-talking", on);
+      speakInd.hidden = talkStop.hidden = !on;
+      if (on) { speakSince = performance.now(); speakFloor = 0.02; bargeLoud = 0; }
+    },
+  });
   function cancelSpeech() {
-    tts.q.length = 0; tts.buf = ""; tts.cancelled = true;
+    tts.cancelled = true;
+    planner.reset();
+    queue.cancel();
+  }
+  function ttsReset() { tts.cancelled = false; tts.any = false; planner.reset(); }
+  function ttsFeed(chunk, final = false) {
+    if (!ttsOn || tts.cancelled) return;
+    for (const sentence of planner.feed(chunk, final)) { tts.any = true; queue.push(sentence, { persona: root.dataset.persona }); }
+  }
+  function ttsIdle() { return queue.idle(); }
+  function speak(text) { return queue.push(text, { persona: root.dataset.persona }); }   // resolves when said, or cancelled
+
+  // Barge-in: the owner talks over the assistant (or taps Stop talking). Speech stops at once. A tap only silences.
+  // Talking while the reply is still being made also listens on the side (captureInterrupt): "stop" stops the turn,
+  // anything else is a new request that replaces the old one. A plain interruption never stops the turn by itself.
+  function bargeIn(source) {
+    if (!alive || !queue.speaking) return;
+    const midReply = asking;
+    cancelSpeech();
+    ui.haptic("light");
+    if (source === "voice") {
+      bargeHeard = true;                       // the words are already coming: do not wait for a second burst of speech
+      sub.textContent = "Go ahead, I am listening…";
+      if (midReply) { setState("thinking", "Listening to you…"); captureInterrupt(); }
+    }
+  }
+  async function captureInterrupt() {
+    if (capturing) return;
+    capturing = true;
+    try {
+      const got = await listen();
+      if (!alive || !got || got.blob.size < 1500) return;
+      const text = await transcribe(got.blob, got.mime);
+      if (!text || !alive) return;
+      if (commandFor(text) === "stop") { userCap.textContent = `“${text}”`; sub.textContent = "Stopped."; await host.stopTurn(); return; }
+      carry = text;
+      if (!commandFor(text)) await host.stopTurn();       // a new request: the rest of the old reply is not wanted
+    } catch (_) { /* the loop listens again after the reply */ } finally { capturing = false; bargeHeard = false; }
+  }
+  // Called every tick while speaking: is that the owner's voice rather than the assistant's own sound coming back?
+  function bargeCheck(raw) {
+    const mode = voiceStatus?.headphones ? "headphones" : "speaker";
+    const now = performance.now();
+    if (now - speakSince < BARGE_MUTE_MS) { speakFloor = Math.max(speakFloor, Math.min(raw, 0.3)); return; }
+    const thr = Math.max(BARGE_MIN[mode], speakFloor * BARGE_FACTOR[mode]);
+    if (raw > thr) { bargeLoud += TICK_MS; if (bargeLoud >= BARGE_MS[mode]) { bargeLoud = 0; bargeIn("voice"); } }
+    else { bargeLoud = Math.max(0, bargeLoud - TICK_MS); speakFloor = speakFloor * 0.98 + Math.min(raw, 0.3) * 0.02; }
+  }
+
+  // The phone's own voice (also the fallback). Reads sentence by sentence (long utterances stall in some browsers).
+  function stopBrowser() {
     if (utter) { utter.cancel(); utter = null; }
     try { window.speechSynthesis?.cancel(); } catch (_) { /* ignore */ }
   }
-
-  // Streamed speech: sentences are spoken while the reply is still arriving (no waiting for the full text).
-  function ttsReset() { tts.q.length = 0; tts.buf = ""; tts.cancelled = false; tts.chars = 0; tts.capped = false; tts.any = false; }
-  function ttsFeed(chunk, final = false) {
-    if (!ttsOn || tts.cancelled || tts.capped) return;
-    tts.buf += chunk || "";
-    const { done, rest } = splitStream(tts.buf, { final });
-    tts.buf = rest;
-    for (const sentence of done) {
-      const plain = speakable(sentence, SPEAK_CAP).replace(/ The rest is in the chat\.$/, "");
-      if (!plain) continue;
-      if (tts.chars + plain.length > SPEAK_CAP) { tts.q.push("The rest is in the chat."); tts.capped = true; break; }
-      tts.chars += plain.length;
-      tts.q.push(plain);
-    }
-    ttsPump();
-  }
-  async function ttsPump() {
-    if (tts.busy) return;
-    tts.busy = true;
-    try {
-      while (alive && !tts.cancelled && tts.q.length) {
-        tts.any = true;
-        if (state === "thinking") setState("speaking");
-        await speak(tts.q.shift());
-      }
-    } finally {
-      tts.busy = false;
-      for (const w of tts.waiters.splice(0)) w();
-    }
-  }
-  function ttsIdle() { return tts.busy || tts.q.length ? new Promise((r) => tts.waiters.push(r)) : Promise.resolve(); }
-
-  // Resolves when finished or cancelled. Reads sentence by sentence (long utterances stall in some browsers).
-  function speak(text) {
+  function speakBrowser(text) {
     return new Promise((resolve) => {
       const synth = window.speechSynthesis;
       if (!synth || typeof SpeechSynthesisUtterance === "undefined" || !text) { resolve(); return; }
@@ -390,7 +447,7 @@ export function openVoiceMode(host) {
           if (v) {
             if (v.rate && v.rate !== 1) u.rate = v.rate;
             if (typeof v.pitch === "number" && v.pitch !== 1) u.pitch = v.pitch;
-            if (v.voice) { const found = synth.getVoices().find((x) => x.name === v.voice); if (found) u.voice = found; }
+            if (v.voice && (!v.engine || v.engine === "browser")) { const found = synth.getVoices().find((x) => x.name === v.voice); if (found) u.voice = found; }
           }
         } catch (_) { /* default voice */ }
         try { synth.speak(u); } catch (_) { finish(); }
@@ -600,6 +657,8 @@ export function openVoiceMode(host) {
       if (info) names = { jarvis: info.jarvis_name || "Jarvis", call: info.display_name || "" };
       refreshAssistants().catch(() => {});
     } catch (_) { /* older hub: names stay default */ }
+    try { voiceStatus = await Promise.race([loadVoiceStatus(), new Promise((r) => setTimeout(() => r(null), 1200))]); } catch (_) { voiceStatus = null; }
+    if (voiceStatus?.silenced) setTts(false);           // panic: the hub says be quiet
     if (!alive) return;
     setPersona(wakePersona || (host.friday ? "friday" : "jarvis"));
     if (frOn) {
@@ -623,7 +682,7 @@ export function openVoiceMode(host) {
       setState("listening");
       root.classList.remove("is-heard");
       let text = "", pre = takePreload();
-      if (pre) { text = pre.text; sub.textContent = ""; } else {
+      if (pre) { text = pre.text; sub.textContent = ""; } else if (carry) { text = carry; carry = ""; sub.textContent = ""; } else {
         const heardNow = await listen();
         if (!alive) break;
         if (listenError) { const e = listenError; listenError = null; fail("Recording failed", `The microphone could not start recording: ${e.message || e}.`); return; }
@@ -697,7 +756,7 @@ export function openVoiceMode(host) {
       if (plain) aiCap.textContent = plain.replace(/ The rest is in the chat\.$/, "");
       if (plain && ttsOn) {
         if (!tts.cancelled) ttsFeed("", true);                      // speak whatever is left of the reply
-        if (!tts.any && !tts.q.length && !tts.cancelled) { tts.q.push(plain); ttsPump(); }   // nothing streamed: read it whole
+        if (!tts.any && !tts.cancelled && !queue.pending) { tts.any = true; for (const sentence of createSpeechPlanner({ cap: SPEAK_CAP }).feed(result.text, true)) queue.push(sentence, { persona: root.dataset.persona }); }   // nothing streamed: read it whole
         await ttsIdle();
       } else if (plain) {
         await new Promise((r) => setTimeout(r, 600));

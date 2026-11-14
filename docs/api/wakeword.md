@@ -26,7 +26,8 @@ goes to `POST /api/assistant/message` in-process with `voice: true`, `auto_appro
 - Audio is written to a temp WAV only to be transcribed and deleted at once. The transcript of anything that is not a wake phrase is dropped in memory:
   never stored, never logged, never audited. The audit log records only `wakeword` with the persona and a character count.
 - Echo guard: the microphone is ignored while the laptop speaks and for 0.5 s after.
-- Speaking: Windows SAPI through a fixed PowerShell argv (the text goes in on stdin, never into the command line); macOS `say`; Linux `espeak-ng`/`espeak` when installed; otherwise silent.
+- Speaking: through `hub/tts.py` (docs/api/tts.md): the speaking assistant's own voice (Piper, Windows voices or the owner's command) when Settings > Voices picked one, sentence by sentence so the first starts early. With the default engine (`browser`) or when the engine fails it is the old one-liner, unchanged: Windows SAPI through a fixed PowerShell argv (the text goes in on stdin, never into the command line); macOS `say`; Linux `espeak-ng`/`espeak` when installed; otherwise silent. Nothing is spoken aloud while presence says in a meeting or focusing (when `hub/presence.py` exists), and the panic button silences it.
+- Barge-in: in **headphones mode** (Settings > Voices) the owner talking over the laptop's voice (about 0.4 s of loud speech while it speaks) stops it. In speaker mode this is off, because the laptop would hear itself; the echo guard above still applies either way.
 - Lifecycle: `start(ctx)` starts the thread when enabled; the hub shutting down stops it.
 
 ## Names come from the assistants list

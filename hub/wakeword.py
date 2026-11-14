@@ -46,6 +46,8 @@ FRAME = 512                      # samples per read (32 ms)
 SESSION_ID = "laptop-wake"
 COMMAND_WAIT_S = 8.0             # after a bare "Hey Jarvis", how long to wait for the command
 ECHO_TAIL_S = 0.5                # keep ignoring the mic this long after speaking
+BARGE_RMS = 2200.0               # while speaking: this loud for BARGE_FRAMES in a row is the owner talking (headphones mode only)
+BARGE_FRAMES = 12                # about 0.4 s
 SPEAK_MAX = 1200
 
 # ---- wake phrase (port of js/wakephrase.js) ------------------------------------------------------------
@@ -288,7 +290,15 @@ class WakeListener:
         self.source_factory = source_factory or SoundDeviceSource
         self.transcriber = transcriber
         self.assistant = assistant
-        self.speaker = speaker or default_speaker
+        self._persona: str | None = None                    # who is speaking now, so hub/tts.py picks that assistant's voice
+        self._barge = 0
+        if speaker is None:
+            try:
+                from . import tts as _tts                   # engine voice, falling back to default_speaker below
+                speaker = _tts.laptop_speaker(ctx, lambda: self._persona)
+            except Exception:
+                speaker = default_speaker
+        self.speaker = speaker
         self.chime = chime or default_chime
         self.clock = clock or time.monotonic
         self.seg = segmenter or Segmenter()
@@ -312,9 +322,26 @@ class WakeListener:
     # ---- one frame in, maybe an utterance out (the echo guard lives here) ----
     def feed(self, frame: bytes) -> bytes | None:
         if self.speaking or self.clock() < self.ignore_until:
+            if self.speaking:
+                self._maybe_barge(frame)
             self.seg.reset()
             return None
         return self.seg.feed(frame)
+
+    def _maybe_barge(self, frame: bytes) -> None:
+        """The owner talks over the laptop's own voice: stop it. Only in headphones mode (hub/tts.py), because speakers
+        would trigger it with their own sound. Additive: without hub/tts.py this never does anything."""
+        svc = getattr(self.ctx, "tts", None)
+        try:
+            if svc is None or not svc.laptop_barge_enabled():
+                self._barge = 0
+                return
+            self._barge = self._barge + 1 if rms(frame) >= BARGE_RMS else 0
+            if self._barge >= BARGE_FRAMES:
+                self._barge = 0
+                svc.stop_speaking()
+        except Exception:
+            self._barge = 0
 
     def say_aloud(self, text: str) -> None:
         """Speak on the laptop speakers; the microphone is ignored meanwhile and for a short tail after."""
@@ -377,12 +404,14 @@ class WakeListener:
                     return
             if not command.strip() or self.assistant is None:
                 return
+            self._persona = persona
             reply = self.assistant(command, persona, self.say_aloud)
             if reply:
                 self.say_aloud(reply)
         except Exception as exc:
             log.warning("wake handling failed: %s", type(exc).__name__)
         finally:
+            self._persona = None
             if self.state == "thinking":
                 self.state = "listening"
 

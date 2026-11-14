@@ -67,6 +67,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("mcpclient",)   # MCP client: the owner's s
 FEATURE_MODULES = FEATURE_MODULES + ("lanes",)   # work lanes: routine work to the free Council first (docs/api/lanes.md)
 FEATURE_MODULES = FEATURE_MODULES + ("presence",)   # where the owner is -> how each notification is delivered (docs/api/presence.md)
 FEATURE_MODULES = FEATURE_MODULES + ("panic", "trust", "auditview")   # agent controls: panic button, trust ladder, audit screen (docs/api/panic.md, trust.md, audit.md)
+FEATURE_MODULES = FEATURE_MODULES + ("tts",)   # local text to speech, per-assistant voices, streaming synthesis (docs/api/tts.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 

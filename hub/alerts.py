@@ -523,6 +523,10 @@ def default_speaker(ctx: Ctx) -> Callable[[str], None]:
                 lis.say_aloud(text)            # mutes the microphone while speaking
                 return
             from . import wakeword             # the same speaker the laptop wake word uses
+            svc = getattr(ctx, "tts", None)
+            if svc is not None:                # hub/tts.py: engine voice, presence and panic aware, old one-liner as fallback
+                svc.speak_aloud(text, fallback=wakeword.default_speaker)
+                return
             wakeword.default_speaker(text)
         except Exception:  # noqa: BLE001 - no speaker, no voice stack: the push still went out
             log.warning("laptop speech failed")

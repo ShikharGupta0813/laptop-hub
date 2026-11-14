@@ -13,7 +13,7 @@ Code: `hub/assistants.py` (list, validation, routes), `hub/persona.py` (routing 
 | `wake_names` | Words that wake it ("Hey atlas"). One word each (2 to 29 characters). Empty = the first word of `name`. |
 | `heard_as` | How the microphone often mis-hears the name (`jarves`, `jarvas` for Jarvis). |
 | `role_prompt` | Empty = the built-in prompt (Jarvis, Friday) or a one-line plain prompt (new assistants). Up to 1500 characters. `{name}` and `{call}` (the owner's call sign) are filled in. |
-| `voice` | `{rate 0.5-2, pitch 0-2, voice ""}` for the phone speaker (voice mode applies it; the defaults change nothing). |
+| `voice` | `{rate 0.5-2, pitch 0-2, voice "", engine ""}`. `engine` is `""` (the hub default), `browser`, `sapi`, `piper` or `command` (hub/tts.py); `voice` is then a phone voice name, a SAPI voice, a Piper model id or a command id. Older saved lists without `engine` read as `""`. Voice mode applies it; the defaults change nothing. Edited in Settings > Voices (docs/api/tts.md). |
 | `tool_groups` | Names from `TOOL_GROUPS` (hub/assistant.py) this assistant owns. Their tools are always offered to the local model on that assistant's turns and named in its prompt. **Empty = no focus**, which is how Jarvis and Friday ship, so their behaviour is unchanged. |
 | `accent` | `cyan`, `amber`, `green`, `violet` or `white` (the app's accent tokens). |
 | `enabled` | Off = it no longer wakes or routes. |

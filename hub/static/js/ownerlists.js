@@ -7,6 +7,7 @@ import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
 import { forgetAssistants, refreshAssistants } from "./assistants.js";
 import { forgetLanes, savedTile } from "./lanepicker.js";
+import { openVoices } from "./voices.js";
 
 const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -258,5 +259,5 @@ export async function openLanes() {
 }
 
 export const OWNER_SECTIONS = { assistants: openAssistants, notifyprefs: openNotifyPrefs, safetyrules: openSafetyRules,
-  redactrules: openRedactRules, memorykinds: openMemoryKinds, lanes: openLanes,
+  redactrules: openRedactRules, memorykinds: openMemoryKinds, lanes: openLanes, voices: openVoices,
   deliveryrules: () => import("./presence.js").then((m) => m.openDeliveryRules()) };

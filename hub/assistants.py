@@ -35,12 +35,13 @@ WORD_RE = re.compile(r"^[a-z0-9][a-z0-9'’-]{1,29}$")
 RESERVED_WORDS = frozenset("""at is was we i the morning afternoon evening night next this last after before during off and
 hey hi ok okay yo a an it to of in on you me my""".split())
 BUILTIN_IDS = ("jarvis", "friday")
+TTS_ENGINES = ("", "browser", "sapi", "piper", "command")      # keep in step with hub/tts.py ENGINES
 
 DEFAULTS: tuple[dict, ...] = (
     {"id": "jarvis", "name": "Jarvis", "wake_names": ["jarvis"], "heard_as": ["jarves", "jarvas"], "role_prompt": "",
-     "voice": {"rate": 1.0, "pitch": 1.0, "voice": ""}, "tool_groups": [], "accent": "cyan", "enabled": True},
+     "voice": {"rate": 1.0, "pitch": 1.0, "voice": "", "engine": ""}, "tool_groups": [], "accent": "cyan", "enabled": True},
     {"id": "friday", "name": "Friday", "wake_names": ["friday"], "heard_as": [], "role_prompt": "",
-     "voice": {"rate": 1.0, "pitch": 1.0, "voice": ""}, "tool_groups": [], "accent": "amber", "enabled": True},
+     "voice": {"rate": 1.0, "pitch": 1.0, "voice": "", "engine": ""}, "tool_groups": [], "accent": "amber", "enabled": True},
 )
 
 
@@ -128,7 +129,11 @@ def clean_entry(raw: Any, *, known_groups: list[str] | None = None) -> dict:
         raise AssistantError("Voice rate and pitch must be numbers.") from None
     if not (0.5 <= rate <= 2.0 and 0.0 <= pitch <= 2.0):
         raise AssistantError("Voice rate must be 0.5 to 2 and pitch 0 to 2.")
-    voice = {"rate": round(rate, 2), "pitch": round(pitch, 2), "voice": " ".join(str(voice_in.get("voice") or "").split())[:80]}
+    engine = _word(voice_in.get("engine"))        # hub/tts.py engine id; "" = the hub default (docs/api/tts.md)
+    if engine not in TTS_ENGINES:
+        raise AssistantError("The voice engine must be one of: " + ", ".join(e for e in TTS_ENGINES if e) + ".")
+    voice = {"rate": round(rate, 2), "pitch": round(pitch, 2), "voice": " ".join(str(voice_in.get("voice") or "").split())[:80],
+             "engine": engine}
     groups = raw.get("tool_groups") or []
     if not isinstance(groups, list) or not all(isinstance(g, str) for g in groups):
         raise AssistantError("tool_groups must be a list of group names.")

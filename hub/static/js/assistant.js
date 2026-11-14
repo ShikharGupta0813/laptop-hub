@@ -298,6 +298,7 @@ export function init(container, ctx) {
 
   function stopSpeech() {
     try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch (_) { /* ignore */ }
+    import("./hubtts.js").then((m) => m.stopReply()).catch(() => {});
   }
 
   // ---------------------------------------------------------------- scrolling
@@ -779,7 +780,10 @@ export function init(container, ctx) {
       turn = null;
       controller = null;
       setBusy(false);
-      if (!t.voice && prefs.speak && spoken && !t.stopped && !t.hadError) ctx.speak(spoken);
+      if (!t.voice && prefs.speak && spoken && !t.stopped && !t.hadError) {
+        // the assistant's hub voice when the owner picked one (Settings > Voices), else the phone's, as before
+        import("./hubtts.js").then((m) => m.speakReply(spoken, curPersona, (x) => ctx.speak(x))).catch(() => ctx.speak(spoken));
+      }
     }
   }
 
