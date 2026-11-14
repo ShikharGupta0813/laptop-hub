@@ -50,6 +50,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "wake_laptop_enabled", "wake_laptop_device", "formfill_enabled", "formfill_headed", "opps_enabled", "opps_interval_min", "opps_min_score",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
+ALLOWED_KEYS = (*ALLOWED_KEYS, "panic_confirm", "panic_phrases", "trust_enabled", "trust_threshold")   # hub/panic.py, hub/trust.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
@@ -206,6 +207,18 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
+        elif key in ("panic_confirm", "trust_enabled"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "trust_threshold":
+            if isinstance(value, bool) or not isinstance(value, int) or not 3 <= value <= 100:
+                raise HTTPException(400, "trust_threshold must be a whole number from 3 to 100.")
+            changes[key] = value
+        elif key == "panic_phrases":
+            if not isinstance(value, list) or len(value) > 20 or not all(isinstance(v, str) and 2 <= len(v.strip()) <= 60 for v in value):
+                raise HTTPException(400, "panic_phrases must be a list of up to 20 short phrases.")
+            changes[key] = [v.strip() for v in value]
         elif key in ("opps_interval_min", "opps_min_score"):
             low, high = (15, 1440) if key == "opps_interval_min" else (0, 100)
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
@@ -541,6 +554,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "roots": [{"name": n, "exists": Path(p).is_dir()} for n, p in config.roots.items()],
             "display_name": config.display_name, "jarvis_name": config.jarvis_name,
             "full_control": config.full_control is True, "fast_commands": config.fast_commands is True,
+            "panic_active": config.panic_active is True, "panic_confirm": config.panic_confirm is True,
+            "trust_enabled": config.trust_enabled is not False, "trust_threshold": int(config.trust_threshold or 10),
             "ntfy_server": config.ntfy_server, "ntfy_topic_set": bool(config.ntfy_topic),
             "jarvis_dir_set": bool((config.jarvis_dir or "").strip()),
             "council_dir_set": bool((config.council_dir or "").strip()),
@@ -627,6 +642,10 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             try:        # remembered approvals never outlive a change of Full Control (docs/api/assistant-safety.md)
                 ctx.get_app().state.assistant.revoke_all()
             except Exception:  # noqa: BLE001  tests and doubles may have no assistant
+                pass
+            try:        # a Full Control change also revokes every trust rule (hub/trust.py)
+                ctx.trust.revoke_all("full_control_change")
+            except Exception:  # noqa: BLE001
                 pass
         info = await full_snapshot()
         info["persisted"] = persisted

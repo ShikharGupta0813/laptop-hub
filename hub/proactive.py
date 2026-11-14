@@ -32,6 +32,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from .common import Ctx, JsonFile
+from . import panic as _panic
 
 log = logging.getLogger("hub.proactive")
 
@@ -246,7 +247,7 @@ class Proactive:
     # ---- config (read live) ---------------------------------------------------------------------------
     @property
     def enabled(self) -> bool:
-        return getattr(self.ctx.config, "proactive_enabled", True) is not False
+        return getattr(self.ctx.config, "proactive_enabled", True) is not False and not _panic.on(self.ctx.config)
 
     def _quiet(self) -> tuple[str, str]:
         c = self.ctx.config
@@ -485,6 +486,7 @@ def submit_or_notify(ctx: Ctx, event: dict) -> None:
 def make_router(ctx: Ctx, *, clock: Clock | None = None) -> APIRouter:
     engine = Proactive(ctx, clock)
     ctx.proactive = engine        # type: ignore[attr-defined]
+    _panic.register_flag(ctx, "Proactive pushes", "proactive_enabled", True)   # Panic pauses it, Resume restarts it (hub/panic.py)
     router = APIRouter(prefix="/api/proactive", dependencies=[Depends(ctx.need_auth)])
     router.engine = engine        # type: ignore[attr-defined]
 

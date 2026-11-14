@@ -179,6 +179,10 @@ export function init(container, ctx) {
       ui.listRow({ icon: "inbox", tone: "accent", title: "Notifications", sub: "Everything the hub told you", chevron: true, onClick: () => ctx.open("notifications") })));
     rows.push(group("This phone",
       ui.listRow({ icon: "phone", tone: "teal", title: "Phone capture", sub: capture() ? "Spending and message capture" : "Needs the installed Android app", chevron: true, onClick: () => openSection("capture") })));
+    rows.push(group("Agent controls",
+      ui.listRow({ icon: "stop", tone: "bad", title: "Panic", sub: "Stop the agent everywhere until you tap Resume", chevron: true, onClick: () => import("./panic.js").then((m) => m.press()) }),
+      ui.listRow({ icon: "history", tone: "info", title: "What did the agent do?", sub: "Timeline of tool calls, approvals, denials and sends", chevron: true, onClick: () => import("./audit.js").then((m) => m.openAudit(ctx)) }),
+      ui.listRow({ icon: "key", tone: "warn", title: "Trust rules", sub: "Things you chose to let the agent do on its own", chevron: true, onClick: () => import("./trust.js").then((m) => m.openTrust()) })));
     rows.push(group("Account & security", fullControlRow(), permissionsRow(), logoutAllRow()));
     rows.push(group("System",
       ui.listRow({ icon: "activity", tone: "good", title: "Diagnostics", sub: "Is everything set up?", chevron: true, onClick: () => openSection("diagnostics"),

@@ -39,6 +39,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from . import providers as providers_mod
 from . import usage
 from .common import Ctx, InProcessClient, ask_json
+from . import panic as _panic
 from .llm import LLMError
 from .watch import epoch, parse_when
 
@@ -403,7 +404,7 @@ class Autopilot:
 
     @property
     def enabled(self) -> bool:
-        return bool(getattr(self.config, "autopilot_enabled", False))
+        return bool(getattr(self.config, "autopilot_enabled", False)) and not _panic.on(self.config)
 
     def num(self, name: str, default: int, low: int, high: int) -> int:
         try:
@@ -1156,6 +1157,7 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
     """`caller`, `clock` and `git_runner` exist so tests need no real hub, time or git."""
     kwargs = {k: v for k, v in (("caller", caller), ("clock", clock), ("git_runner", git_runner)) if v is not None}
     engine = ENGINES[id(ctx)] = Autopilot(ctx, **kwargs)
+    _panic.register_flag(ctx, "Autopilot", "autopilot_enabled", False)   # Panic pauses it, Resume restarts it (hub/panic.py)
     router = APIRouter(prefix="/api/autopilot", dependencies=[Depends(ctx.need_auth)])
 
     def refuse(exc: Bad) -> HTTPException:

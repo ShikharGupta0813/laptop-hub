@@ -35,6 +35,7 @@ from typing import Any, Callable
 
 from . import provlist
 from .common import JsonFile
+from . import panic as _panic
 from .provlist import ListError, clean
 
 # ---- protocol -----------------------------------------------------------------------------------------------------
@@ -919,7 +920,7 @@ class McpManager:
     # -- settings -----------------------------------------------------------------------------------------------
     @property
     def enabled(self) -> bool:
-        return getattr(self.config, "mcp_enabled", True) is not False
+        return getattr(self.config, "mcp_enabled", True) is not False and not _panic.on(self.config)
 
     def _limit(self, name: str, default: float) -> float:
         value = getattr(self.config, name, default)
@@ -1289,6 +1290,12 @@ def make_router(ctx):
     if manager is None:
         manager = McpManager(ctx.config, ctx.audit)
         ctx.mcp = manager                                   # type: ignore[attr-defined]
+
+    async def _panic_stop():
+        running = len(manager._running)
+        await manager.stop_all()
+        return f"{running} MCP server(s) stopped" if running else None
+    _panic.register("MCP servers", _panic_stop, ctx=ctx)   # servers restart on the next call after Resume (hub/panic.py)
     router = APIRouter(prefix="/api/mcp", dependencies=[Depends(ctx.need_auth)])
     alist = manager.list
 

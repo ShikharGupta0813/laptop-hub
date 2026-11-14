@@ -33,6 +33,7 @@ from . import brain as brain_mod
 from . import proactive
 from .autopilot import pick_provider
 from .common import Ctx, InProcessClient, parse_json
+from . import panic as _panic
 from .llm import LLMError
 
 log = logging.getLogger("hub.buildflow")
@@ -324,7 +325,7 @@ class BuildFlow:
 
     @property
     def enabled(self) -> bool:
-        return getattr(self.config, "buildflow_enabled", True) is not False
+        return getattr(self.config, "buildflow_enabled", True) is not False and not _panic.on(self.config)
 
     def require_on(self) -> None:
         if not self.enabled:
@@ -718,6 +719,7 @@ def make_router(ctx: Ctx, *, ask: Ask | None = None, caller: Caller | None = Non
                 clock: Callable[[], dt.datetime] | None = None) -> APIRouter:
     engine = BuildFlow(ctx, ask=ask, caller=caller, clock=clock)
     ctx.buildflow = engine        # type: ignore[attr-defined]
+    _panic.register_flag(ctx, "Build flow", "buildflow_enabled", True)   # Panic pauses it, Resume restarts it (hub/panic.py)
     router = APIRouter(prefix="/api/buildflow", dependencies=[Depends(ctx.need_auth)])
     router.engine = engine        # type: ignore[attr-defined]
 

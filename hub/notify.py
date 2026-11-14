@@ -295,6 +295,8 @@ class NotifyCenter:
 
     def _maybe_push_phone(self, item: dict, now: float) -> None:
         try:
+            if getattr(self.config, "panic_active", False) is True and item.get("source") != "panic":
+                return          # Panic: no pushes to the phone except the panic confirmation itself
             topic, _ = self.active_topic()
             server = str(getattr(self.config, "ntfy_server", "") or "").rstrip("/")
             if not topic or not TOPIC_RE.match(topic) or not server.lower().startswith(("http://", "https://")):

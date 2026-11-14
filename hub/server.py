@@ -65,6 +65,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull,
 FEATURE_MODULES = FEATURE_MODULES + ("dictation",)   # laptop dictation hotkey (docs/api/dictation.md)
 FEATURE_MODULES = FEATURE_MODULES + ("mcpclient",)   # MCP client: the owner's server list, tools for the assistant (docs/api/mcp.md)
 FEATURE_MODULES = FEATURE_MODULES + ("lanes",)   # work lanes: routine work to the free Council first (docs/api/lanes.md)
+FEATURE_MODULES = FEATURE_MODULES + ("panic", "trust", "auditview")   # agent controls: panic button, trust ladder, audit screen (docs/api/panic.md, trust.md, audit.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -794,6 +795,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
               need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file,
               config_path=config_path)
     ctx.mcp = mcp_manager
+    ctx.assistant = assistant
     for name in FEATURE_MODULES:
         try:
             module = importlib.import_module(f".{name}", __package__)

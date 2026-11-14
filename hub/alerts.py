@@ -44,6 +44,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from . import config as cfg
 from . import notifydedupe, proactive
 from .common import Ctx, JsonFile
+from . import panic as _panic
 
 log = logging.getLogger("hub.alerts")
 
@@ -549,7 +550,7 @@ class Alerts:
     # ---- config (read live) ----
     @property
     def enabled(self) -> bool:
-        return getattr(self.ctx.config, "alerts_enabled", True) is not False
+        return getattr(self.ctx.config, "alerts_enabled", True) is not False and not _panic.on(self.ctx.config)
 
     def vips(self) -> list[str]:
         v = getattr(self.ctx.config, "alerts_vips", None)
@@ -1074,6 +1075,7 @@ def on_watch_ingest(ctx: Ctx, data: dict) -> None:
 def make_router(ctx: Ctx, *, engine: Alerts | None = None) -> APIRouter:
     eng = engine or Alerts(ctx)
     ctx.alerts = eng                  # type: ignore[attr-defined]
+    _panic.register_flag(ctx, "Alerts pollers", "alerts_enabled", True)   # Panic pauses it, Resume restarts it (hub/panic.py)
     router = APIRouter(prefix="/api/alerts", dependencies=[Depends(ctx.need_auth)])
     router.engine = eng               # type: ignore[attr-defined]
 

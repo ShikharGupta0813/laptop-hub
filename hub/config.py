@@ -193,6 +193,12 @@ class Config:
     mcp_idle_seconds: int = 300             # a server with no call for this long is stopped (started again on the next call)
     mcp_max_concurrent: int = 4             # tool calls running at once across all servers
     mcp_call_timeout: int = 60              # seconds before one tool call is given up
+    # Agent controls (hub/panic.py, hub/trust.py): the panic button and the trust ladder.
+    panic_active: bool = False              # persistent: set by the Panic button, cleared only by Resume (never by Settings)
+    panic_confirm: bool = False             # True = Panic asks "are you sure" first; False = one tap works in an emergency
+    panic_phrases: list | None = None       # spoken/typed panic phrases; None = the built-in list
+    trust_enabled: bool = True              # the trust ladder (suggest "do this automatically" after repeated approvals)
+    trust_threshold: int = 10               # approvals of one shape, with no denial in 30 days, before it is suggested
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -312,6 +318,9 @@ def save(config: Config, path: Path) -> None:
         "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
         "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
         "formfill_never": list(config.formfill_never or []),
+        "panic_active": config.panic_active is True, "panic_confirm": config.panic_confirm is True,
+        "panic_phrases": config.panic_phrases, "trust_enabled": config.trust_enabled is not False,
+        "trust_threshold": int(config.trust_threshold or 10),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

@@ -40,6 +40,7 @@ from fastapi.responses import JSONResponse, Response
 from . import applyq as aq
 from . import research
 from .common import Ctx
+from . import panic as _panic
 
 log = logging.getLogger("hub.formfill")
 
@@ -1108,7 +1109,7 @@ class Formfill:
 
     # -- config ---------------------------------------------------------------------------------------------------
     def enabled(self) -> bool:
-        return getattr(self.ctx.config, "formfill_enabled", False) is True
+        return getattr(self.ctx.config, "formfill_enabled", False) is True and not _panic.on(self.ctx.config)
 
     def headed(self) -> bool:
         return getattr(self.ctx.config, "formfill_headed", True) is not False
@@ -1552,6 +1553,13 @@ class Formfill:
 def make_router(ctx: Ctx, **kw: Any) -> APIRouter:
     router = APIRouter(prefix="/api", dependencies=[Depends(ctx.need_auth)])
     svc = Formfill(ctx, **kw)
+
+    def _panic_stop():
+        if svc.run is None:
+            return None
+        svc._end("panic")
+        return "form-filling session closed (nothing was submitted)"
+    _panic.register("Form filling", _panic_stop, ctx=ctx)   # hub/panic.py
     router.service = svc                       # type: ignore[attr-defined]
 
     async def guarded(fn, *args):
@@ -1580,6 +1588,7 @@ def make_router(ctx: Ctx, **kw: Any) -> APIRouter:
 
     @router.post("/applyq/{item_id}/formfill/start")
     async def start(item_id: str, body: dict = Body(default_factory=dict)):
+        _panic.guard(ctx.config)
         return await guarded(lambda: svc.start(item_id, confirm_over_cap=body.get("confirm_over_cap") is True))
 
     @router.post("/applyq/{item_id}/formfill/login")
@@ -1611,6 +1620,7 @@ def make_router(ctx: Ctx, **kw: Any) -> APIRouter:
 
     @router.post("/applyq/{item_id}/formfill/{run_id}/submit")
     async def submit(item_id: str, run_id: str, body: dict = Body(default_factory=dict)):
+        _panic.guard(ctx.config)
         return await guarded(svc.submit, run_id, body.get("field_digest"), body.get("confirm"))
 
     @router.post("/applyq/{item_id}/formfill/{run_id}/cancel")

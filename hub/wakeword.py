@@ -35,6 +35,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from . import config as cfg
 from .common import Ctx
+from . import panic as _panic
 from .assistants import load as load_assistants, wake_table
 from .persona import split_persona
 
@@ -301,7 +302,7 @@ class WakeListener:
 
     @property
     def enabled(self) -> bool:                              # config is read live
-        return getattr(self.ctx.config, "wake_laptop_enabled", False) is True
+        return getattr(self.ctx.config, "wake_laptop_enabled", False) is True and not _panic.on(self.ctx.config)
 
     def status(self) -> dict:
         return {"enabled": self.enabled, "state": self.state, "message": self.message,
@@ -460,6 +461,16 @@ def make_router(ctx: Ctx, *, listener: WakeListener | None = None) -> APIRouter:
         lis.assistant = default_assistant(ctx, lambda: holder["loop"])
     ctx.wakeword = lis                  # type: ignore[attr-defined]
     ctx.wakeword_holder = holder        # type: ignore[attr-defined]
+
+    async def _panic_stop():
+        was = lis.state not in ("off", "error")
+        await asyncio.to_thread(lis.stop)
+        return "wake word listener stopped" if was else None
+
+    async def _panic_resume(_state):
+        if lis.enabled:
+            await asyncio.to_thread(lis.start)
+    _panic.register("Wake word (laptop)", _panic_stop, _panic_resume, ctx=ctx)   # hub/panic.py
     router = APIRouter(prefix="/api/wakeword", dependencies=[Depends(ctx.need_auth)])
 
     @router.get("/status")

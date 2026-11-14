@@ -36,6 +36,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from .assistant import ExtraTool
 from .common import Ctx, InProcessClient, parse_json
+from . import panic as _panic
 
 log = logging.getLogger("hub.models")
 
@@ -983,6 +984,17 @@ def engine_for(ctx: Ctx, **kwargs) -> Models:
 
 def make_router(ctx: Ctx, **kwargs) -> APIRouter:
     engine = engine_for(ctx, **kwargs)
+
+    def _panic_stop():
+        jobs = [j for j, t in engine.think_tasks.items() if not t.done()]
+        for j in jobs:
+            engine.cancel_think(j)
+        pulling = bool(engine.pull_task and not engine.pull_task.done())
+        if pulling:
+            engine.cancel_pull()
+        parts = ([f"{len(jobs)} deep-thinking job(s) cancelled"] if jobs else []) + (["model download cancelled"] if pulling else [])
+        return ", ".join(parts) or None
+    _panic.register("Deep thinking", _panic_stop, ctx=ctx)   # hub/panic.py
     router = APIRouter(prefix="/api/models", dependencies=[Depends(ctx.need_auth)])
 
     def body_dict(body: Any) -> dict:
@@ -1070,6 +1082,7 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
 
     @router.post("/think")
     async def think(body: Any = Body(...)):
+        _panic.guard(ctx.config)
         data = body_dict(body)
         return engine.start_think(str(data.get("kind") or "general"), str(data.get("task") or ""),
                                   data.get("keep_reasoning") is not False)

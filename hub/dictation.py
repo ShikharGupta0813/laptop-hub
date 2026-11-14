@@ -45,6 +45,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from . import config as cfg
 from .common import Ctx
+from . import panic as _panic
 
 log = logging.getLogger("hub.dictation")
 
@@ -431,7 +432,7 @@ class Dictation:
 
     @property
     def enabled(self) -> bool:
-        return self._c("enabled", False) is True
+        return self._c("enabled", False) is True and not _panic.on(self.ctx.config)
 
     @property
     def paused(self) -> bool:
@@ -794,6 +795,16 @@ def doctor_line(config=None) -> tuple:
 def make_router(ctx: Ctx, *, engine: Dictation | None = None) -> APIRouter:
     holder: dict[str, Any] = {"loop": None}
     eng = engine or Dictation(ctx)
+
+    async def _panic_stop():
+        was = getattr(ctx.config, "dictation_enabled", False) is True
+        await asyncio.to_thread(eng.stop)
+        return "dictation hotkey stopped" if was else None
+
+    async def _panic_resume(_state):
+        if eng.enabled:
+            await asyncio.to_thread(eng.start)
+    _panic.register("Dictation", _panic_stop, _panic_resume, ctx=ctx)   # hub/panic.py
     if eng.assistant is None:
         try:
             from .wakeword import default_assistant

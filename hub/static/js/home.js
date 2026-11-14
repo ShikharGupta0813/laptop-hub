@@ -20,6 +20,8 @@ export const QUICK_ACTIONS = [
   { id: "jarvis", label: "Start Jarvis", icon: "jarvis", tone: "violet", hint: "Wake your voice assistant", keywords: "hey jarvis voice assistant", run: (ctx) => startJarvis(ctx) },
   { id: "focus", label: "Start focus", icon: "target", tone: "good", hint: "A distraction-free timer", keywords: "pomodoro timer deep work", open: ["focus", "start"] },
   { id: "terminal", label: "Terminal", icon: "terminal", tone: "gray", hint: "A shell on the laptop", keywords: "shell powershell bash command", open: ["terminal"] },
+  { id: "audit", label: "What did the agent do?", icon: "history", tone: "info", hint: "A timeline of everything the agent did", keywords: "audit log history activity approvals", run: (ctx) => import("./audit.js").then((m) => m.openAudit(ctx)) },
+  { id: "panic", label: "Panic: pause the agent", icon: "stop", tone: "bad", hint: "Stop everything now", keywords: "stop emergency kill pause", run: () => import("./panic.js").then((m) => m.press()) },
   { id: "screen", label: "Remote screen", icon: "cast", tone: "warn", hint: "View and control the laptop", keywords: "remote desktop view control", open: ["screen"] },
 ];
 

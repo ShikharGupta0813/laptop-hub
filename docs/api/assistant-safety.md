@@ -39,6 +39,11 @@ denies pending approvals and ends the stream with `{"type":"stopped","message":"
 false when nothing was running. Talk has the Stop button; voice mode has a Stop button, the orb, and the
 spoken words "stop" / "cancel".
 
+## Panic, trust rules, audit (agent controls)
+- **Panic** (`docs/api/panic.md`): while `panic_active` is set, every gated, mutating or outbound tool is refused with `tool_result.blocked == "panic"` (audit `assistant_panic_block`), even in Full Control; N1 reads still work. `AssistantService.panic_stop_all()` stops turns, approvals, countdowns and remembered approvals. The phrase "Jarvis stop everything" / "panic" is handled in `assistant.run` before any model.
+- **Trust rules** (`docs/api/trust.md`): `AssistantService.trust` (set by `hub/trust.py`) records approved/denied N2 shapes and `claim()`s a rule before asking. Never for N3, `ALWAYS_ASK`, MCP, tainted turns. The `assistant_tool` audit line gains `by` (`tap`, `voice`, `trust_rule`, `remembered`, `full_control`, `auto_approve`) and `trust_rule`.
+- **Audit screen** (`docs/api/audit.md`): `GET /api/audit/search`.
+
 ## Graded safety levels (N1 / N2 / N3)
 Every tool call gets a level from `hub/safety.py` (`classify(tool_name, args)`, a pure function) and the level is
 on the `tool_start` / `approval_needed` events and in the audit log (`assistant_tool` rows carry `level`).

@@ -30,6 +30,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from .common import Ctx
+from . import panic as _panic
 
 log = logging.getLogger("hub.applyq")
 
@@ -774,6 +775,7 @@ def make_router(ctx: Ctx, *, clock: Callable[[], dt.datetime] | None = None, pro
     @router.post("/{item_id}/send")
     async def send(item_id: str, body: dict = Body(default_factory=dict)):
         need_on()
+        _panic.guard(ctx.config)
         result = await asyncio.to_thread(lambda: guard(lambda: svc.send(
             item_id, confirm_over_cap=body.get("confirm_over_cap") is True,
             account=body.get("account") if isinstance(body.get("account"), str) else "")))
