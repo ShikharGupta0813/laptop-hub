@@ -2,6 +2,7 @@
 // Routes: docs/api/council.md. Everything the lab prints is shown as text (textContent), never as HTML.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { savedTile } from "./lanepicker.js";
 
 const CSS = "/css/council.css";
 const POLL_MS = 3000;
@@ -24,7 +25,7 @@ export function init(container, ctx) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
   const root = el("div", { class: "cn ui-stack ui-stack--lg" });
   container.append(root);
-  let status = null, jobs = [], models = null, modelsError = "";
+  let status = null, jobs = [], models = null, modelsError = "", saved = null;
   let selected = null;           // id of the run shown in the result card
   let detail = null;             // that run in full
   let loadError = "";
@@ -37,6 +38,7 @@ export function init(container, ctx) {
     try {
       status = await api("/api/council/status");
       loadError = "";
+      saved = await api("/api/lanes/saved").catch(() => null);      // the tile is optional: an older hub has no lanes
       if (status.enabled) {
         jobs = (await api("/api/council/jobs")).jobs || [];
         const running = jobs.find((j) => j.running);
@@ -216,6 +218,7 @@ export function init(container, ctx) {
     const parts = [];
     if (!status.ready) parts.push(ui.notice("The council folder is set but has no 'lab' folder in it. Run the setup again.", { tone: "bad" }));
     parts.push(newRun());
+    if (saved) parts.push(savedTile(saved));
     const job = detail;
     if (job?.running) parts.push(runningCard(job));
     else if (job) parts.push(resultCard(job));

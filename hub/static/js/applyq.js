@@ -3,6 +3,7 @@
 // Routes: docs/api/applyq.md. Everything shown is text (textContent), never HTML.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { lanePicker, askLane } from "./lanepicker.js";
 
 const CSS = "/css/applyq.css";
 const TABS = [["ready", "Ready"], ["sent", "Sent"], ["skipped", "Skipped"]];
@@ -188,8 +189,15 @@ export function init(container, ctx) {
       } catch (error) { fail(error); }
     }) });
     const cancel = ui.button({ label: "Cancel", variant: "ghost", size: "sm", onClick: () => { editing.delete(item.id); paint(); } });
-    const redo = ui.button({ label: "Redraft", icon: "refresh", variant: "tonal", size: "sm", onClick: () => ui.busy(redo, async () => { editing.delete(item.id); await act(item, "draft", "Redrafted."); }) });
-    return el("div", { class: "ui-stack" }, subject, body, el("div", { class: "aq-fields" }, to, channel), el("div", { class: "aq-actions" }, save, redo, cancel));
+    // Work lanes: write the draft with the template (as before), the free Council, or an AI lane (docs/api/lanes.md). Nothing is sent.
+    const writer = lanePicker({ value: "template", label: "Write draft with", options: [{ id: "template", label: "Template" }, { id: "council", label: "Council" }, { id: "auto", label: "AI" }] });
+    const redo = ui.button({ label: "Redraft", icon: "refresh", variant: "tonal", size: "sm", onClick: () => ui.busy(redo, async () => {
+      if (writer.value === "template") { editing.delete(item.id); await act(item, "draft", "Redrafted."); return; }
+      const task = `Write the message body for this job application. Plain text, short, honest, no placeholders.\nRole: ${item.title}\nCompany: ${item.company || ""}\nWhy it fits: ${item.reason || ""}\nCurrent draft:\n${body.value}`;
+      const run = await askLane(task, writer.value === "council" ? "council" : "auto", { cls: "routine" });
+      if (run?.answer) { body.value = run.answer; ui.toast(`Drafted by ${run.lane}. Check it, then Save.`, { kind: "good" }); }
+    }) });
+    return el("div", { class: "ui-stack" }, subject, body, el("div", { class: "aq-fields" }, to, channel), writer.el, el("div", { class: "aq-actions" }, save, redo, cancel));
   }
 
   function accountPicker(item) {

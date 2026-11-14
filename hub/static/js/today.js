@@ -2,6 +2,7 @@
 // Everything shown is text (textContent). The last answer is kept in localStorage so the page opens even offline.
 import { api, ApiError, el, sse } from "./api.js";
 import * as ui from "./ui.js";
+import { councilButton } from "./lanepicker.js";
 
 const CACHE_KEY = "hub.today.v1";
 const KIND_ICON = { meeting: "calendar", commit: "code", mail: "mail", task: "check-circle", card: "zap", council: "users", expense: "chart", followup: "bell" };
@@ -86,8 +87,9 @@ export function init(container, ctx) {
 
   function tasks() {
     const t = data.tasks || {}, rows = [];
-    for (const x of t.overdue || []) rows.push(ui.listRow({ icon: "alert-circle", tone: "bad", title: x.name, sub: `Overdue since ${x.due_on}${x.project ? " · " + x.project : ""}` }));
-    for (const x of t.due_today || []) rows.push(ui.listRow({ icon: "task", title: x.name, sub: `Due today${x.project ? " · " + x.project : ""}` }));
+    const withCouncil = (row, x) => el("div", { class: "lp-rowwrap" }, row, councilButton(() => `${x.name}${x.project ? " (" + x.project + ")" : ""}`, { size: "sm", label: "Council" }));
+    for (const x of t.overdue || []) rows.push(withCouncil(ui.listRow({ icon: "alert-circle", tone: "bad", title: x.name, sub: `Overdue since ${x.due_on}${x.project ? " · " + x.project : ""}` }), x));
+    for (const x of t.due_today || []) rows.push(withCouncil(ui.listRow({ icon: "task", title: x.name, sub: `Due today${x.project ? " · " + x.project : ""}` }), x));
     if (!rows.length) return null;
     return el("section", { class: "ui-stack" }, ui.eyebrow("05", "Tasks"), el("div", { class: "ui-list ui-list--inset" }, ...rows));
   }

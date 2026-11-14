@@ -6,6 +6,7 @@ import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
 import { forgetAssistants, refreshAssistants } from "./assistants.js";
+import { forgetLanes, savedTile } from "./lanepicker.js";
 
 const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -193,5 +194,68 @@ export async function openMemoryKinds() {
   open("Memory kinds", ed.el);
 }
 
+// ---- Work lanes ---------------------------------------------------------------------------------------------
+// Two lists: the lanes (where work can go) and the task classes (which lanes, in what order). Routes: docs/api/lanes.md.
+const COST_TONE = { free: "good", limited: "orange", paid: "bad" };
+const BASE_KINDS = [["council", "Council (free models, background)"], ["local", "Local model"], ["local-reasoning", "Local deep thinking"],
+  ["gemini", "Gemini"], ["claude-login", "Claude (my login)"], ["claude", "Claude (API key)"], ["cli", "A CLI login AI"], ["endpoint", "My AI endpoint"]];
+export async function openLanes() {
+  let data = await api("/api/lanes").catch((e) => { fail(e); return null; });
+  if (!data) return;
+  const apply = (next) => { data = next; laneEd.set(data.lanes); classEd.set(data.classes); forgetLanes(); };
+  const splitKind = (kind) => { const [base, rest] = String(kind || "local").split(":"); return rest !== undefined ? [base, rest] : [kind, ""]; };
+  const laneFields = (isNew) => [
+    ...(isNew ? [{ key: "id", label: "Id", type: "text", maxlength: 40, placeholder: "my-box", hint: "Lower-case letters, digits and dashes. It never changes once saved." }] : []),
+    { key: "label", label: "Name", type: "text", maxlength: 60 },
+    { key: "base", label: "Kind", type: "select", options: BASE_KINDS },
+    { key: "provider", label: "Provider id (CLI or endpoint kinds only)", type: "text", maxlength: 40, placeholder: "gemini-cli", hint: "The id of the entry in Settings > Providers." },
+    { key: "cost", label: "Cost class", type: "select", options: [["free", "Free"], ["limited", "Limited (a quota)"], ["paid", "Paid"]], hint: "A call counts as saved when a free lane gives the accepted answer." },
+    { key: "daily_cap", label: "Daily cap (0 = none)", type: "number", min: 0, max: 100000, step: 1, hint: "Past it the lane is skipped. The caps in Privacy and usage apply too." },
+    { key: "escalate_claude", label: "Council may ask Claude (council kind only)", type: "switch", default: false, hint: "Still needs council_allow_claude in hub.json." },
+    { key: "notes", label: "Notes", type: "textarea", rows: 2, maxlength: 300 },
+    { key: "enabled", label: "On", type: "switch" },
+  ];
+  const laneBody = (v, isNew) => {
+    const kind = ["cli", "endpoint"].includes(v.base) ? `${v.base}:${(v.provider || "").trim()}` : v.base;
+    return { ...(isNew ? { id: v.id } : {}), label: v.label, kind, cost: v.cost, daily_cap: v.daily_cap ?? 0, notes: v.notes, enabled: v.enabled, escalate_claude: !!v.escalate_claude && v.base === "council" };
+  };
+  const laneEd = listEditor({
+    title: "Lanes", items: data.lanes, addLabel: "Add lane", resetLabel: "Back to the ready-made lanes", empty: "No lanes.",
+    hint: "Where work can go. Free lanes (Council, local models) come first so Claude and Gemini are kept for what they alone can do.",
+    rowOf: (l) => ({ icon: l.private_safe ? "shield" : "users", tone: COST_TONE[l.cost] || "gray", title: l.label, enabled: l.enabled,
+      sub: `${l.kind} · ${l.cost}${l.daily_cap ? ` · ${l.used_today}/${l.daily_cap} today` : ""}${l.enabled && l.why_not ? " · " + l.why_not : ""}${l.auto ? " · from Providers" : ""}`,
+      meta: l.id }),
+    onToggle: async (l, on) => apply(await api(`/api/lanes/${l.id}`, { method: "PUT", json: { enabled: on } })),
+    onEdit: (l) => { const [base, provider] = splitKind(l.kind);
+      formSheet({ title: `Edit ${l.label}`, fields: laneFields(false), tall: true, values: { ...l, base, provider },
+        onSave: async (v) => { apply(await api(`/api/lanes/${l.id}`, { method: "PUT", json: laneBody(v, false) })); good("Saved."); } }); },
+    onAdd: () => formSheet({ title: "New lane", fields: laneFields(true), tall: true, values: { base: "endpoint", cost: "free", daily_cap: 0, enabled: true },
+      onSave: async (v) => { apply(await api("/api/lanes", { method: "POST", json: laneBody(v, true) })); good("Added."); } }),
+    canDelete: (l) => !l.auto,
+    onDelete: async (l) => { apply(await api(`/api/lanes/${l.id}`, { method: "DELETE" })); good("Deleted."); },
+    onReset: async () => { apply(await api("/api/lanes/reset", { method: "POST" })); good("Back to the defaults."); },
+  });
+  const classFields = (isNew) => [
+    ...(isNew ? [{ key: "id", label: "Id", type: "text", maxlength: 40, placeholder: "mail-drafts" }] : []),
+    { key: "label", label: "Name", type: "text", maxlength: 60 },
+    { key: "lanes", label: "Lanes in order (best first)", type: "chips", maxlength: 300, hint: `Lane ids, first is tried first, the next only if it fails. Known: ${data.lanes.map((l) => l.id).join(", ")}.` },
+    { key: "private", label: "Private: never leaves the laptop", type: "switch", default: false, hint: "Only Council (local models only) and local lanes can serve it, whatever is listed." },
+    { key: "notes", label: "Notes", type: "textarea", rows: 2, maxlength: 300 },
+  ];
+  const classEd = listEditor({
+    title: "Task classes", items: data.classes, addLabel: "Add class", empty: "No classes.",
+    hint: "What kind of work it is decides where it goes. Say 'give this to the council' for routine work.",
+    rowOf: (c) => ({ icon: c.private ? "shield" : "tag", tone: c.private ? "good" : "accent", title: c.label, sub: c.lanes.join(" → ") || "no lanes", meta: c.private ? "private" : c.id }),
+    onEdit: (c) => formSheet({ title: `Edit ${c.label}`, fields: classFields(false), tall: true, values: c,
+      onSave: async (v) => { apply(await api(`/api/lanes/classes/${c.id}`, { method: "PUT", json: { label: v.label, lanes: v.lanes, private: v.private, notes: v.notes } })); good("Saved."); } }),
+    onAdd: () => formSheet({ title: "New class", fields: classFields(true), tall: true, values: { lanes: ["council", "local"] },
+      onSave: async (v) => { apply(await api("/api/lanes/classes", { method: "POST", json: { id: v.id, label: v.label, lanes: v.lanes, private: v.private, notes: v.notes } })); good("Added."); } }),
+    canDelete: (c, all) => all.length > 1,
+    onDelete: async (c) => { apply(await api(`/api/lanes/classes/${c.id}`, { method: "DELETE" })); good("Deleted."); },
+  });
+  open("Work lanes", laneEd.el, classEd.el, savedTile(data.saved),
+    ui.notice("Escalation: a lane is only left when it failed, timed out, was unavailable, the Council's verify step failed, or you ask for a stronger model. Private work never escalates to a cloud lane.", { tone: "info" }));
+}
+
 export const OWNER_SECTIONS = { assistants: openAssistants, notifyprefs: openNotifyPrefs, safetyrules: openSafetyRules,
-  redactrules: openRedactRules, memorykinds: openMemoryKinds };
+  redactrules: openRedactRules, memorykinds: openMemoryKinds, lanes: openLanes };

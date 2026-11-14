@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v27-cli-models-wake-2026.11";
+const VERSION = "v28-lanes-formfill-mcp-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css", "/js/dictation.js", "/css/dictation.css", "/js/provlists.js",
@@ -24,11 +24,11 @@ const SHELL = [
   "/vendor/fonts/jetbrains-mono-var-latin.woff2", "/css/launcher.css", "/js/launcher.js", "/css/friday.css",
   "/js/friday.js", "/js/notes.js", "/js/notifications.js", "/js/omnibox.js", "/js/providers.js", "/js/quiz.js",
   "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js", "/js/studychat.js",
-  "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js", "/js/voicemode.js", "/js/wakebridge.js",
-  "/css/posts.css", "/js/posts.js", "/js/devto.js", "/js/watch.js", "/js/work.js", "/vendor/marked.js",
-  "/vendor/purify.min.js", "/vendor/xterm.js", "/vendor/xterm.css", "/vendor/addon-fit.js",
-  "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png", "/css/alerts.css", "/js/alerts.js", "/js/sources.js",
+  "/js/lanepicker.js", "/css/lanes.css", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js",
+  "/js/voicemode.js", "/js/wakebridge.js", "/css/posts.css", "/js/posts.js", "/js/devto.js", "/js/watch.js",
+  "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js", "/vendor/xterm.css",
+  "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg", "/icons/icon-192.png",
+  "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/css/alerts.css", "/js/alerts.js", "/js/sources.js",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

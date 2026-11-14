@@ -5,6 +5,7 @@ import { api, ApiError, el, sse } from "./api.js";
 import * as ui from "./ui.js";
 import { formSheet } from "./listeditor.js";
 import { cachedAssistants, refreshAssistants } from "./assistants.js";
+import { councilButton } from "./lanepicker.js";
 
 const CSS = "/css/brain.css";
 const FALLBACK_KINDS = [["rca", "RCA"], ["decision", "Decision"], ["task", "Task"], ["note", "Note"], ["fact", "Fact"], ["research", "Research"]];
@@ -102,6 +103,8 @@ export function init(container, ctx) {
           : ui.button({ label: "Reopen", icon: "refresh", variant: "tonal", size: "sm", onClick: () => patch(item, { status: "open" }) }),
         item.kind === "task" && item.status === "open"
           ? ui.button({ label: "Blocked", icon: "alert", variant: "ghost", size: "sm", onClick: () => patch(item, { status: "blocked" }) }) : null,
+        item.kind === "task" && item.status === "open"
+          ? councilButton(() => `${item.title}\n\n${item.body || ""}`.trim(), { link: { kind: "brain", id: item.id } }) : null,
         ui.button({ label: "Tags", icon: "tag", variant: "ghost", size: "sm", onClick: () => editTags(item) }),
         ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: () => remove(item) })));
     return node;

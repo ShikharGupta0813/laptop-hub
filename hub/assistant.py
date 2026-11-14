@@ -227,6 +227,10 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     # MCP servers the owner added (hub/mcpclient.py): the tool names and the pattern are refreshed by set_mcp_group() whenever
     # the list changes. Empty (and matching nothing) until there is at least one enabled MCP tool.
     "mcp": (set(), re.compile(r"(?!x)x")),
+    "lanes": ({"run_in_lane", "lanes_status"},
+              re.compile(r"\b(?:give|send|hand|pass|put) (?:this|that|it|the \w+) (?:to|through|in) (?:the )?(?:council|free (?:model|lane)|local model)\b|\bto (?:the )?council\b|"
+                         r"\bwork lanes?\b|\broutine (?:work|job|task)s?\b|\bsave (?:my |the )?(?:tokens|claude|gemini|quota)\b|\bsaved calls?\b|"
+                         r"\bstronger model\b|\bprivate work\b|\bkeep (?:it|this) (?:local|private|on (?:the|my) laptop)\b", re.I)),
     "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},
               re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b|"
                          r"\bwordpress\b|\bghost\b|\bmedium\b|\bdestinations?\b|\bpost (?:it|this|that)\b", re.I)),

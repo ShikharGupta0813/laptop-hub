@@ -34,6 +34,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 20. [25 · Local models](25-local-models.md): DeepSeek and other Ollama models, install, deep thinking, speed test.
 20. [26 · Dictation](26-dictation.md): hold a key on the laptop, speak, and it types into the window in front.
 20. [26 · MCP servers](27-mcp-servers.md): add tool servers (MCP) to a list; every tool call asks first.
+20. [28 · Work lanes](28-work-lanes.md): give routine work to the free Council first, escalate only when needed, private work stays local.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).

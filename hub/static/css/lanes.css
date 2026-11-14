@@ -1,0 +1,24 @@
+/* Work lanes (js/lanepicker.js, the Council tile, the Settings editor). Tokens only; no hex. 390px safe. */
+.lp { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
+.lp-label { color: var(--c-text-3); font-size: var(--fs-sm); }
+.lp--compact .lp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.lp-chip { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.lp--compact .lp-chip { min-height: 30px; padding: 0 9px; font-size: var(--fs-xs, .75rem); }
+.lp-send { max-width: 100%; }
+#view-assistant .as-friday-row { flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; padding-right: var(--sp-1); }
+#view-assistant .as-friday-row .lp { flex: 1 1 auto; }
+.lp-rowwrap { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.lp-rowwrap > :first-child { flex: 1 1 auto; min-width: 0; }
+.lp-rowwrap > .lp-send { flex: none; margin-right: var(--sp-2); }
+.lp-result { min-width: 0; }
+.lp-result > * { min-width: 0; }
+.lp-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.lp-sub { color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.lp-answer { margin: 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--c-surface-2); border: 1px solid var(--c-line);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font: inherit; }
+.lp-try { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.lp-step { display: grid; gap: var(--sp-2); min-width: 0; }
+.lp-saved { display: flex; align-items: baseline; gap: var(--sp-3); padding: var(--sp-4); flex-wrap: wrap; min-width: 0; }
+.lp-saved b { font-size: var(--fs-xl, 1.75rem); font-variant-numeric: tabular-nums; color: var(--c-accent-text); }
+.lp-saved span { color: var(--c-text-2); overflow-wrap: anywhere; min-width: 0; flex: 1 1 12rem; }
+.lp-saved small { flex-basis: 100%; color: var(--c-text-3); overflow-wrap: anywhere; }
