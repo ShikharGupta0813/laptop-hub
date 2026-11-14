@@ -1,11 +1,17 @@
 // Bridge to the Android app's background wake word (native plugin "HubWake", see mobile/README.md).
 // Does nothing in a normal browser. Inside the app it (1) adds a Settings card "Always-on Hey Jarvis (background)"
-// with the model download and the on/off switch, and (2) opens voice mode when the phone heard "Hey Jarvis" /
-// "Hey Friday" while the app was closed (native hands over {persona, text}; a #/voice?persona=&text= link works too).
+// with the model download and the on/off switch, (2) opens voice mode when the phone heard "Hey <assistant>" while the
+// app was closed (native hands over {assistant, text}; a #/voice?assistant=&text= link works too), and (3) keeps the
+// phone's wake names in step with Settings > Assistants: it reads GET /api/assistants (on start, on resume at most every
+// 15 minutes, and whenever the list is edited) and gives the enabled assistants' names to the native service.
+// Offline, the phone keeps the last list it got (Jarvis and Friday if it never got one).
 // Audio is processed on the phone and never leaves it; only the words after the wake phrase reach the hub.
 
 const native = () => { try { return window.Capacitor?.Plugins?.HubWake || null; } catch (_) { return null; } };
 
+import { api } from "./api.js";
+
+const REFRESH_MS = 15 * 60 * 1000;
 const MB = (n) => Math.round((Number(n) || 0) / 1048576);
 
 export function mountWakeBridge(ctx) {
@@ -15,8 +21,8 @@ export function mountWakeBridge(ctx) {
 
   // ---- incoming wake: open voice mode for the persona, with the words said after the wake phrase -------------
   let busy = false;
-  async function openVoice(persona, text) {
-    const p = /^[a-z][a-z0-9_-]{1,23}$/.test(String(persona || "")) ? String(persona) : "jarvis";   // any assistant id from Settings
+  async function openVoice(assistant, text) {
+    const p = /^[a-z][a-z0-9_-]{1,23}$/.test(String(assistant || "")) ? String(assistant) : "jarvis";   // any assistant id from Settings
     const t = String(text || "").slice(0, 300);
     try {
       const vm = await import("./voicemode.js");
@@ -33,7 +39,7 @@ export function mountWakeBridge(ctx) {
     busy = true;
     try {
       const r = await hw.consumePending();
-      if (r && r.persona) await openVoice(r.persona, r.text);
+      if (r && (r.assistant || r.persona)) await openVoice(r.assistant || r.persona, r.text);
     } catch (_) { /* nothing pending, or the plugin is busy */ }
     busy = false;
   }
@@ -43,14 +49,47 @@ export function mountWakeBridge(ctx) {
     if (!m) return;
     const q = new URLSearchParams(m[1]);
     try { history.replaceState(history.state, "", location.pathname + location.search); } catch (_) { /* ignore */ }
-    openVoice(q.get("persona"), q.get("text"));
+    openVoice(q.get("assistant") || q.get("persona"), q.get("text"));
   }
 
-  setTimeout(() => { fromHash(); consume(); }, 500);   // after the first screen is up
+  // ---- the phone's wake names follow the owner's assistants list ---------------------------------------------
+  // Only ENABLED assistants wake the phone; each gives its name, wake names and mis-hearings (same words as the
+  // browser wake word and the laptop use). The native side stores them and rebuilds its recogniser when they change.
+  let lastTry = 0;
+  let pushing = false;
+  function namesOf(a) {
+    const first = String(a.name || "").trim().split(/\s+/)[0] || "";
+    const words = [...(a.wake_names || []), ...(a.heard_as || []), first]
+      .map((w) => String(w || "").trim().toLowerCase()).filter((w) => w.length > 1);
+    return [...new Set(words)];
+  }
+  async function pushAssistants(list) {
+    const rows = (list || []).filter((a) => a && a.enabled !== false && a.id)
+      .map((a) => ({ id: String(a.id), names: namesOf(a) })).filter((a) => a.names.length);
+    if (!rows.length || typeof hw.setAssistants !== "function") return;
+    try { await hw.setAssistants({ assistants: rows }); } catch (_) { /* older app build or a bad list: keep the old names */ }
+  }
+  async function syncAssistants(force) {
+    if (pushing || (!force && Date.now() - lastTry < REFRESH_MS)) return;
+    pushing = true;
+    lastTry = Date.now();
+    try {
+      const d = await api("/api/assistants");   // not refreshAssistants(): offline it would hand back the built-in list
+      if (Array.isArray(d?.assistants)) await pushAssistants(d.assistants);
+    } catch (_) { lastTry = 0; /* hub unreachable: the phone keeps the last list; try again next time */ }
+    pushing = false;
+  }
+  window.addEventListener("hub:assistants", (e) => {   // the owner edited the list in Settings on this phone
+    const list = e.detail?.assistants;
+    if (Array.isArray(list)) { lastTry = Date.now(); pushAssistants(list); }
+  });
+
+  setTimeout(() => { fromHash(); consume(); syncAssistants(true); }, 500);   // after the first screen is up
   window.addEventListener("hashchange", fromHash);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") consume(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { consume(); syncAssistants(false); } });
   window.addEventListener("focus", consume);
   window.addEventListener("pageshow", consume);
+  setInterval(() => { if (document.visibilityState === "visible") syncAssistants(false); }, REFRESH_MS);
 
   // ---- Settings card ----------------------------------------------------------------------------------------
   function buildCard() {
@@ -66,7 +105,8 @@ export function mountWakeBridge(ctx) {
         el("span", { class: "grow" }, el("h3", { class: "ui-card__title" }, "Always-on Hey Jarvis (background)")), sw),
       el("p", { class: "ui-card__sub" },
         "Keeps listening on this phone while the screen is off and the app is closed, and opens voice mode when you say "
-        + "\"Hey Jarvis\" or \"Hey Friday\". It recognises the phrase on the phone itself (offline): sound is never sent or saved, "
+        + "\"Hey\" and the name of one of your assistants (Jarvis and Friday, or the names you set in Settings, Assistants). "
+        + "The phone learns new names each time you open the app. It recognises the phrase on the phone itself (offline): sound is never sent or saved, "
         + "and only the words you say after the phrase reach your hub. Android shows a notification while it listens, "
         + "and it uses some battery. Turn it off any time here or with Stop on that notification."),
       el("p", { class: "ui-card__sub" },
@@ -99,7 +139,7 @@ export function mountWakeBridge(ctx) {
     else if (st === "unpacking") text = "Unpacking the voice model...";
     else if (st === "failed") text = `Download failed: ${m.error || "unknown error"}. Check the phone's internet and try again.`;
     else if (st === "absent") text = "Needs a one-time download of the voice model (about 40 MB, Wi-Fi recommended). It is stored only on this phone.";
-    else if (s.enabled && s.running) text = "On: listening for Hey Jarvis and Hey Friday, even with the screen off.";
+    else if (s.enabled && s.running) text = "On: listening for your assistants' names, even with the screen off." + (s.notice ? ` Note: ${s.notice}.` : "");
     else if (s.enabled && s.error) text = `Stopped: ${s.error}`;
     else if (s.error) text = `Not running: ${s.error}`;
     else text = "Voice model ready. Switch on to start listening.";
@@ -126,7 +166,7 @@ export function mountWakeBridge(ctx) {
   async function onToggle(on) {
     try {
       if (on) await hw.enable(); else await hw.disable();
-      ctx.toast?.(on ? "Listening for Hey Jarvis in the background" : "Background listening is off");
+      ctx.toast?.(on ? "Listening for your wake word in the background" : "Background listening is off");
     } catch (error) {
       ctx.toast?.(error?.message || "Could not change background listening", { kind: "bad" });
     }

@@ -25,17 +25,17 @@ public class WakeLogicTest {
     public void greetingPlusNameTriggersEvenOnPartial() {
         WakeMatcher.Match m = WakeMatcher.match("{ \"partial\" : \"hey jarvis\" }", false);
         assertNotNull(m);
-        assertEquals("jarvis", m.persona);
+        assertEquals("jarvis", m.assistant);
         assertEquals("", m.rest);
-        assertEquals("friday", WakeMatcher.match("{\"text\":\"okay friday\"}", true).persona);
-        assertEquals("friday", WakeMatcher.matchText("ok friday", false).persona);
+        assertEquals("friday", WakeMatcher.match("{\"text\":\"okay friday\"}", true).assistant);
+        assertEquals("friday", WakeMatcher.matchText("ok friday", false).assistant);
     }
 
     @Test
     public void misheardNamesStillMatch() {
-        assertEquals("jarvis", WakeMatcher.matchText("hey jarves", false).persona);
-        assertEquals("jarvis", WakeMatcher.matchText("hey jarvas", false).persona);
-        assertEquals("jarvis", WakeMatcher.matchText("Hey, Jarvis!", false).persona);
+        assertEquals("jarvis", WakeMatcher.matchText("hey jarves", false).assistant);
+        assertEquals("jarvis", WakeMatcher.matchText("hey jarvas", false).assistant);
+        assertEquals("jarvis", WakeMatcher.matchText("Hey, Jarvis!", false).assistant);
     }
 
     @Test
@@ -74,10 +74,10 @@ public class WakeLogicTest {
     // ---- WakeLaunch -----------------------------------------------------------------------------
     @Test
     public void hashIsEncodedAndCapped() {
-        assertEquals("#/voice?persona=jarvis", WakeLaunch.hash("jarvis", ""));
-        assertEquals("#/voice?persona=friday&text=what%20time%20is%20it%3F%20%26%20more",
+        assertEquals("#/voice?assistant=jarvis", WakeLaunch.hash("jarvis", ""));
+        assertEquals("#/voice?assistant=friday&text=what%20time%20is%20it%3F%20%26%20more",
             WakeLaunch.hash("friday", "what time is it? & more"));
-        assertEquals("#/voice?persona=jarvis", WakeLaunch.hash("evil", null));
+        assertEquals("#/voice?assistant=jarvis", WakeLaunch.hash("Evil!", null));
         StringBuilder long1 = new StringBuilder();
         for (int i = 0; i < 400; i++) long1.append('a');
         assertEquals(300, WakeLaunch.clean(long1.toString()).length());

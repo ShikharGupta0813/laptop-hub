@@ -39,6 +39,6 @@ Errors are 400 with one plain sentence. Every change is audited (`assistant_add`
 - Brain: a memory kind's default persona and the persona filter accept any assistant id (docs/api/brain.md).
 
 ## Limits (honest)
-- The always-on Android background listener (docs/api/wakeword.md, `mobile/`) recognises only the phrases it was built with; a new assistant wakes in the open app and on the laptop microphone, not in that native service.
+- The always-on Android background listener (docs/api/wakeword.md, `mobile/`) learns the enabled assistants' names when the app is opened (and every 15 minutes while it is open); open the app once after renaming or adding one. It needs the newer APK, and an uncommon name may be heard less reliably than Jarvis or Friday.
 - Voice speed, pitch and voice name use the phone's speech engine, which may ignore them.
 - Brain items keep the persona id they were saved with; deleting an assistant leaves its items readable.
