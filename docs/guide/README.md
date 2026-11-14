@@ -27,7 +27,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 19. [18 · Claude sessions](18-claude-sessions.md): watch Claude Code on your laptop from your phone.
 20. [19 · Opportunities](19-opportunities.md): finds, sources and your profile.
 20. [20 · Applications](20-applications.md): drafted applications wait for your tap; nothing is sent by itself.
-20. [21 · Posts](21-posts.md): drafts for dev.to and copy-paste packs for LinkedIn.
+20. [21 · Posts](21-posts.md): one draft to many places (dev.to, Hashnode, your blog, LinkedIn, X...), your own destinations list.
 20. [22 · Urgent alerts](22-urgent-alerts.md): Friday tells you first, with a draft you send yourself.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 

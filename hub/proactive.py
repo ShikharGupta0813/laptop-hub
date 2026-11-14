@@ -34,7 +34,8 @@ from .common import Ctx, JsonFile
 log = logging.getLogger("hub.proactive")
 
 NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed", "applyq_daily")
-BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready", "devto_comment", "devto_cadence", "alert")
+BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready", "post_comment", "post_cadence", "alert")
+TYPE_ALIASES = {"devto_comment": "post_comment", "devto_cadence": "post_cadence"}   # the old names keep working
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
 MEETING_MINUTES = 10
 MAX_EVENTS = 20
@@ -61,7 +62,7 @@ def classify(event: dict, *, now: dt.datetime | None = None, quiet_start: str = 
              quiet_end: str = "07:00") -> str:
     """'now' | 'batch' | 'quiet'. Pure. Quiet hours apply only when `now` is given."""
     event = event if isinstance(event, dict) else {}
-    kind = str(event.get("type") or "")
+    kind = TYPE_ALIASES.get(str(event.get("type") or ""), str(event.get("type") or ""))
     if kind == "meeting":
         mins = event.get("minutes")
         ok = isinstance(mins, (int, float)) and not isinstance(mins, bool) and 0 <= mins <= MEETING_MINUTES
@@ -102,8 +103,8 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
     cc = [e for e in events if e.get("type") == "cc_waiting"]
     bld = sum(1 for e in events if e.get("type") == "build_done")
     apq = sum(int(e.get("count") or 1) for e in events if e.get("type") == "applyq_ready")
-    dc = [e for e in events if e.get("type") == "devto_comment"]
-    cad = [e for e in events if e.get("type") == "devto_cadence"]
+    dc = [e for e in events if TYPE_ALIASES.get(e.get("type"), e.get("type")) == "post_comment"]
+    cad = [e for e in events if TYPE_ALIASES.get(e.get("type"), e.get("type")) == "post_cadence"]
     alr = sum(1 for e in events if e.get("type") == "alert")
     parts = []
     if alr:

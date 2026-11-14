@@ -220,8 +220,9 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                           r"\bwho (?:messaged|pinged|needs) me\b", re.I)),
     "buildflow": ({"build_start", "build_answer", "build_spec", "build_plan", "build_next", "build_status", "build_list"},
                   re.compile(r"\bbuild me\b|\bbuild a\b|\bnew project\b|\bspec\b|\bplan the\b|\bnext step\b", re.I)),
-    "devto": ({"devto_ideas", "devto_draft", "devto_list", "devto_save_draft", "devto_publish", "post_pack"},
-              re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b", re.I)),
+    "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},
+              re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b|"
+                         r"\bwordpress\b|\bghost\b|\bmedium\b|\bdestinations?\b|\bpost (?:it|this|that)\b", re.I)),
 }
 
 

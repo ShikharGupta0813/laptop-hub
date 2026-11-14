@@ -52,7 +52,7 @@ export const VIEWS = [
   { id: "applyq", label: "Applications", icon: "send", path: "./applyq.js", under: "apps" },
   { id: "buildflow", label: "Build", icon: "wand", path: "./buildflow.js", under: "apps" },
   { id: "opps", label: "Opportunities", icon: "target", path: "./opps.js", under: "apps" },
-  { id: "devto", label: "Posts", icon: "pen", path: "./devto.js", under: "apps" },
+  { id: "devto", label: "Posts", icon: "pen", path: "./posts.js", under: "apps" },
   { id: "alerts", label: "Alerts", icon: "bell", path: "./alerts.js", under: "home" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
