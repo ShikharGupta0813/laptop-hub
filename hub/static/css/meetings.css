@@ -1,0 +1,56 @@
+/* Meetings (js/meetings.js). Scoped under #view-meetings plus the indicator pill. Tokens only; no horizontal overflow at 390px. */
+#view-meetings .mt { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-meetings .mt > * { min-width: 0; }
+#view-meetings .mt-card { padding: var(--sp-4); }
+#view-meetings .mt-card--rec { border-color: color-mix(in srgb, var(--c-bad) 60%, transparent); }
+#view-meetings .mt-lead { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+#view-meetings .mt-title, #view-meetings .mt-dtitle { margin: 0; overflow-wrap: anywhere; }
+#view-meetings .mt-dtitle { font-size: var(--fs-lg, 1.25rem); }
+#view-meetings .mt-rec { display: flex; align-items: center; gap: var(--sp-2); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c-bad); }
+#view-meetings .mt-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--c-text); }
+#view-meetings .mt-prompt { display: grid; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-lg, 12px); background: var(--c-accent-soft); border: 1px solid var(--c-accent-line); }
+#view-meetings .mt-actions, #view-meetings .mt-badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+#view-meetings .mt-tick { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border-radius: var(--r-lg, 12px); border: 1px solid var(--c-line); background: var(--c-surface-2); cursor: pointer; }
+#view-meetings .mt-tick[hidden], .mt-tick[hidden] { display: none; }
+.mt-tick { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border-radius: var(--r-lg, 12px); border: 1px solid var(--c-line); background: var(--c-surface-2); cursor: pointer; }
+.mt-tick input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
+.mt-tick span { overflow-wrap: anywhere; }
+.mt-switch { gap: var(--sp-3); }
+#view-meetings .mt-list { padding: 0; overflow: hidden; }
+#view-meetings .mt-h { margin: 0; font-size: var(--fs-sm); letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-3); }
+#view-meetings .mt-sec { gap: var(--sp-2); }
+#view-meetings .mt-ul, #view-meetings .mt-acts { margin: 0; padding-left: 1.2em; color: var(--c-text-2); overflow-wrap: anywhere; display: grid; gap: var(--sp-2); }
+#view-meetings .mt-acts { list-style: none; padding-left: 0; }
+#view-meetings .mt-acts li { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: baseline; }
+#view-meetings .mt-acts li.is-done .mt-acttext { text-decoration: line-through; opacity: .7; }
+#view-meetings .mt-acttext { overflow-wrap: anywhere; flex: 1 1 12em; min-width: 0; }
+#view-meetings .mt-pick { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2) 0; border-top: 1px solid var(--c-line); }
+#view-meetings .mt-pick:first-of-type { border-top: 0; }
+#view-meetings .mt-pick input[type="checkbox"] { width: 24px; height: 24px; flex: none; margin-top: var(--sp-2); }
+#view-meetings .mt-pick__body { flex: 1 1 0; min-width: 0; display: grid; gap: var(--sp-2); }
+#view-meetings .mt-pick__top { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+#view-meetings .mt-pick.is-done { opacity: .6; }
+#view-meetings .mt-ttl, #view-meetings .mt-area, #view-meetings .mt-who, #view-meetings .mt-sel, #view-meetings .mt-due { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+#view-meetings .mt-area { min-height: 84px; }
+#view-meetings .mt-edit-act { display: grid; gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: 1px solid var(--c-line); }
+#view-meetings .mt-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); align-items: center; }
+#view-meetings .mt-transcript { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); max-height: 60vh; overflow: auto; }
+#view-meetings .mt-line { margin: 0; overflow-wrap: anywhere; color: var(--c-text-2); }
+#view-meetings .mt-line b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+#view-meetings .mt-line--others b { color: var(--c-warn); }
+#view-meetings summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+#view-meetings .mt-settings { margin-top: var(--sp-3); }
+#view-meetings .mt-mins { max-width: 8em; }
+#view-meetings .mt-dhead { display: grid; gap: var(--sp-2); }
+
+/* the recording dot (also used by the indicator pill) */
+.mt-ind__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c-bad); flex: none; animation: mt-pulse 1.4s ease-in-out infinite; }
+@keyframes mt-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-bad) 55%, transparent); } 50% { opacity: .55; box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: reduce) { .mt-ind__dot { animation: none; } }
+
+/* always-visible indicator while a meeting is being recorded */
+.mt-ind { position: fixed; z-index: 59; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 8px);
+  display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 32px; max-width: calc(100vw - 2 * var(--sp-3)); padding: 0 var(--sp-3);
+  border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c-bad) 60%, transparent); background: var(--c-glass-strong, var(--c-surface-1));
+  color: var(--c-text); font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; cursor: pointer; box-shadow: 0 6px 24px -10px var(--c-bad); }
+.mt-ind[hidden] { display: none; }

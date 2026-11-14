@@ -205,6 +205,11 @@ class Config:
     # Voice output (hub/tts.py, docs/api/tts.md): 'browser' = the phone's own speechSynthesis, i.e. behaviour unchanged until the owner picks a voice.
     tts_enabled: bool = True                # False: the hub never synthesises (the phone and laptop fall back to their old speech)
     tts_engine: str = "browser"             # default engine: browser | sapi | piper | command (per-assistant choices live in assistants.json)
+    # Meeting assistant (hub/meetings.py): records ONLY after an explicit start with a consent tick; transcript text only.
+    meetings_enabled: bool = False          # off until the owner turns it on (POST /api/meetings/enable)
+    meetings_keep_audio: bool = False       # True also writes WAV files beside the transcript (a warning is shown)
+    meetings_max_minutes: int = 120         # a recording stops by itself after this long (1 to 480)
+    meetings_model: str = "base"            # local Whisper model for meetings: tiny | base | small | medium
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -332,6 +337,8 @@ def save(config: Config, path: Path) -> None:
         "mcp_enabled": config.mcp_enabled is not False, "mcp_idle_seconds": int(config.mcp_idle_seconds),
         "mcp_max_concurrent": int(config.mcp_max_concurrent), "mcp_call_timeout": int(config.mcp_call_timeout),
         "tts_enabled": config.tts_enabled is not False, "tts_engine": str(config.tts_engine or "browser"),
+        "meetings_enabled": config.meetings_enabled is True, "meetings_keep_audio": config.meetings_keep_audio is True,
+        "meetings_max_minutes": int(config.meetings_max_minutes or 120), "meetings_model": str(config.meetings_model or "base"),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

@@ -63,3 +63,12 @@ class Transcriber:
                     words.append({"word": w.word.strip(), "start": round(w.start, 2),
                                   "end": round(w.end, 2), "prob": round(w.probability, 3)})
             return {"text": " ".join(texts).strip(), "duration": round(info.duration, 2), "words": words}
+
+    def transcribe_pcm(self, pcm: bytes) -> str:
+        """Text from 16 kHz mono int16 audio held in memory (the meeting assistant): no file is written."""
+        import numpy as np          # installed together with faster-whisper
+        samples = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768.0
+        with self._lock:
+            model = self._load()
+            segments, _ = model.transcribe(samples, vad_filter=True, beam_size=1, condition_on_previous_text=False)
+            return " ".join(s.text.strip() for s in segments).strip()

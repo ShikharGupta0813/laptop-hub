@@ -54,6 +54,7 @@ export const VIEWS = [
   { id: "opps", label: "Opportunities", icon: "target", path: "./opps.js", under: "apps" },
   { id: "devto", label: "Posts", icon: "pen", path: "./posts.js", under: "apps" },
   { id: "alerts", label: "Alerts", icon: "bell", path: "./alerts.js", under: "home" },
+  { id: "meetings", label: "Meetings", icon: "mic", path: "./meetings.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
@@ -356,6 +357,7 @@ function buildChrome() {
   mountWake(ctx, { bar });       // "Hey Jarvis" / "Hey Friday" (off until switched on in Settings)
   import("./presence.js").then((m) => m.mountPresence(ctx)).catch(() => {});   // tells the hub when this app is open (docs/api/presence.md)
   import("./panic.js").then((m) => m.mountPanic(ctx, { bar })).catch(() => {});   // the always-reachable Panic button + paused banner
+  import("./meetings.js").then((m) => m.mountIndicator(ctx)).catch(() => {});   // the "recording a meeting" pill, shown only while recording (docs/api/meetings.md)
   import("./wakebridge.js").then((m) => m.mountWakeBridge(ctx)).catch(() => {});   // Android app only: background wake word
 
   // "/" or Ctrl+K opens search on a keyboard.
