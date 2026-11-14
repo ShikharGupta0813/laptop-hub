@@ -42,7 +42,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 
 from . import config as cfg
-from . import proactive
+from . import notifydedupe, proactive
 from .common import Ctx, JsonFile
 
 log = logging.getLogger("hub.alerts")
@@ -669,7 +669,7 @@ class Alerts:
             self._enrich(alert, ev)
             d["alerts"].append(alert)
             self._save(d)
-        self._deliver(alert)
+        self._deliver(alert, (ev["source"], sender, ev["text"] or ev["title"]))
         with self.lock:
             self._replace(alert)
         try:
@@ -778,10 +778,16 @@ class Alerts:
                 log.warning("alert push failed")
         return decision
 
-    def _deliver(self, alert: dict) -> None:
+    def _deliver(self, alert: dict, dedupe: tuple[str, str, str] | None = None) -> None:
         u = alert["urgency"]
         if u == 0:
             alert["delivery"] = "listed"
+            return
+        reg = notifydedupe.registry_for(self.ctx) if dedupe else None
+        if reg is not None and reg.held_by(*dedupe) == "watch":
+            # Watch already pushed this very message: keep the alert on the Alerts screen, send no second push
+            alert["delivery"] = "listed"
+            alert["deduped"] = "watch"
             return
         label = SOURCE_LABEL.get(alert["source"], "Notification")
         title = (f"Urgent from {tidy(alert['sender'], 50)}" if u >= 2 else f"{label}: {tidy(alert['sender'], 50)}")
@@ -790,6 +796,8 @@ class Alerts:
                  "level": "error" if u >= 3 else "warn" if u == 2 else "info", "dedupe": f"alert:{alert['id']}"}
         decision = self._route(event)
         alert["delivery"] = decision
+        if reg is not None and decision in ("now", "batch"):
+            reg.claim(*dedupe, "alerts")             # Watch stays silent for this message from now on
         if decision == "now" and u >= 2:
             alert["speech"] = self.speech_text(alert)
             alert["speak_phone"] = True

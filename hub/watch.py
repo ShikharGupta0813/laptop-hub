@@ -33,6 +33,7 @@ from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 
+from . import notifydedupe
 from .common import Ctx, InProcessClient, JsonFile, ask_json
 from .llm import LLMError
 
@@ -632,9 +633,14 @@ class Engine:
             title = (f"Urgent {noun} from {tidy(sender, 60)}" if by in ("ai", "keywords") and urgent
                      else f"{noun.capitalize()} from {tidy(sender, 60)} matched {tidy(rule, 40)}")
             body = tidy(" — ".join(p for p in (alert["subject"] or alert["snippet"], alert["reason"]) if p), 300)
-            await self._notify(title, body, level, alert["link"])
-            alert["notified"] = True
-            recent.append(epoch(now))
+            reg = notifydedupe.registry_for(self.ctx)
+            holder = reg.claim(msg["source"], sender, msg.get("text") or msg.get("subject") or "", "watch")
+            if holder == "alerts":      # Alerts already pushed (or batched) this very message: stay silent, still list it
+                alert["deduped"] = "alerts"
+            else:
+                await self._notify(title, body, level, alert["link"])
+                alert["notified"] = True
+                recent.append(epoch(now))
             if len(recent) == NOTIFY_PER_HOUR:
                 await self._notify("Lots of alerts from Watch",
                                    f"That is {NOTIFY_PER_HOUR} in an hour. The rest are only listed in Watch.",
@@ -986,16 +992,16 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
             body = json.loads(raw.decode("utf-8")) if raw else None
         except (ValueError, UnicodeDecodeError):
             raise HTTPException(400, "Send the message as JSON.") from None
-        try:
-            result = await engine.ingest(body)
-        except Bad as exc:
-            raise bad(exc) from None
-        try:    # alert triage (hub/alerts.py) also sees every captured message; it never replies and never raises
+        try:    # alert triage (hub/alerts.py) also sees every captured message; it never replies and never raises.
+            # It goes FIRST so that when it raises an alert Watch finds the claim (hub/notifydedupe.py) and does not push twice.
             from . import alerts as _alerts
             _alerts.on_watch_ingest(ctx, engine.clean_ingest(body))
         except Exception:  # noqa: BLE001
             log.info("alert triage could not look at a captured message")
-        return result
+        try:
+            return await engine.ingest(body)
+        except Bad as exc:
+            raise bad(exc) from None
 
     return router
 

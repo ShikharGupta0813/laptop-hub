@@ -17,9 +17,11 @@ export const LISTS = {
     intro: "\"What's on my screen?\" asks the first switched-on provider that can take a picture. The test button sends a tiny generated picture, never your screen." },
   ai: { title: "AI endpoints", icon: "bot", base: "/api/ai-endpoints", testable: true, noun: "endpoint", choice: true,
     intro: "Your own OpenAI-compatible APIs (OpenAI, OpenRouter, LM Studio...). Pick one for routine drafts below. The main assistant is not changed. Text sent to a cloud endpoint is redacted like other cloud calls." },
+  cli: { title: "CLI login", icon: "bot", base: "/api/cli-providers", testable: true, noun: "CLI provider",
+    intro: "Use an AI program that is already logged in on this laptop (Gemini CLI with your Google account, Antigravity...), with no API key. Log in once in a terminal first (run gemini, choose Login with Google). Google AI Pro limits apply. Your prompt is sent on stdin, never in the command. Pick it in the model picker as cli:<id>." },
 };
 
-const fieldValue = (f, node) => f.type === "bool" ? node.checked : f.type === "list" ? node.value.split(",").map((s) => s.trim()).filter(Boolean) : node.value.trim();
+const fieldValue = (f, node) => f.type === "bool" ? node.checked : f.type === "list" ? node.value.split(",").map((s) => s.trim()).filter(Boolean) : f.type === "lines" ? node.value.split("\n").map((s) => s.trim()).filter(Boolean) : node.value.trim();
 
 // Add / edit form in its own sheet. cfg.base is the list API; `entry` is null when adding.
 function formSheet(cfg, data, entry, done) {
@@ -45,6 +47,7 @@ function formSheet(cfg, data, entry, done) {
       const current = values[f.key];
       if (f.type === "bool") { node = el("input", { type: "checkbox" }); node.checked = !!current; }
       else if (f.type === "select") { node = el("select", { class: "ui-input" }, ...(f.options || []).map((o) => el("option", { value: o }, o))); node.value = current || f.options?.[0] || ""; }
+      else if (f.type === "lines") { node = el("textarea", { class: "ui-input", rows: "4", placeholder: f.placeholder || "", spellcheck: "false", autocapitalize: "off" }); node.value = Array.isArray(current) ? current.join("\n") : (current ?? ""); }
       else { node = el("input", { class: "ui-input", type: f.type === "url" ? "url" : "text", placeholder: f.placeholder || "", maxlength: "500", autocapitalize: "off", spellcheck: "false" }); node.value = Array.isArray(current) ? current.join(", ") : (current ?? ""); }
       node.setAttribute("aria-label", f.label);
       inputs[f.key] = [f, node];
@@ -108,7 +111,8 @@ export function mountList(box, cfg) {
     const bits = [];
     if (e.unsupported) bits.push(e.unsupported);
     const st = e.status;
-    if (st?.failing) bits.push(`Skipped for about ${Math.max(1, Math.round(st.skip_seconds / 60))} min: ${st.last_error || "failed lately"}`);
+    if (st?.message) bits.push(st.message);
+    else if (st?.failing) bits.push(`Skipped for about ${Math.max(1, Math.round(st.skip_seconds / 60))} min: ${st.last_error || "failed lately"}`);
     else if (st?.last_ok) bits.push("Worked lately");
     return bits.join(" · ");
   }
@@ -128,6 +132,11 @@ export function mountList(box, cfg) {
         out.textContent = "Testing...";
         try {
           const r = await api(`${cfg.base}/${encodeURIComponent(e.id)}/test`, { method: "POST" });
+          if (cfg.base.endsWith("/cli-providers")) {
+            const seen = [r.stdout ? `output: "${r.stdout}"` : "", r.stderr ? `messages: "${r.stderr}"` : ""].filter(Boolean).join(" · ");
+            out.textContent = (r.ok ? `Works: it said "${r.reply}".` : `Did not work: ${r.error}`) + (seen ? ` (${seen})` : "");
+            return;
+          }
           out.textContent = r.ok ? `Works${r.count != null ? `: ${r.count} results, first "${r.first}"` : r.answer ? `: it said "${r.answer}"` : r.reply ? `: it said "${r.reply}"` : ""}.` : `Did not work: ${r.error || "no answer"}`;
         } catch (error) { out.textContent = error.message; }
       }) });

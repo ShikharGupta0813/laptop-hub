@@ -42,6 +42,7 @@ from . import providers as providers_mod
 from .router import Router
 from . import redact as redact_mod
 from . import endpoints as endpoints_mod
+from . import cliprov as cliprov_mod
 from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
@@ -56,7 +57,7 @@ VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
-FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
+FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov", "cliprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -429,6 +430,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         if info["duo"]["note"] and "duo" in avail:
             avail["duo"]["note"] = info["duo"]["note"]
         info["default_provider"] = await asyncio.to_thread(providers_mod.resolve_default, config)
+        info["cli"] = await asyncio.to_thread(cliprov_mod.ready_entries, config)    # login-based CLI providers, as cli:<id>
         # "ready" for the assistant: any cloud AI (API key, Claude login or Gemini) can answer
         try:   # Autopilot's small status block (enabled, cards waiting, today's AI calls)
             from . import autopilot as autopilot_mod
@@ -761,6 +763,9 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         if isinstance(provider, str) and provider.startswith("endpoint:"):
             # the owner's own OpenAI-compatible endpoint (hub/endpoints.py), behind the same redaction/usage wrapper
             return endpoints_mod.build_guarded(config, _audit_late, provider[len("endpoint:"):]) or llm
+        if isinstance(provider, str) and provider.startswith("cli:"):
+            # a logged-in command line AI (hub/cliprov.py, docs/api/cliprov.md): redaction + usage count, never an API key
+            return cliprov_mod.build_guarded(config, _audit_late, provider[len("cli:"):]) or llm
         choice = providers_mod.resolve(config, provider)
         if choice == "claude":
             return claude

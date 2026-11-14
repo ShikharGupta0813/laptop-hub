@@ -28,3 +28,6 @@ Claude Code is there already (and the only one you can send messages to). Add a 
 - Nothing here changes unless you change it. Deleting an entry never breaks the app: the rest of the list is used.
 - Private addresses (your own server) must be allowed on the entry; public ones are always checked for safety.
 - Details for builders: `docs/api/searchprov.md`, `vision.md`, `endpoints.md`, `skills.md`, `ccsessions.md`.
+
+## CLI login (Gemini with your Google account, no API key)
+Settings, Providers, **CLI login** lists AI programs that are already logged in on this laptop. Ready-made: **Gemini CLI** (on) and **Antigravity (agy)** (off until you edit it). Log in once in a terminal: run `gemini`, choose **Login with Google**, and from then on REDLINE uses that login, never an API key (the key variables are removed before the program starts). Google AI Pro limits apply, so heavy use can hit them. Press **Test**: it says "CLI not found on PATH" or "not logged in: run `gemini` once..." when something is missing. Your text goes to the program on stdin, is redacted like other cloud calls, and counts in Usage. Pick it in the model picker as the entry's name. For `agy`, run `agy --help`, edit the command, then switch it on. Details: `docs/api/cliprov.md`.

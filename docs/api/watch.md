@@ -141,3 +141,6 @@ by field; the built-in rule is always restored.
 
 On start, once: a rule "From my manager" (so two rules in all) and three sample alerts (two mail, one chat). Monitoring
 stays off.
+
+## One push per message (shared with Alerts)
+Watch and Alerts (`hub/alerts.py`) can both see the same Gmail / Google Chat message. `hub/notifydedupe.py` is a small in-memory registry (key = source + sender + hash of the normalised text, 10 minute window, `chat`=`gchat`, `mail`=`gmail`). On `POST /ingest` Alerts triage runs first; when it pushes or batches an alert it claims the message, and Watch then still records its alert but does not push (`deduped: "alerts"`, `notified: false`). If Watch pushed first, Alerts keeps the alert in its list with `delivery: "listed"` and `deduped: "watch"`, no second push and no spoken line. With `alerts_enabled` false nothing claims, so Watch behaves as before. Tests: `tests/test_notifydedupe.py`.

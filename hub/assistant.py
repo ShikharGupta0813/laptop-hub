@@ -855,7 +855,7 @@ class AssistantService:
                 turns = self._fast_turn(session_id, session, text, provider, auto_approve, fast)
             elif provider == "local":
                 turns = self._local_turns(session_id, session, text, auto_approve)
-            elif provider in TEXT_PROVIDERS:
+            elif provider in TEXT_PROVIDERS or str(provider).startswith("cli:"):   # cli:<id> = a login-based CLI AI (hub/cliprov.py), text turns, never the API
                 turns = self._text_turns(provider, session_id, session, text, auto_approve)
             else:
                 turns = self._claude_turns(session_id, session, text, auto_approve)

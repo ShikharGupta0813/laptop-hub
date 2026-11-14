@@ -59,6 +59,10 @@ def resolve_default(config) -> str:
     choice = (getattr(config, "default_provider", "auto") or "auto").strip().lower()
     if choice in PROVIDERS:
         return choice
+    if choice.startswith("cli:"):       # the owner pointed the default at one of their CLI login entries
+        from . import cliprov
+        if cliprov.is_enabled(config, choice[4:]):
+            return choice
     if os.environ.get("ANTHROPIC_API_KEY"):
         return "claude"
     key = gemini_key()

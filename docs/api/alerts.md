@@ -83,3 +83,5 @@ with add, switch, test and delete. See `docs/api/sources.md`. `alerts_sources` i
 gained `trusted` (only in-process pollers of a source the owner switched on pass it). The Asana poller is now the ready-made `asana` entry of the
 task-source list; its routes and behaviour are unchanged. The mail poll (`poll_email`) now passes account ids (it used to pass the whole account
 dict) and skips accounts whose `alerts` flag is off.
+
+Duplicate pushes: when Watch already pushed the same message (`hub/notifydedupe.py`, 10 minute window) the alert is stored with `delivery: "listed"` and `deduped: "watch"` and no second NOW push is sent. See `docs/api/watch.md`.

@@ -154,8 +154,9 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         if key in MODEL_KEYS:
             changes[key] = _clean_name(value, key)
         elif key == "default_provider":
-            if value not in ("auto", "local", "claude", "claude-login", "gemini", "duo"):
-                raise HTTPException(400, "default_provider must be auto, local, claude, claude-login, gemini or duo.")
+            if value not in ("auto", "local", "claude", "claude-login", "gemini", "duo") and not (
+                    isinstance(value, str) and re.fullmatch(r"cli:[a-z0-9][a-z0-9-]{0,39}", value)):
+                raise HTTPException(400, "default_provider must be auto, local, claude, claude-login, gemini, duo or cli:<id>.")
             changes[key] = value
         elif key == "duo_verify":
             if not isinstance(value, bool):

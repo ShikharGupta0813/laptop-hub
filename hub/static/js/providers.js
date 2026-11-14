@@ -12,15 +12,16 @@ let info = null;
 let loadedAt = 0;
 let pending = null;
 
-export const isProvider = (v) => IDS.includes(v);
-export const providerLabel = (id, long = false) => (long ? LONG : SHORT)[id] || SHORT.local;
+const cliEntry = (id) => (typeof id === "string" && id.startsWith("cli:") ? (info?.cli || []).find((c) => `cli:${c.id}` === id) : null);
+export const isProvider = (v) => IDS.includes(v) || (typeof v === "string" && v.startsWith("cli:"));
+export const providerLabel = (id, long = false) => (long ? LONG : SHORT)[id] || cliEntry(id)?.label || SHORT.local;
 export const normalizeProvider = (v) => (isProvider(v) ? v : "local");
 
 export function loadProviders(force = false) {
   if (!force && info && Date.now() - loadedAt < 60000) return Promise.resolve(info);
   if (!pending) {
     pending = api("/api/status").then((s) => {
-      info = { providers: s?.providers || null, default: s?.default_provider || "local" };
+      info = { providers: s?.providers || null, default: s?.default_provider || "local", cli: Array.isArray(s?.cli) ? s.cli : [] };
       loadedAt = Date.now();
       listeners.forEach((fn) => { try { fn(); } catch (_) { /* a closed screen */ } });
       return info;
@@ -45,7 +46,8 @@ export function providerOptions({ current, icons = false, localLabel } = {}) {
   if (!show.length) show = ["claude"];
   const label = (id) => (id === "local" && localLabel ? localLabel : SHORT[id]);
   const icon = { local: "laptop", claude: "sparkles", "claude-login": "sparkles", gemini: "sparkles", duo: "sparkles" };
-  return ["local", ...show].map((id) => ({ value: id, label: label(id), ...(icons ? { icon: icon[id] } : {}) }));
+  const logins = (info?.cli || []).filter((c) => c.ready || `cli:${c.id}` === current).map((c) => ({ value: `cli:${c.id}`, label: c.label, ...(icons ? { icon: "bot" } : {}) }));
+  return [...["local", ...show].map((id) => ({ value: id, label: label(id), ...(icons ? { icon: icon[id] } : {}) })), ...logins];
 }
 
 // ui.segmented for the provider choice. It refreshes its options when the list arrives.

@@ -16,11 +16,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-PROVIDERS = ("gemini", "claude-login", "claude", "duo", "local", "council", "research", "vision", "autopilot", "endpoint")
+PROVIDERS = ("gemini", "claude-login", "claude", "duo", "local", "council", "research", "vision", "autopilot", "endpoint", "cli")
 CLOUD = ("gemini", "claude-login", "claude", "duo")
 LABELS = {"gemini": "Gemini", "claude-login": "Claude (my login)", "claude": "Claude (API key)", "duo": "Claude + Gemini",
           "local": "the local model", "council": "Council", "research": "Research", "vision": "Vision", "autopilot": "Autopilot",
-          "endpoint": "My AI endpoint"}
+          "endpoint": "My AI endpoint", "cli": "CLI login AI"}
 KEEP_DAYS = 14
 WINDOW_SECONDS = 5 * 3600
 
