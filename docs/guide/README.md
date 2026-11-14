@@ -37,6 +37,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 20. [28 · Work lanes](28-work-lanes.md): give routine work to the free Council first, escalate only when needed, private work stays local.
 21. [29 · Agent controls](29-agent-controls.md): the Panic button, trust rules and the "What did the agent do?" timeline.
 22. [30 · Presence](30-presence.md): alerts follow where you are: laptop, away, in a meeting.
+23. [31 · Meetings](31-meetings.md): record a meeting (with consent), get notes and action items for your tasks.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).

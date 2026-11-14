@@ -202,6 +202,11 @@ class Config:
     panic_phrases: list | None = None       # spoken/typed panic phrases; None = the built-in list
     trust_enabled: bool = True              # the trust ladder (suggest "do this automatically" after repeated approvals)
     trust_threshold: int = 10               # approvals of one shape, with no denial in 30 days, before it is suggested
+    # Meeting assistant (hub/meetings.py): records ONLY after an explicit start with a consent tick; transcript text only.
+    meetings_enabled: bool = False          # off until the owner turns it on (POST /api/meetings/enable)
+    meetings_keep_audio: bool = False       # True also writes WAV files beside the transcript (a warning is shown)
+    meetings_max_minutes: int = 120         # a recording stops by itself after this long (1 to 480)
+    meetings_model: str = "base"            # local Whisper model for meetings: tiny | base | small | medium
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -325,6 +330,8 @@ def save(config: Config, path: Path) -> None:
         "panic_active": config.panic_active is True, "panic_confirm": config.panic_confirm is True,
         "panic_phrases": config.panic_phrases, "trust_enabled": config.trust_enabled is not False,
         "trust_threshold": int(config.trust_threshold or 10),
+        "meetings_enabled": config.meetings_enabled is True, "meetings_keep_audio": config.meetings_keep_audio is True,
+        "meetings_max_minutes": int(config.meetings_max_minutes or 120), "meetings_model": str(config.meetings_model or "base"),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

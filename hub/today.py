@@ -348,8 +348,19 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
-            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx),
+            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "owe": _owe_list(ctx),
             "numbers": numbers, "sources_failed": sorted(set(failed))}
+
+
+def _owe_list(ctx: Ctx) -> list[dict]:
+    """"You owe": action items that are yours from recorded meetings (hub/meetings.py). [] when meetings are off or empty."""
+    try:
+        svc = getattr(ctx, "meetings", None)
+        if svc is None or getattr(ctx.config, "meetings_enabled", False) is not True:
+            return []
+        return svc.owed()
+    except Exception:  # noqa: BLE001 - optional
+        return []
 
 
 def _applyq_line(ctx: Ctx) -> str:
@@ -460,6 +471,9 @@ def spoken(data: dict, style: str = "morning") -> str:
             parts.append((2, f"You have {plural(int(mail['unread']), 'unread mail')}."))
         if pending.get("autopilot"):
             parts.append((1, f"{plural(pending['autopilot'], 'draft')} waiting for your approval."))
+        owe = data.get("owe") or []
+        if owe:
+            parts.append((1, "You owe: " + "; ".join(o["text"][:60] for o in owe[:2]) + (f" and {len(owe) - 2} more." if len(owe) > 2 else ".")))
         fu = (data.get("brain") or {}).get("due") or []
         if fu:
             parts.append((1, f"Follow-ups due: {len(fu)}, starting with {fu[0]['title']}" +
