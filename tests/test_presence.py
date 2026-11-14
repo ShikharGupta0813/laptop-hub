@@ -316,11 +316,11 @@ class Delivery(Env):
         self.meeting = {"title": "x"}
         self.eng.observe(force=True)
         fake = types.ModuleType("hub.panic")
-        fake.is_active = lambda ctx=None: True
+        fake.on = lambda config=None: True
         with mock.patch.dict(sys.modules, {"hub.panic": fake}):
             self.assertEqual(self.pro.submit(self.urgent()), "now")
             self.assertIs(self.pushed[0]["phone"], True)
-        fake.is_active = lambda ctx=None: False
+        fake.on = lambda config=None: False
         with mock.patch.dict(sys.modules, {"hub.panic": fake}):
             self.assertEqual(self.pro.submit(self.urgent(title="Other")), "held")
 

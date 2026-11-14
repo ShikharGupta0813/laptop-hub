@@ -1,4 +1,4 @@
-# 29. Presence: alerts that know where you are
+# 30. Presence: alerts that know where you are
 
 The hub watches a few signals (is the laptop in use, is it locked, is the phone app open, are you in a meeting) and decides how each alert should reach you. At the laptop you get a quiet toast. Away, the alert goes to your phone and is spoken if the app is open. In a meeting or in focus mode everything is held and you get one summary after ("You missed 3 things in the meeting"), except emergencies.
 

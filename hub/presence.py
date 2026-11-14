@@ -342,17 +342,8 @@ class Presence:
             return True
         try:
             panic = importlib.import_module("hub.panic")
+            return bool(panic.on(self.ctx.config))
         except Exception:  # noqa: BLE001 - the module may not exist
-            return False
-        try:
-            for name in ("is_active", "active", "panic_active"):
-                fn = getattr(panic, name, None)
-                if callable(fn):
-                    try:
-                        return bool(fn(self.ctx))
-                    except TypeError:
-                        return bool(fn())
-        except Exception:  # noqa: BLE001
             return False
         return False
 
