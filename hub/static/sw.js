@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v26-general-lists-2026.11";
+const VERSION = "v27-cli-models-wake-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css",
