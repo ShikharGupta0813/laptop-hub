@@ -51,3 +51,6 @@ accepted: they are edited by hand in hub.json. `GET` lists them by name in `lock
 - `GET /api/settings/about` → `{version, uptime_s, python, platform}`.
 
 Not here: `POST /logout-all` (the server does it).
+
+## Providers card (Settings, `js/provlists.js`)
+One "Providers" card opens three owner-editable lists: Search providers (`docs/api/searchprov.md`), Vision providers (`docs/api/vision.md`) and AI endpoints (`docs/api/endpoints.md`). They are stored as JSON in the data folder; keys only in the OS keyring. No `hub.json` key was added or changed.

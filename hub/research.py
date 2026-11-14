@@ -322,15 +322,15 @@ def parse_ddg(markup: str) -> list[dict]:
     return out
 
 
-async def wikipedia_search(query: str, limit: int = 8, *, transport=None) -> list[dict]:
+async def wikipedia_search(query: str, limit: int = 8, *, transport=None, lang: str = "en") -> list[dict]:
     import httpx
     params = {"action": "query", "list": "search", "srsearch": query, "format": "json", "srlimit": str(limit)}
     async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, read=12.0), transport=transport,
                                  headers={"User-Agent": USER_AGENT}) as client:
-        resp = await client.get("https://en.wikipedia.org/w/api.php", params=params)
+        resp = await client.get(f"https://{lang}.wikipedia.org/w/api.php", params=params)
     resp.raise_for_status()
     rows = (resp.json().get("query") or {}).get("search") or []
-    return [{"title": clean(r.get("title"), 160), "url": "https://en.wikipedia.org/wiki/" + quote(str(r.get("title", "")).replace(" ", "_")),
+    return [{"title": clean(r.get("title"), 160), "url": f"https://{lang}.wikipedia.org/wiki/" + quote(str(r.get("title", "")).replace(" ", "_")),
              "snippet": clean(html.unescape(re.sub(r"<[^>]+>", "", str(r.get("snippet") or ""))), 300)}
             for r in rows if isinstance(r, dict) and r.get("title")]
 
@@ -355,6 +355,14 @@ async def web_search(query: str, limit: int = 8, backend: str = "auto") -> list[
     except Exception as exc:  # noqa: BLE001
         log.info("wikipedia search failed (%s)", type(exc).__name__)
         return []
+
+
+def _take_search_outcome():
+    try:
+        from . import searchprov
+        return searchprov.take_outcome()
+    except Exception:  # noqa: BLE001 - notes are a courtesy
+        return None
 
 
 # ---- store ------------------------------------------------------------------------------------------------
@@ -500,7 +508,9 @@ class Researcher:
     """Runs research jobs. `search`, `fetch`, `ask` and `caller` are injectable so tests use fakes and no network."""
 
     async def _configured_search(self, query: str, limit: int = 8) -> list[dict]:
-        return await web_search(query, limit, str(getattr(self.config, "research_search_backend", "auto")))
+        """The owner's search-provider list (hub/searchprov.py): first enabled provider with results wins, with fallback."""
+        from . import searchprov
+        return await searchprov.search(self.config, query, limit)
 
     def __init__(self, ctx: Ctx, *, search: Search | None = None, fetch: Fetch | None = None, ask: Ask | None = None,
                  caller=None, clock: Callable[[], dt.datetime] | None = None):
@@ -683,6 +693,9 @@ class Researcher:
                 except Exception as exc:  # noqa: BLE001
                     step(f"Search failed ({type(exc).__name__})")
                     rows = []
+                outcome = _take_search_outcome()
+                for note in (outcome.notes if outcome else [])[:6]:
+                    step(note)                      # "Searched with X", "Brave failed: ...; trying the next one"
                 for r in rows:
                     if not isinstance(r, dict) or not isinstance(r.get("url"), str):
                         continue

@@ -31,7 +31,8 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from .common import Ctx
+from . import provlist
+from .common import Ctx, JsonFile
 
 log = logging.getLogger("hub.skills")
 
@@ -252,8 +253,8 @@ def inspect_folder(folder: Path) -> dict:
 def fetch(source: dict, dest: Path, runner: Runner | None = None) -> Path:
     """Clones the repo (depth 1) into `dest` and returns the skill folder inside it. Raises SkillError."""
     run = runner or run_git
-    url = f"https://github.com/{source['owner']}/{source['repo']}.git"
-    argv = ["-c", "core.symlinks=false", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+    url = source.get("url") or f"https://github.com/{source['owner']}/{source['repo']}.git"   # "url": an approved Git host
+    argv =["-c", "core.symlinks=false", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
             "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--no-tags", "--single-branch"]
     if source.get("branch"):
         argv += ["--branch", source["branch"]]
@@ -277,9 +278,10 @@ def fetch(source: dict, dest: Path, runner: Runner | None = None) -> Path:
 
 class SkillStore:
     def __init__(self, base: Path, runner: Runner | None = None, http: HttpGet | None = None,
-                 clock: Callable[[], float] | None = None):
+                 clock: Callable[[], float] | None = None, text_http: Callable[[str], tuple[int, str, bytes]] | None = None):
         self.base = Path(base)
         self.runner, self.http = runner, http or http_get_json
+        self.text_http = text_http or fetch_markdown
         self.clock = clock or time.time
         self._catalog: dict[str, tuple[float, list[dict]]] = {}
 
@@ -388,6 +390,99 @@ class SkillStore:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    # -- installing from one entry of the owner's source list (git host / local folder / SKILL.md link)
+    def stage_entry(self, entry: dict, hosts: list[str], name: str = "") -> tuple[str, dict, Path | None]:
+        """Fetch + inspect WITHOUT installing: (source label, facts incl. `_folder`, temp dir to delete or None)."""
+        kind, s = entry["kind"], entry["settings"]
+        if kind == "github":
+            value = s.get("value", "")
+            if value.endswith("/*"):
+                raise SkillError("That source is a folder of categories. Open it in Browse and pick a skill.")
+            source, facts, tmp = self.stage(value)
+            return source["source"], facts, tmp
+        if kind == "git":
+            url = parse_git_url(s.get("url"), hosts)               # re-checked now: the owner may have removed the host
+            src = {"owner": "", "repo": "", "url": url, "path": s.get("path", ""), "branch": s.get("branch", ""),
+                   "source": url.removeprefix("https://") + (f"/{s['path']}" if s.get("path") else "")}
+            tmp = Path(tempfile.mkdtemp(prefix="skill-clone-"))
+            try:
+                folder = fetch(src, tmp / "repo", self.runner)
+                return src["source"], inspect_folder(folder) | {"_folder": str(folder)}, tmp
+            except BaseException:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+        if kind == "folder":
+            root = Path(s.get("path", "")).expanduser()
+            if root.is_symlink() or not root.is_dir():
+                raise SkillError("That folder does not exist on this laptop.")
+            folder = root
+            if name:                                               # a folder of several skills: pick one child folder
+                if not SEG_RE.match(name) or ".." in name:
+                    raise SkillError("That skill folder name is not allowed.")
+                folder = root / name
+            elif not (root / "SKILL.md").is_file():
+                raise SkillError("There is no SKILL.md in that folder. Pick one of the skills listed inside it.")
+            return f"folder:{root.name}" + (f"/{name}" if name else ""), inspect_folder(folder) | {"_folder": str(folder)}, None
+        if kind == "url":
+            status, ctype, body = self.text_http(s.get("url", ""))
+            if status != 200:
+                raise SkillError(f"The link answered {status}.", 502)
+            if ctype and ctype not in MD_TYPES:
+                raise SkillError("That link is not a markdown or text file (it must be a SKILL.md, not a web page).")
+            if len(body) > MAX_SKILL_MD:
+                raise SkillError(f"That file is too big (limit {MAX_SKILL_MD // 1024} KB).")
+            if b"\x00" in body:
+                raise SkillError("That file is not text.")
+            text = body.decode("utf-8", errors="replace")
+            meta, _ = parse_frontmatter(text)
+            last = [p for p in urlparse(s["url"]).path.split("/") if p]
+            guess = last[-1].rsplit(".", 1)[0] if last else "skill"
+            if guess.lower() == "skill" and len(last) > 1:
+                guess = last[-2]
+            ident = normalise_name(meta.get("name") or guess)
+            if not NAME_RE.match(ident):
+                raise SkillError("The skill's name must be lowercase letters, digits, - or _ (up to 64 characters).")
+            tmp = Path(tempfile.mkdtemp(prefix="skill-url-"))
+            folder = tmp / ident
+            folder.mkdir()
+            (folder / "SKILL.md").write_text(text, encoding="utf-8")
+            try:
+                return s["url"].split("?")[0], inspect_folder(folder) | {"_folder": str(folder)}, tmp
+            except BaseException:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+        raise SkillError("Unknown source kind.")
+
+    def preview_entry(self, entry: dict, hosts: list[str], name: str = "") -> dict:
+        label, facts, tmp = self.stage_entry(entry, hosts, name)
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+        facts.pop("_folder", None)
+        facts.pop("files", None)
+        return {**facts, "source": label, "untrusted": True, "installed": self.get(facts["name"]) is not None}
+
+    def install_entry(self, entry: dict, hosts: list[str], name: str = "") -> dict:
+        label, facts, tmp = self.stage_entry(entry, hosts, name)
+        try:
+            return self.install_from_folder(Path(facts["_folder"]), label)
+        finally:
+            if tmp:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+    def folder_catalog(self, entry: dict) -> list[dict]:
+        """Skills inside a local folder source: the folder itself, or each child folder that holds a SKILL.md."""
+        root = Path(entry["settings"].get("path", "")).expanduser()
+        if root.is_symlink() or not root.is_dir():
+            raise SkillError("That folder does not exist on this laptop.")
+        if (root / "SKILL.md").is_file():
+            return [{"name": normalise_name(root.name), "folder": "", "kind": "skill"}]
+        out = []
+        for child in sorted(root.iterdir())[:CATALOG_MAX]:
+            if child.is_dir() and not child.is_symlink() and not child.name.startswith(".") and SEG_RE.match(child.name) \
+                    and (child / "SKILL.md").is_file():
+                out.append({"name": normalise_name(child.name), "folder": child.name, "kind": "skill"})
+        return out
+
     def remove(self, name: str) -> bool:
         if not isinstance(name, str) or not NAME_RE.match(name):
             raise SkillError("That is not a valid skill name.")
@@ -490,8 +585,8 @@ def wrap_skill(skill: dict, user_input: str = "") -> str:
 
 # ---- the router ------------------------------------------------------------------------------------------------
 
-def store_for(config, runner: Runner | None = None, http: HttpGet | None = None) -> SkillStore:
-    return SkillStore(config.data_path() / "skills", runner=runner, http=http)
+def store_for(config, runner: Runner | None = None, http: HttpGet | None = None, text_http=None) -> SkillStore:
+    return SkillStore(config.data_path() / "skills", runner=runner, http=http, text_http=text_http)
 
 
 def split_source(raw: Any) -> tuple[Any, bool]:
@@ -501,22 +596,182 @@ def split_source(raw: Any) -> tuple[Any, bool]:
     return raw, False
 
 
-def sources_of(config) -> list[str]:
-    raw = getattr(config, "skills_sources", None)
+def _norm_github(item: Any) -> str:
+    plain, categories = split_source(item)
+    return parse_source(plain)["source"] + ("/*" if categories else "")
+
+
+def sources_of(config, lst: "provlist.ProviderList | None" = None) -> list[str]:
+    """The GitHub catalogs to browse: the enabled `github` entries of the owner's source list (seeded once from the
+    `skills_sources` config key, so today's two catalogs are simply the first two entries)."""
     out = []
-    for item in raw if isinstance(raw, list) else DEFAULT_SOURCES:
+    for entry in (lst or sources_list(config)).enabled():
+        if entry["kind"] != "github":
+            continue
         try:
-            plain, categories = split_source(item)
-            out.append(parse_source(plain)["source"] + ("/*" if categories else ""))
-        except SkillError:
+            out.append(_norm_github(entry["settings"]["value"]))
+        except (SkillError, KeyError):
             continue
     return out[:10]
 
 
-def make_router(ctx: Ctx, *, runner: Runner | None = None, http: HttpGet | None = None) -> APIRouter:
-    """`runner` (git) and `http` (GitHub API) exist so tests never touch the network."""
+# ---- the owner's list of skill SOURCES (docs/api/skills.md) -----------------------------------------------------
+# kinds: github (owner/repo[/path][/*]), git (a public https Git URL on an owner-approved host), folder (a local
+# folder: copied, never executed) and url (one SKILL.md file: markdown text only). Installing from any of them goes
+# through the same checks and the same owner approval; nothing it contains is ever run.
+
+SOURCE_KINDS = ("github", "git", "folder", "url")
+HOST_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$")
+GIT_SEG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._~-]{0,99}$")
+MD_TYPES = ("text/markdown", "text/x-markdown", "text/plain", "application/markdown", "text/x-web-markdown")
+MAX_REDIRECTS = 3
+
+
+def parse_git_url(raw: Any, hosts: list[str]) -> str:
+    """The normalised https URL of a public Git repository on github.com or an owner-approved host. SkillError otherwise."""
+    if not isinstance(raw, str) or not raw.strip() or len(raw) > 400:
+        raise SkillError("Give the Git address, like https://git.example.com/team/skills.git")
+    try:
+        url = urlparse(raw.strip())
+        port = url.port
+    except ValueError:
+        raise SkillError("That is not a valid Git address.") from None
+    host = (url.hostname or "").lower()
+    if url.scheme != "https" or url.username or url.password or port not in (None, 443) or url.query or url.fragment:
+        raise SkillError("Only plain https:// Git addresses (no login, no port) are allowed.")
+    if host not in GITHUB_HOSTS and host not in hosts:
+        raise SkillError(f"{host or 'That host'} is not on your approved Git hosts. Approve the host first "
+                         "(Skills > Sources > Approved hosts).", 403)
+    parts = [p for p in url.path.split("/") if p]
+    if len(parts) < 2 or len(parts) > 8 or any(not GIT_SEG_RE.match(p) or ".." in p for p in parts):
+        raise SkillError("The Git address must look like https://host/owner/repo.")
+    return f"https://{host}/" + "/".join(parts)
+
+
+def clean_host(raw: Any) -> str:
+    host = clean(raw, 100).lower().removeprefix("https://").strip("/")
+    if not HOST_RE.match(host) or host in ("localhost",) or host.endswith(BLOCKED_HOST_SUFFIXES):
+        raise SkillError("Give a public host name like git.example.com (no address numbers, no port, no path).")
+    return host
+
+
+BLOCKED_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home", ".corp", ".ts.net")
+
+
+def check_source(kind: str, raw: dict, hosts: list[str] | None = None) -> dict:
+    """Cleaned settings of one source entry (provlist hook). `hosts` None skips the host test (reading old files)."""
+    from .provlist import ListError
+    try:
+        if kind == "github":
+            return {"value": _norm_github(raw.get("value"))}
+        if kind == "git":
+            url = clean(raw.get("url"), 400)
+            if hosts is not None:
+                url = parse_git_url(url, hosts)
+            sub = clean(raw.get("path"), 200).strip("/")
+            if sub and (any(not SEG_RE.match(s) or s in (".", "..") or ".." in s for s in sub.split("/")) or len(sub.split("/")) > 8):
+                raise SkillError("That folder path is not allowed.")
+            branch = clean(raw.get("branch"), 100)
+            if branch and (not BRANCH_RE.match(branch) or ".." in branch):
+                raise SkillError("That branch name is not allowed.")
+            return {"url": url, "path": sub, "branch": branch}
+        if kind == "folder":
+            path = clean(raw.get("path"), 500)
+            if not path or "\x00" in path:
+                raise SkillError("Give the folder on this laptop, for example C:\\skills\\mine.")
+            return {"path": path}
+        if kind == "url":
+            url = clean(raw.get("url"), 500)
+            parts = urlparse(url)
+            if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
+                raise SkillError("Give the direct link to a SKILL.md file (http or https).")
+            return {"url": url}
+    except SkillError as exc:
+        raise ListError(str(exc), exc.status) from None
+    raise ListError("Unknown source kind.")
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:30] or "source"
+
+
+def sources_list(config, secrets: Any = None) -> "provlist.ProviderList":
+    def seed() -> list[dict]:
+        raw = getattr(config, "skills_sources", None)
+        out, taken = [], set()
+        for item in raw if isinstance(raw, list) else DEFAULT_SOURCES:
+            try:
+                value = _norm_github(item)
+            except SkillError:
+                continue
+            ident, n = _slug(value), 1
+            while ident in taken:
+                n += 1
+                ident = f"{_slug(value)}-{n}"
+            taken.add(ident)
+            out.append({"id": ident, "kind": "github", "label": value.removesuffix("/*"), "enabled": True,
+                        "settings": {"value": value}})
+        return out[:10]
+    return provlist.ProviderList("skillsrc", config.data_path() / "skill_sources.json", SOURCE_KINDS, seed,
+                                 lambda kind, raw: check_source(kind, raw, None), secrets)
+
+
+def hosts_file(config) -> JsonFile:
+    return JsonFile(config.data_path() / "skill_hosts.json")
+
+
+def approved_hosts(config) -> list[str]:
+    data = hosts_file(config).load({})
+    rows = data.get("hosts") if isinstance(data, dict) else None
+    out = []
+    for h in rows if isinstance(rows, list) else []:
+        try:
+            out.append(clean_host(h))
+        except SkillError:
+            continue
+    return out[:20]
+
+
+def fetch_markdown(url: str, *, transport=None, resolver=None) -> tuple[int, str, bytes]:
+    """(status, content-type, body up to MAX_SKILL_MD + 1 bytes). Public http(s) only: every hop is SSRF-checked,
+    redirects are followed by hand (max 3), the body is cut at the size cap. Runs in a worker thread."""
+    import asyncio
+    import httpx
+    from .research import BlockedURL, check_url
+    current = url
+    try:
+        with httpx.Client(timeout=httpx.Timeout(8.0, read=15.0), follow_redirects=False, transport=transport,
+                          headers={"User-Agent": "redline-hub-skills", "Accept": "text/markdown,text/plain"}) as client:
+            for _ in range(MAX_REDIRECTS + 1):
+                try:
+                    asyncio.run(check_url(current, resolver))
+                except BlockedURL as exc:
+                    raise SkillError(f"That address is not allowed ({exc}).") from None
+                with client.stream("GET", current) as resp:
+                    if resp.status_code in (301, 302, 303, 307, 308):
+                        target = resp.headers.get("location")
+                        if not target:
+                            raise SkillError("The link redirects nowhere.", 502)
+                        from urllib.parse import urljoin
+                        current = urljoin(current, target)
+                        continue
+                    body = bytearray()
+                    for chunk in resp.iter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_SKILL_MD:
+                            break
+                    return resp.status_code, resp.headers.get("content-type", "").split(";")[0].strip().lower(), bytes(body[:MAX_SKILL_MD + 1])
+            raise SkillError("The link redirects too many times.", 502)
+    except httpx.HTTPError as exc:
+        raise SkillError(f"Could not download it ({type(exc).__name__}).", 502) from None
+
+
+def make_router(ctx: Ctx, *, runner: Runner | None = None, http: HttpGet | None = None, text_http=None,
+                secrets: Any = None) -> APIRouter:
+    """`runner` (git), `http` (GitHub API) and `text_http` (SKILL.md links) exist so tests never touch the network."""
     router = APIRouter(prefix="/api/skills", dependencies=[Depends(ctx.need_auth)])
-    store = store_for(ctx.config, runner, http)
+    store = store_for(ctx.config, runner, http, text_http)
+    srcs = sources_list(ctx.config, secrets)
 
     def need_on() -> None:
         if not getattr(ctx.config, "skills_enabled", True):
@@ -533,7 +788,7 @@ def make_router(ctx: Ctx, *, runner: Runner | None = None, http: HttpGet | None 
     async def listing(persona: str = Query("", max_length=10)):
         need_on()
         skills = await _thread(store.list, persona if persona in ("jarvis", "friday") else "")
-        return {"skills": skills, "count": len(skills), "limit": MAX_SKILLS, "sources": sources_of(ctx.config)}
+        return {"skills": skills, "count": len(skills), "limit": MAX_SKILLS, "sources": sources_of(ctx.config, srcs)}
 
     @router.get("/catalog")
     async def catalog(source: str = Query("", max_length=400), refresh: bool = False):
@@ -599,7 +854,121 @@ def make_router(ctx: Ctx, *, runner: Runner | None = None, http: HttpGet | None 
         ctx.audit("skill_remove", name=name)
         return {"ok": True}
 
+    # ---- the owner's list of skill SOURCES and approved Git hosts ----
+    def lerr(fn, *args):
+        try:
+            return fn(*args)
+        except provlist.ListError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+
+    def source_or_404(ident: str) -> dict:
+        entry = srcs.get(ident) if provlist.ID_RE.match(ident) else None
+        if entry is None:
+            raise HTTPException(404, "No such source.")
+        return entry
+
+    def check_new(body: dict) -> dict:
+        """Entries are checked against the approved hosts when they are added or edited (not when old ones load)."""
+        kind = body.get("kind")
+        if kind in SOURCE_KINDS and isinstance(body.get("settings"), dict):
+            return {**body, "settings": lerr(lambda: check_source(kind, body["settings"], approved_hosts(ctx.config)))}
+        return body
+
+    @router.get("/sources")
+    async def list_sources():
+        need_on()
+        return {"entries": srcs.public(), "hosts": approved_hosts(ctx.config), "kinds": SOURCE_INFO,
+                "warning": "Skills are written by other people. Only add sources you trust. They are only text guidance and nothing in them is ever run."}
+
+    @router.post("/sources")
+    async def add_source(body: dict = Body(...)):
+        need_on()
+        entry = lerr(srcs.add, check_new(body))
+        ctx.audit("skill_source_add", id=entry["id"], kind=entry["kind"])
+        return {"ok": True, "entry": entry}
+
+    @router.put("/sources/order")
+    async def order_sources(body: dict = Body(...)):
+        need_on()
+        return {"entries": lerr(srcs.reorder, body.get("ids"))}
+
+    @router.put("/sources/{ident}")
+    async def edit_source(ident: str, body: dict = Body(...)):
+        need_on()
+        entry = source_or_404(ident)
+        merged = {"kind": entry["kind"], "settings": {**entry["settings"], **(body.get("settings") or {})}}
+        checked = check_new(merged)
+        patch = {**body, "settings": checked["settings"]} if isinstance(body.get("settings"), dict) else body
+        return {"ok": True, "entry": lerr(srcs.update, ident, patch)}
+
+    @router.delete("/sources/{ident}")
+    async def delete_source(ident: str):
+        need_on()
+        lerr(srcs.delete, ident)
+        ctx.audit("skill_source_delete", id=ident)
+        return {"ok": True}
+
+    @router.get("/sources/{ident}/catalog")
+    async def source_catalog(ident: str):
+        need_on()
+        entry = source_or_404(ident)
+        if entry["kind"] != "folder":
+            raise HTTPException(400, "Only a local folder source can be listed. Install the others directly.")
+        return {"skills": await _thread(guard, store.folder_catalog, entry)}
+
+    @router.post("/sources/{ident}/preview")
+    async def source_preview(ident: str, body: dict = Body(default={})):
+        need_on()
+        entry = source_or_404(ident)
+        return await _thread(guard, store.preview_entry, entry, approved_hosts(ctx.config), str(body.get("name") or ""))
+
+    @router.post("/sources/{ident}/install")
+    async def source_install(ident: str, body: dict = Body(default={})):
+        need_on()
+        if body.get("confirm") is not True:
+            raise HTTPException(400, "Installing a skill needs the owner's approval (confirm: true).")
+        entry = source_or_404(ident)
+        skill = await _thread(guard, store.install_entry, entry, approved_hosts(ctx.config), str(body.get("name") or ""))
+        skill.pop("_body", None)
+        ctx.audit("skill_install", name=skill.get("name"), source=skill.get("source"), size=skill.get("size"))
+        return {"ok": True, "skill": skill}
+
+    @router.post("/hosts")
+    async def add_host(body: dict = Body(...)):
+        need_on()
+        if body.get("confirm") is not True:
+            raise HTTPException(400, "Approving a Git host needs the owner's confirmation (confirm: true).")
+        host = guard(clean_host, body.get("host"))
+        hosts = approved_hosts(ctx.config)
+        if host not in hosts:
+            if len(hosts) >= 20:
+                raise HTTPException(400, "Too many approved hosts. Remove one first.")
+            hosts_file(ctx.config).save({"hosts": hosts + [host]})
+        ctx.audit("skill_host_approve", host=host)
+        return {"ok": True, "hosts": approved_hosts(ctx.config)}
+
+    @router.delete("/hosts/{host}")
+    async def remove_host(host: str):
+        need_on()
+        hosts = [h for h in approved_hosts(ctx.config) if h != host.lower()]
+        hosts_file(ctx.config).save({"hosts": hosts})
+        ctx.audit("skill_host_remove", host=host.lower()[:100])
+        return {"ok": True, "hosts": hosts}
+
     return router
+
+
+SOURCE_INFO = {
+    "github": {"label": "GitHub repository", "fields": [{"key": "value", "label": "owner/repo/path (end with /* for categories)", "type": "text", "required": True,
+                                                          "placeholder": "owner/repo/skills"}]},
+    "git": {"label": "Git address on an approved host", "fields": [
+        {"key": "url", "label": "https address of the repository", "type": "url", "required": True, "placeholder": "https://git.example.com/team/skills.git"},
+        {"key": "path", "label": "Folder inside it (optional)", "type": "text"}, {"key": "branch", "label": "Branch (optional)", "type": "text"}]},
+    "folder": {"label": "Folder on this laptop (copied, never run)", "fields": [{"key": "path", "label": "Folder", "type": "text", "required": True,
+                                                                                  "placeholder": "C:\\skills\\mine"}]},
+    "url": {"label": "Direct link to one SKILL.md", "fields": [{"key": "url", "label": "Link to the SKILL.md file", "type": "url", "required": True,
+                                                                  "placeholder": "https://example.com/skills/my-skill/SKILL.md"}]},
+}
 
 
 async def _thread(fn, *args, **kwargs):

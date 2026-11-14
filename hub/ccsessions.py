@@ -32,7 +32,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from .assistant import ExtraTool, mark_tools
@@ -73,6 +73,123 @@ def enabled(config) -> bool:
 def base_dir(config) -> Path:
     raw = str(getattr(config, "ccsessions_dir", "") or "").strip()
     return Path(raw).expanduser() if raw else Path.home() / ".claude" / "projects"
+
+
+# ---- the adapter list ---------------------------------------------------------------------------------------------
+# Which coding agents are watched is an owner-editable LIST of adapters (Settings / the Claude screen > Sources):
+#   claude-code  Claude Code transcripts (the ready-made entry; optional resume template = the only way to steer)
+#   codex-cli    EXPERIMENTAL, read-only: OpenAI Codex CLI rollout files (~/.codex/sessions/**/rollout-*.jsonl)
+#   generic-log  any text/JSONL log file or folder the owner names: read-only, never steered
+# An adapter can be steered only when it is a claude-code adapter that declares a safe `resume_argv` template:
+# a list of strings with the `{session}` placeholder, never a shell, the message on standard input, confirm required.
+
+ADAPTER_KINDS = ("claude-code", "codex-cli", "generic-log")
+DEFAULT_ADAPTER = "claude-code"
+DEFAULT_RESUME = ["claude", "--resume", "{session}", "-p", "--output-format", "json"]
+SHELLS = {"sh", "bash", "zsh", "fish", "dash", "csh", "ksh", "tcsh", "cmd", "powershell", "pwsh", "wsl", "env", "sudo",
+          "su", "ssh", "xargs", "nohup", "start", "runas"}
+PATTERN_RE = re.compile(r"^[A-Za-z0-9*?._\[\]-]{1,40}$")
+DEFAULT_PATTERNS = ["*.log", "*.jsonl", "*.txt"]
+SCAN_FILES = 2000
+SCAN_DEPTH = 4
+EXPERIMENTAL = {"codex-cli": "Experimental, read-only: read from the files Codex writes today; the format may change."}
+
+
+def check_resume(value: Any) -> list[str]:
+    """A safe resume argv template, or ListError. `[]` means 'no steering'."""
+    from .provlist import ListError
+    if value in (None, "", []):
+        return []
+    if not isinstance(value, list) or not 2 <= len(value) <= 12 or not all(isinstance(a, str) and a for a in value):
+        raise ListError("The resume command must be a list of 2 to 12 words, for example claude --resume {session} -p.")
+    head = Path(value[0].replace("\\", "/")).name.lower()
+    for suffix in (".exe", ".cmd", ".bat"):
+        head = head.removesuffix(suffix)
+    if head in SHELLS or "{" in value[0] or any(len(a) > 200 or "\x00" in a for a in value):
+        raise ListError("The resume command must start with the program itself, never a shell.")
+    if not any("{session}" in a for a in value):
+        raise ListError("The resume command must contain {session} where the session id goes.")
+    for a in value:
+        if re.search(r"\{(?!session\})[^}]*\}", a):
+            raise ListError("Only the {session} placeholder is allowed in the resume command.")
+    return list(value)
+
+
+def check_adapter(kind: str, raw: dict) -> dict:
+    from .provlist import ListError, check_url, clean as clean_str  # noqa: F401
+    path = clean_str(raw.get("dir") if kind != "generic-log" else raw.get("path"), 500)
+    if kind == "claude-code":
+        resume = raw.get("resume_argv", DEFAULT_RESUME)
+        return {"dir": path, "resume_argv": check_resume(resume)}
+    if kind == "codex-cli":
+        return {"dir": path}
+    if kind == "generic-log":
+        if not path or "\x00" in path:
+            raise ListError("Give the log file or folder to watch.")
+        raw_patterns = raw.get("patterns")
+        items = re.split(r"[,\s]+", raw_patterns) if isinstance(raw_patterns, str) else raw_patterns
+        patterns = [p for p in (items if isinstance(items, list) else []) if isinstance(p, str) and p]
+        if not all(PATTERN_RE.match(p) for p in patterns):
+            raise ListError("File patterns look like *.log or session-*.jsonl.")
+        return {"path": path, "patterns": patterns[:8] or list(DEFAULT_PATTERNS)}
+    raise ListError("Unknown adapter kind.")
+
+
+def adapter_seed() -> list[dict]:
+    return [{"id": DEFAULT_ADAPTER, "kind": "claude-code", "label": "Claude Code", "enabled": True,
+             "settings": {"dir": "", "resume_argv": list(DEFAULT_RESUME)}}]
+
+
+def adapter_list(config):
+    from . import provlist
+    return provlist.ProviderList("ccadapter", Path(config.data_path()) / "ccsessions_adapters.json", ADAPTER_KINDS,
+                                 adapter_seed, check_adapter)
+
+
+def adapters_of(config) -> list[dict]:
+    """Enabled adapters with their folder resolved (blank claude-code dir = `ccsessions_dir` / ~/.claude/projects)."""
+    out = []
+    for entry in adapter_list(config).enabled():
+        s = entry["settings"]
+        if entry["kind"] == "claude-code":
+            root = Path(s["dir"]).expanduser() if s.get("dir") else base_dir(config)
+        elif entry["kind"] == "codex-cli":
+            root = Path(s["dir"]).expanduser() if s.get("dir") else Path.home() / ".codex" / "sessions"
+        elif s.get("path"):
+            root = Path(s["path"]).expanduser()
+        else:
+            continue
+        out.append({**entry, "root": root})
+    return out
+
+
+def adapters_of_one(config, entry: dict) -> Path:
+    """The folder or file one adapter entry points at (for the 'exists' flag in the list)."""
+    s = entry["settings"]
+    if entry["kind"] == "generic-log":
+        return Path(s.get("path") or "\0").expanduser()
+    default = base_dir(config) if entry["kind"] == "claude-code" else Path.home() / ".codex" / "sessions"
+    return Path(s["dir"]).expanduser() if s.get("dir") else default
+
+
+ADAPTER_INFO = {
+    "claude-code": {"label": "Claude Code", "fields": [
+        {"key": "dir", "label": "Transcripts folder (blank = ~/.claude/projects)", "type": "text"}],
+        "note": "Can be steered through its resume command (a list of words with {session}, never a shell)."},
+    "codex-cli": {"label": "Codex CLI (experimental, read-only)", "fields": [
+        {"key": "dir", "label": "Sessions folder (blank = ~/.codex/sessions)", "type": "text"}],
+        "note": EXPERIMENTAL["codex-cli"]},
+    "generic-log": {"label": "Any log file or folder (read-only)", "fields": [
+        {"key": "path", "label": "File or folder", "type": "text", "required": True},
+        {"key": "patterns", "label": "File patterns (comma separated)", "type": "list", "placeholder": "*.log, *.jsonl"}],
+        "note": "Tailed read-only. Plain text or JSON lines. Never steered."},
+}
+ADAPTER_PRESETS = [
+    {"label": "Codex CLI (experimental, read-only)", "kind": "codex-cli", "settings": {"dir": ""}},
+    {"label": "Gemini CLI (raw log files, format not parsed)", "kind": "generic-log",
+     "settings": {"path": "~/.gemini/tmp", "patterns": ["*.jsonl", "*.log", "logs.json"]}},
+    {"label": "A log file or folder", "kind": "generic-log", "settings": {"path": "", "patterns": ["*.log", "*.jsonl", "*.txt"]}},
+]
 
 
 def decode_dir_name(name: str) -> str:
@@ -193,8 +310,222 @@ def infer_status(last: dict | None, age: float) -> tuple[str, bool]:
     return "idle", False
 
 
+def _tag(row: dict, ad: dict, native: str) -> dict:
+    """Adds which adapter a row came from and what may be done with it."""
+    default = ad["id"] == DEFAULT_ADAPTER
+    row["native_id"] = native
+    row["id"] = native if default and ad["kind"] == "claude-code" else f"{ad['id']}_{native}"
+    row["adapter"], row["adapter_label"], row["kind"] = ad["id"], ad["label"], ad["kind"]
+    row["experimental"] = ad["kind"] in EXPERIMENTAL
+    row["steerable"] = ad["kind"] == "claude-code" and bool(ad["settings"].get("resume_argv"))
+    row["read_only"] = not row["steerable"]
+    return row
+
+
+def _short_hash(path: Path) -> str:
+    import hashlib
+    return hashlib.sha1(str(path).encode("utf-8", "replace")).hexdigest()[:12]
+
+
+# -- generic-log and codex-cli (read-only)
+
+def scan_files(ad: dict) -> list[tuple[float, Path]]:
+    """Newest-first (mtime, path) of the files an adapter watches. Never follows symlinks; bounded."""
+    import fnmatch
+    root = ad["root"]
+    kind = ad["kind"]
+    patterns = ad["settings"].get("patterns") or DEFAULT_PATTERNS
+    if kind == "codex-cli":
+        patterns = ["rollout-*.jsonl", "*.jsonl"]
+    found: list[tuple[float, Path]] = []
+    try:
+        if root.is_symlink():
+            return []
+        if root.is_file():
+            return [(root.stat().st_mtime, root)]
+        base_depth = len(root.parts)
+        count = 0
+        for base, dirs, names in os.walk(root, followlinks=False):
+            if len(Path(base).parts) - base_depth >= SCAN_DEPTH:
+                dirs[:] = []
+            dirs[:] = [d for d in dirs if not (Path(base) / d).is_symlink() and not d.startswith(".")]
+            for name in names:
+                count += 1
+                if count > SCAN_FILES:
+                    break
+                full = Path(base) / name
+                if full.is_symlink() or not any(fnmatch.fnmatch(name, p) for p in patterns):
+                    continue
+                try:
+                    found.append((full.stat().st_mtime, full))
+                except OSError:
+                    continue
+    except OSError:
+        return []
+    found.sort(key=lambda t: t[0], reverse=True)
+    return found
+
+
+def read_lines(path: Path, limit: int = TAIL_BYTES) -> list[str]:
+    """The last lines of a text file (the first one is dropped when the read started mid-line)."""
+    try:
+        size = path.stat().st_size
+        with open(path, "rb") as f:
+            start = max(0, size - limit)
+            f.seek(start)
+            raw = f.read(limit)
+    except OSError:
+        return []
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    if start > 0 and lines:
+        lines = lines[1:]
+    return [ln for ln in (l.strip() for l in lines) if ln]
+
+
+TEXT_KEYS = ("text", "message", "msg", "content", "output", "line", "log", "prompt", "response", "data", "error")
+
+
+def generic_text(value: Any, depth: int = 0) -> str:
+    """Readable text out of a log line: plain text as is; a JSON object's usual text field; else compact JSON."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(t for t in (generic_text(v, depth + 1) for v in value[:20]) if t)
+    if isinstance(value, dict) and depth < 3:
+        for key in TEXT_KEYS:
+            if key in value:
+                text = generic_text(value[key], depth + 1)
+                if text.strip():
+                    return text
+        return json.dumps(value, ensure_ascii=False)[:TURN_CHARS]
+    return "" if value is None else str(value)
+
+
+def log_entry(line: str) -> dict:
+    """{text, role, at} for one log line (role 'user' | 'assistant' | 'log')."""
+    obj = None
+    if line[:1] == "{":
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            obj = None
+    if not isinstance(obj, dict):
+        return {"text": line, "role": "log", "at": None}
+    role = obj.get("role") if obj.get("role") in ("user", "assistant") else (obj.get("type") if obj.get("type") in ("user", "assistant") else "log")
+    at = next((obj[k] for k in ("timestamp", "time", "ts", "at") if isinstance(obj.get(k), str)), None)
+    return {"text": generic_text(obj), "role": role, "at": at}
+
+
+def codex_turn(entry: dict) -> dict | None:
+    """One user/assistant message from a Codex CLI rollout line, or None. Reads today's shape
+    ({type: response_item, payload: {type: message, role, content: [{type: input_text|output_text, text}]}}) and the older
+    flat one ({type: message, role, content}); anything else is skipped."""
+    payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else entry
+    if payload.get("type") not in ("message", None) or payload.get("role") not in ("user", "assistant"):
+        return None
+    content = payload.get("content")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        text = " ".join(str(b.get("text") or "") for b in content
+                        if isinstance(b, dict) and b.get("type") in ("input_text", "output_text", "text"))
+    else:
+        return None
+    text = text.strip()
+    if not text or text.startswith(("<environment_context>", "<user_instructions>", "<user_info>")):
+        return None
+    ts = entry.get("timestamp")
+    return {"text": text, "role": payload["role"], "at": ts if isinstance(ts, str) else None}
+
+
+def first_json(path: Path) -> dict:
+    try:
+        with open(path, "rb") as f:
+            line = f.readline(16384)
+        obj = json.loads(line.decode("utf-8", errors="replace"))
+        return obj if isinstance(obj, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def read_log(ad: dict, path: Path) -> tuple[list[dict], bool]:
+    """(turns, truncated) for a read-only adapter. A codex file with no readable messages falls back to raw lines."""
+    lines = read_lines(path)
+    try:
+        truncated = path.stat().st_size > TAIL_BYTES
+    except OSError:
+        truncated = False
+    if ad["kind"] == "codex-cli":
+        turns = []
+        for line in lines:
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            turn = codex_turn(obj) if isinstance(obj, dict) else None
+            if turn:
+                turns.append(turn)
+        if turns:
+            return turns, truncated
+    return [log_entry(l) for l in lines], truncated
+
+
+def summarize_log(ad: dict, path: Path, now: float | None = None) -> dict | None:
+    now = time.time() if now is None else now
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    turns, truncated = read_log(ad, path)
+    age = max(0.0, now - mtime)
+    cwd = ""
+    if ad["kind"] == "codex-cli":
+        meta = first_json(path)
+        payload = meta.get("payload") if isinstance(meta.get("payload"), dict) else meta
+        cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else ""
+        status, permission = infer_status({"type": turns[-1]["role"], "message": {"role": turns[-1]["role"], "content": "x"}}
+                                          if turns and turns[-1]["role"] in ("user", "assistant") else None, age)
+    else:
+        status = "working" if age < WORKING_SECS else "idle"    # a plain log cannot say that it waits for the owner
+        permission = False
+    last_user = next((t["text"] for t in reversed(turns) if t["role"] == "user"), "")
+    last_asst = next((t["text"] for t in reversed(turns) if t["role"] == "assistant"), "")
+    folder = cwd or str(path.parent)
+    return {"id": path.stem, "project": folder, "project_name": clean(path.name if not cwd else Path(cwd.replace("\\", "/")).name, 80),
+            "modified": mtime, "age_seconds": int(age), "status": status, "permission_pending": permission,
+            "last_user": clean(last_user, LAST_USER_CHARS), "last_assistant": clean(last_asst, LAST_ASSISTANT_CHARS),
+            "last_line": clean(turns[-1]["text"], LAST_ASSISTANT_CHARS) if turns else "",
+            "messages": len(turns), "messages_approximate": truncated, "tokens": None}
+
+
+def _summarize_in(ad: dict, path: Path, now: float | None) -> dict | None:
+    if ad["kind"] == "claude-code":
+        row = summarize(path, now)
+        return _tag(row, ad, path.stem) if row else None
+    row = summarize_log(ad, path, now)
+    return _tag(row, ad, _short_hash(path)) if row else None
+
+
 def discover(config, now: float | None = None, limit: int = MAX_SESSIONS) -> list[dict]:
-    root = base_dir(config)
+    rows: list[dict] = []
+    for ad in adapters_of(config):
+        try:
+            files = _claude_files(ad["root"]) if ad["kind"] == "claude-code" else scan_files(ad)
+        except OSError:
+            continue
+        for _, f in files[:limit]:
+            try:
+                row = _summarize_in(ad, f, now)
+            except Exception:  # noqa: BLE001 - one odd file must never hide the others
+                log.warning("could not read a session file")
+                continue
+            if row:
+                rows.append(row)
+    rows.sort(key=lambda r: r["modified"], reverse=True)
+    return rows[:limit]
+
+
+def _claude_files(root: Path) -> list[tuple[float, Path]]:
     files: list[tuple[float, Path]] = []
     try:
         for project in root.iterdir():
@@ -209,30 +540,36 @@ def discover(config, now: float | None = None, limit: int = MAX_SESSIONS) -> lis
     except OSError:
         return []
     files.sort(key=lambda t: t[0], reverse=True)
-    rows = []
-    for _, f in files[:limit]:
-        try:
-            row = summarize(f, now)
-        except Exception:  # noqa: BLE001 - one odd file must never hide the others
-            log.warning("could not read a Claude Code transcript")
-            continue
-        if row:
-            rows.append(row)
-    return rows
+    return files
+
+
+def find_session(config, session_id: str) -> tuple[dict, Path] | tuple[None, None]:
+    """(adapter, file) of one session id, searching every enabled adapter."""
+    if not isinstance(session_id, str) or not ID_RE.match(session_id):
+        return None, None
+    for ad in adapters_of(config):
+        if ad["kind"] == "claude-code":
+            stem = session_id if ad["id"] == DEFAULT_ADAPTER else session_id.removeprefix(ad["id"] + "_") \
+                if session_id.startswith(ad["id"] + "_") else ""
+            if not stem:
+                continue
+            try:
+                for project in ad["root"].iterdir():
+                    f = project / f"{stem}.jsonl"
+                    if project.is_dir() and f.is_file():
+                        return ad, f
+            except OSError:
+                continue
+        elif session_id.startswith(ad["id"] + "_"):
+            want = session_id[len(ad["id"]) + 1:]
+            for _, f in scan_files(ad):
+                if _short_hash(f) == want:
+                    return ad, f
+    return None, None
 
 
 def find_file(config, session_id: str) -> Path | None:
-    if not isinstance(session_id, str) or not ID_RE.match(session_id):
-        return None
-    root = base_dir(config)
-    try:
-        for project in root.iterdir():
-            f = project / f"{session_id}.jsonl"
-            if project.is_dir() and f.is_file():
-                return f
-    except OSError:
-        return None
-    return None
+    return find_session(config, session_id)[1]
 
 
 def turn_view(entry: dict) -> dict:
@@ -249,14 +586,19 @@ def turn_view(entry: dict) -> dict:
 
 
 def detail(config, session_id: str, now: float | None = None) -> dict | None:
-    path = find_file(config, session_id)
+    ad, path = find_session(config, session_id)
     if path is None:
         return None
-    row = summarize(path, now)
+    row = _summarize_in(ad, path, now)
     if row is None:
         return None
-    entries, _ = read_tail(path)
-    row["turns"] = [turn_view(e) for e in _conversation(entries)[-DETAIL_TURNS:]]
+    if ad["kind"] == "claude-code":
+        entries, _ = read_tail(path)
+        row["turns"] = [turn_view(e) for e in _conversation(entries)[-DETAIL_TURNS:]]
+    else:
+        turns, _ = read_log(ad, path)
+        row["turns"] = [{"role": t["role"], "text": clean(t["text"], TURN_CHARS), "tools": [], "at": t["at"]}
+                        for t in turns[-DETAIL_TURNS:]]
     return row
 
 
@@ -293,10 +635,13 @@ def check_send(config, session_id: str, message: Any, now: float | None = None) 
         raise SendError("Write the message to send.")
     if len(message) > MAX_MESSAGE:
         raise SendError(f"That message is too long ({len(message)} characters). The limit is {MAX_MESSAGE}.")
-    path = find_file(config, session_id)
-    row = summarize(path, now) if path else None
+    ad, path = find_session(config, session_id)
+    row = _summarize_in(ad, path, now) if path else None
     if row is None:
         raise SendError("That Claude Code session was not found.")
+    if not row["steerable"]:
+        raise SendError(f"'{row['adapter_label']}' sessions are read-only here: REDLINE can show them but not send to them. "
+                        "(Only an adapter with a safe resume command can be steered.)")
     if row["status"] == "working":
         raise SendError("Claude is working in that session right now. Two writers on one transcript would corrupt it, "
                         "so wait until it is waiting or idle.")
@@ -305,9 +650,21 @@ def check_send(config, session_id: str, message: Any, now: float | None = None) 
             raise SendError("A message to that session is still running. Wait for its result first.")
     if project_dir_of(row) is None:
         raise SendError("That session's project folder no longer exists on this laptop.")
-    if not claude_binary():
-        raise SendError("The `claude` command was not found on this laptop's PATH.")
+    program = resume_template(ad)[0]
+    if not (claude_binary() if program == "claude" else shutil.which(program)):
+        raise SendError(f"The `{program}` command was not found on this laptop's PATH.")
     return row
+
+
+def resume_template(ad: dict) -> list[str]:
+    return list(ad["settings"].get("resume_argv") or DEFAULT_RESUME)
+
+
+def resume_argv(ad: dict, binary: str, native_id: str) -> list[str]:
+    """The command for one send: the adapter's template with {session} filled in. A list, never a shell; the message is
+    written to the program's standard input by the caller. The program name is replaced by its resolved path."""
+    template = check_resume(resume_template(ad))
+    return [binary] + [a.replace("{session}", native_id) for a in template[1:]]
 
 
 def build_argv(binary: str, session_id: str) -> list[str]:
@@ -349,8 +706,10 @@ def start_send(config, session_id: str, message: str, audit: Callable[..., None]
                now: float | None = None, run: Callable[..., Any] | None = None) -> dict:
     """Validate, then run `claude --resume` in the background. Returns the job (a dict that updates in place)."""
     row = check_send(config, session_id, message, now)
-    binary = claude_binary()
-    argv = build_argv(binary, session_id)
+    ad, _path = find_session(config, session_id)
+    program = resume_template(ad)[0]
+    binary = claude_binary() if program == "claude" else shutil.which(program)
+    argv = resume_argv(ad, binary, row["native_id"])
     job = {"id": uuid.uuid4().hex[:12], "session": session_id, "project": row["project"], "status": "running",
            "started": time.time(), "finished": None, "result": "", "error": ""}
     with _JOBS_LOCK:
@@ -382,7 +741,7 @@ class Watcher:
         self.notified: set[str] = set()
 
     def active(self) -> bool:
-        return enabled(self.ctx.config) and base_dir(self.ctx.config).is_dir()
+        return enabled(self.ctx.config) and any(a["root"].exists() for a in adapters_of(self.ctx.config) if a["kind"] == "claude-code")
 
     def tick(self) -> int:
         if not self.active():
@@ -391,7 +750,7 @@ class Watcher:
         sent = 0
         waiting_now = set()
         for row in discover(self.ctx.config, now):
-            if row["status"] != "waiting":
+            if row["status"] != "waiting" or row.get("kind") != "claude-code":
                 continue
             waiting_now.add(row["id"])
             if row["age_seconds"] < WAIT_NOTIFY_SECS or row["id"] in self.notified:
@@ -432,8 +791,51 @@ def make_router(ctx: Ctx) -> APIRouter:
     @router.get("")
     def list_sessions():
         need_on()
-        root = base_dir(ctx.config)
-        return {"enabled": True, "dir_exists": root.is_dir(), "sessions": discover(ctx.config)}
+        roots = [a["root"] for a in adapters_of(ctx.config)]
+        return {"enabled": True, "dir_exists": any(r.exists() for r in roots), "sessions": discover(ctx.config)}
+
+    # ---- the adapter list (which coding agents are watched) ----
+    alist = adapter_list(ctx.config)
+
+    def lerr(fn, *args):
+        from .provlist import ListError
+        try:
+            return fn(*args)
+        except ListError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+
+    @router.get("/adapters")
+    def adapters():
+        need_on()
+        return {"entries": [{**e, "exists": (adapters_of_one(ctx.config, e)).exists(), "experimental": e["kind"] in EXPERIMENTAL,
+                             "steerable": e["kind"] == "claude-code" and bool(e["settings"].get("resume_argv"))}
+                            for e in alist.public()],
+                "kinds": ADAPTER_INFO, "presets": ADAPTER_PRESETS,
+                "note": "Only a Claude Code adapter with a resume command can be steered. Everything else is read-only."}
+
+    @router.post("/adapters")
+    def add_adapter(body: dict = Body(...)):
+        need_on()
+        entry = lerr(alist.add, body)
+        ctx.audit("ccadapter_add", id=entry["id"], kind=entry["kind"])
+        return {"ok": True, "entry": entry}
+
+    @router.put("/adapters/order")
+    def order_adapters(body: dict = Body(...)):
+        need_on()
+        return {"entries": lerr(alist.reorder, body.get("ids"))}
+
+    @router.put("/adapters/{ident}")
+    def edit_adapter(ident: str, body: dict = Body(...)):
+        need_on()
+        return {"ok": True, "entry": lerr(alist.update, ident, body)}
+
+    @router.delete("/adapters/{ident}")
+    def delete_adapter(ident: str):
+        need_on()
+        lerr(alist.delete, ident)
+        ctx.audit("ccadapter_delete", id=ident)
+        return {"ok": True}
 
     @router.get("/jobs/{job_id}")
     def job(job_id: str):
@@ -486,6 +888,9 @@ def _schema(props: dict, required: list[str]) -> dict:
 def _line(r: dict) -> str:
     age = r["age_seconds"]
     when = f"{age // 60} min ago" if age >= 60 else "just now"
+    if r.get("kind") not in (None, "claude-code"):               # a read-only adapter: log text, nobody to "say" anything
+        return (f"- {r['id']} [{r['status']}, {r.get('adapter_label', 'log')}, read-only] {r['project_name']} ({when}): "
+                f"last: \"{r.get('last_line') or r['last_assistant']}\"")
     return (f"- {r['id']} [{r['status']}] {r['project_name']} ({when}): you said: \"{r['last_user']}\" | "
             f"Claude said: \"{r['last_assistant']}\"")
 

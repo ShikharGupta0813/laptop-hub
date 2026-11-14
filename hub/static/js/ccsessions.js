@@ -2,11 +2,16 @@
 // nudge one. Routes: docs/api/ccsessions.md. Transcript text is untrusted: everything is shown with textContent only.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { openListSheet } from "./provlists.js";
 
 const CSS = "/css/ccsessions.css";
 const LABEL = { working: "Working", waiting: "Waiting on you", idle: "Idle" };
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
 const age = (s) => (s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`);
+
+// Which coding agents are watched: the adapter list (docs/api/ccsessions.md). Only Claude Code with a resume command can be steered.
+const ADAPTERS = { title: "Coding agents watched", base: "/api/ccsessions/adapters", noun: "agent", icon: "code",
+  intro: "Claude Code is ready-made. Add a log file or folder to watch any other tool (read-only), or the experimental Codex CLI adapter. Only a Claude Code entry with a resume command can be sent messages." };
 
 export function init(container, ctx) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
@@ -58,7 +63,7 @@ export function init(container, ctx) {
   function turns(d) {
     if (!d?.turns?.length) return el("p", { class: "ui-hint" }, "No readable turns yet.");
     return el("ol", { class: "cc-turns" }, ...d.turns.map((t) => el("li", { class: `cc-turn cc-turn--${t.role}` },
-      el("span", { class: "ui-caps" }, t.role === "user" ? "You" : "Claude"), el("span", { class: "cc-turn-text" }, t.text || "…"))));
+      el("span", { class: "ui-caps" }, t.role === "user" ? "You" : t.role === "log" ? "Log" : t.role === "assistant" ? "Claude" : "Agent"), el("span", { class: "cc-turn-text" }, t.text || "…"))));
   }
 
   function card(s) {
@@ -70,21 +75,24 @@ export function init(container, ctx) {
     return el("article", { class: `ui-card cc-card cc-card--${s.status} ui-stack`, "data-id": s.id },
       head,
       el("p", { class: "cc-state" }, (LABEL[s.status] || s.status) + (s.permission_pending ? " · a tool is waiting for a yes" : "")),
+      s.kind && s.kind !== "claude-code" ? el("p", { class: "cc-line" }, ui.badge(s.adapter_label || "log"), " ", ui.badge("read-only"), s.experimental ? ui.badge("experimental", "warn") : null) : null,
       s.last_user ? el("p", { class: "cc-line" }, el("span", { class: "ui-caps" }, "You "), s.last_user) : null,
-      s.last_assistant ? el("p", { class: "cc-line" }, el("span", { class: "ui-caps" }, "Claude "), s.last_assistant) : null,
+      s.last_assistant ? el("p", { class: "cc-line" }, el("span", { class: "ui-caps" }, s.kind && s.kind !== "claude-code" ? "Agent " : "Claude "), s.last_assistant) : null,
+      !s.last_user && !s.last_assistant && s.last_line ? el("p", { class: "cc-line" }, el("span", { class: "ui-caps" }, "Log "), s.last_line) : null,
       open ? turns(detail) : null,
-      open ? tellBox(s) : null);
+      open && !s.read_only ? tellBox(s) : null);
   }
 
   function paint() {
     if (loadError === "missing") { root.replaceChildren(ui.emptyState({ icon: "code", title: "Claude sessions aren't on this laptop", body: "Update the hub to get them." })); return; }
     if (loadError && !data) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load sessions", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
+    const sources = ui.button({ label: "Agents watched", icon: "layers", variant: "ghost", onClick: () => openListSheet(ADAPTERS) });
     if (!data.sessions.length) {
-      root.replaceChildren(ui.emptyState({ icon: "code", title: "No Claude Code sessions found", body: data.dir_exists ? "Start Claude Code on the laptop and it appears here." : "The Claude Code folder (~/.claude/projects) does not exist on this laptop yet." }));
+      root.replaceChildren(sources, ui.emptyState({ icon: "code", title: "No Claude Code sessions found", body: data.dir_exists ? "Start Claude Code on the laptop and it appears here." : "The Claude Code folder (~/.claude/projects) does not exist on this laptop yet." }));
       return;
     }
     const keep = document.activeElement?.classList?.contains("cc-say");
-    root.replaceChildren(...data.sessions.map(card));
+    root.replaceChildren(...data.sessions.map(card), sources);
     if (keep) root.querySelector(".cc-say")?.focus();
   }
 

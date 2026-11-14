@@ -359,7 +359,15 @@ NEVER = ("claude", "claude-login", "duo")   # duo asks Claude to plan and check,
 
 
 def pick_provider(config) -> str:
-    """The provider Autopilot may use: the default one, but never Claude. Gemini (if ready), else local."""
+    """The provider Autopilot may use: the default one, but never Claude. Gemini (if ready), else local.
+    An OpenAI-compatible endpoint the owner picked for routine drafts (Settings > Providers) comes first."""
+    try:
+        from . import endpoints
+        chosen = endpoints.cheap_choice(config)
+        if chosen:
+            return chosen
+    except Exception:  # noqa: BLE001 - a broken list must never stop the routine paths
+        pass
     choice = providers_mod.resolve(config, "auto")
     if choice not in NEVER and choice in ("local", "gemini"):
         return choice

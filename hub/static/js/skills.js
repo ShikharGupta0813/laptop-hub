@@ -3,6 +3,7 @@
 // Everything shown is text (textContent).
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { mountList } from "./provlists.js";
 
 const CSS = "/css/skills.css";
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -115,14 +116,66 @@ export function init(container) {
       el("section", { class: "ui-card ui-stack" }, ui.eyebrow("", "Install from a GitHub link"), own, el("div", { class: "sk-actions" }, go)));
   }
 
+  // ---- Sources tab: the owner's list of places skills can come from (docs/api/skills.md) ----
+  async function installFrom(entry, name = "") {
+    const base = `/api/skills/sources/${encodeURIComponent(entry.id)}`;
+    let facts;
+    try { facts = await api(`${base}/preview`, { method: "POST", json: { name } }); } catch (error) { fail(error); return; }
+    const message = `${facts.name}: ${facts.description || "no description"}\nFrom ${facts.source}, ${kb(facts.size)}. `
+      + "This is an untrusted skill: it is only text guidance and can never change your settings or grant permissions."
+      + (facts.scripts?.length ? ` It ships ${facts.scripts.length} script file(s); they are copied but never run.` : "");
+    if (!await ui.confirm({ title: `Install "${facts.name}"?`, message, confirmLabel: "Install" })) return;
+    try { await api(`${base}/install`, { method: "POST", json: { confirm: true, name } }); ui.toast(`Installed ${facts.name}.`, { kind: "good" }); await load({ quiet: true }); }
+    catch (error) { fail(error); }
+  }
+
+  function hostsBlock(data, box, reload) {
+    const hosts = data.hosts || [];
+    const input = el("input", { class: "ui-input", type: "text", placeholder: "git.example.com", "aria-label": "Git host to approve", maxlength: 100, autocapitalize: "off", spellcheck: "false" });
+    const approve = ui.button({ label: "Approve host", icon: "check", variant: "tonal", onClick: () => ui.busy(approve, async () => {
+      const host = input.value.trim();
+      if (!host) return;
+      if (!await ui.confirm({ title: `Trust ${host}?`, message: "Skills cloned from this host are written by whoever runs it. They are only text guidance and nothing in them is run, but they steer the assistant. Approve only hosts you trust.", confirmLabel: "Approve", danger: true })) return;
+      try { await api("/api/skills/hosts", { method: "POST", json: { host, confirm: true } }); input.value = ""; await reload(); } catch (error) { fail(error); }
+    }) });
+    const rows = hosts.map((h) => el("li", { class: "pl-host" }, el("code", {}, h), " ",
+      ui.button({ label: `Remove ${h}`, icon: "x", variant: "ghost", iconOnly: true, onClick: async () => { try { await api(`/api/skills/hosts/${encodeURIComponent(h)}`, { method: "DELETE" }); await reload(); } catch (error) { fail(error); } } })));
+    return el("section", { class: "ui-card ui-stack pl-hosts" }, ui.eyebrow("", "Approved Git hosts"),
+      ui.notice("github.com is always allowed. A Git source on any other host works only after you approve that host here.", { tone: "warn" }),
+      hosts.length ? el("ul", { class: "ui-stack" }, ...rows) : el("p", { class: "ui-hint" }, "No other hosts approved."), input, el("div", { class: "sk-actions" }, approve));
+  }
+
+  const SOURCE_CFG = {
+    base: "/api/skills/sources", noun: "source", icon: "layers",
+    intro: "Where skills can come from. GitHub sources feed the Browse tab. Git, folder and link sources install with the Install button on the row. Nothing from any source is ever run.",
+    extraActions(entry) {
+      if (entry.kind === "github") return [];
+      const b = ui.button({ label: "Install", icon: "download", variant: "primary", onClick: () => ui.busy(b, async () => {
+        if (entry.kind !== "folder") return installFrom(entry);
+        let list = [];
+        try { list = (await api(`/api/skills/sources/${encodeURIComponent(entry.id)}/catalog`)).skills || []; } catch (error) { fail(error); return; }
+        if (list.length <= 1) return installFrom(entry, list[0]?.folder || "");
+        const sh = ui.sheet({ title: "Which skill?", content: el("div", { class: "ui-stack" }, ...list.map((s) => ui.button({ label: s.name, variant: "tonal", block: true, onClick: () => { sh.close(); installFrom(entry, s.folder); } }))) });
+      }) });
+      return [b];
+    },
+    after: hostsBlock,
+  };
+
+  function sourcesTab() {
+    const box = el("div", { class: "ui-stack pl" });
+    mountList(box, SOURCE_CFG);
+    return box;
+  }
+
   function paint() {
     if (loadError === "off") { root.replaceChildren(ui.emptyState({ icon: "layers", title: "Skills are off", body: "Turn skills_enabled on in Settings." })); return; }
     if (loadError && !installed) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load skills", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
-    const tabs = ui.segmented({ label: "Skills", options: [{ value: "installed", label: `Installed (${installed.length})` }, { value: "browse", label: "Browse" }], value: tab,
+    const tabs = ui.segmented({ label: "Skills", options: [{ value: "installed", label: `Installed (${installed.length})` }, { value: "browse", label: "Browse" }, { value: "sources", label: "Sources" }], value: tab,
       onChange: (v) => { tab = v; paint(); if (v === "browse" && browse === null) loadBrowse(); } });
     root.replaceChildren(
       ui.notice("Skills are written by other people. They are only text guidance for the assistant: they can never change your settings or grant permissions, and any tool they suggest still asks you first.", { tone: "warn" }),
-      tabs, tab === "installed" ? installedTab() : browseTab());
+      tabs, tab === "installed" ? installedTab() : tab === "sources" ? sourcesTab() : browseTab());
   }
 
   load();
