@@ -42,6 +42,7 @@ from .config import Config
 from . import providers as providers_mod
 from .router import Router
 from . import redact as redact_mod
+from . import mcpclient
 from . import endpoints as endpoints_mod
 from . import cliprov as cliprov_mod
 from .duo import DuoClient, Supervisor
@@ -60,6 +61,7 @@ FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileop
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
 FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov", "cliprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
 FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull, deep thinking, bench (docs/api/models.md)
+FEATURE_MODULES = FEATURE_MODULES + ("mcpclient",)   # MCP client: the owner's server list, tools for the assistant (docs/api/mcp.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -191,8 +193,9 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     # The assistant may never write the hub's own config or audit log, wherever they are.
     # Work, laptop and Jarvis tools call this app's own routes (see assistant_tools.py); `app` is
     # created just below, so it is looked up on first use.
+    mcp_manager = mcpclient.McpManager(config, audit)     # MCP servers the owner added; their tools are offered dynamically
     assistant = deps.assistant or AssistantService(
-        config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p],
+        config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p], dynamic=mcp_manager,
         extra_tools=assistant_tools.build(lambda: app, config) + assistant_tools_more.build(lambda: app, config)
         + friday_tools.build(lambda: app, config) + council_tools.build(lambda: app, config)
         + skills_tools.build(lambda: app, config)
@@ -786,6 +789,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     ctx = Ctx(config=config, model_for=model_for, transcriber=transcriber, notes=store,
               need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file,
               config_path=config_path)
+    ctx.mcp = mcp_manager
     for name in FEATURE_MODULES:
         try:
             module = importlib.import_module(f".{name}", __package__)

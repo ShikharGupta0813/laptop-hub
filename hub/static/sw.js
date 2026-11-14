@@ -4,7 +4,7 @@ const VERSION = "v27-cli-models-wake-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css",
-  "/js/provlists.js", "/css/provlists.css",
+  "/js/provlists.js", "/css/provlists.css", "/js/mcp.js", "/css/mcp.css",
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
   "/css/automations.css", "/css/bookmarks.css", "/css/cards.css", "/css/design.css", "/css/english.css",
   "/css/expenses.css", "/css/fileops.css", "/css/files.css", "/css/focus.css", "/css/habits.css", "/css/home.css",

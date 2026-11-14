@@ -165,6 +165,12 @@ class Config:
     deep_think_timeout_min: float = 20.0    # a deep-thinking job is stopped after this many minutes
     deep_think_max_chars: int = 30000       # cap on thinking + answer characters per job
 
+    # MCP client (hub/mcpclient.py): the server list is in Settings > MCP servers (mcp_servers.json), nothing is enabled by default.
+    mcp_enabled: bool = True                # master switch: False hides every MCP tool and refuses to start any server
+    mcp_idle_seconds: int = 300             # a server with no call for this long is stopped (started again on the next call)
+    mcp_max_concurrent: int = 4             # tool calls running at once across all servers
+    mcp_call_timeout: int = 60              # seconds before one tool call is given up
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
