@@ -65,6 +65,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull,
 FEATURE_MODULES = FEATURE_MODULES + ("dictation",)   # laptop dictation hotkey (docs/api/dictation.md)
 FEATURE_MODULES = FEATURE_MODULES + ("mcpclient",)   # MCP client: the owner's server list, tools for the assistant (docs/api/mcp.md)
 FEATURE_MODULES = FEATURE_MODULES + ("lanes",)   # work lanes: routine work to the free Council first (docs/api/lanes.md)
+FEATURE_MODULES = FEATURE_MODULES + ("tts",)   # local text to speech, per-assistant voices, streaming synthesis (docs/api/tts.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 

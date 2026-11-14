@@ -69,3 +69,60 @@ export function splitName(input, jarvisName = "Jarvis", assistants = null) {
   if (tail) return { persona: who(tail[1]), text: raw.slice(0, tail.index).trim() };
   return { persona: "", text: raw.trim() };
 }
+
+// ---- streaming speech planner (voice mode) ---------------------------------------------------------------------
+// Turns the reply as it streams (markdown deltas) into short plain sentences that can be spoken at once. Code blocks,
+// tables and the tail of long lists are not read: one "I put the details on screen." is said instead. Links become "a
+// link". The text on screen is never touched; this only decides what is said. Total spoken length is capped like
+// speakable() so a long answer ends with "The rest is in the chat.".
+export const DETAILS_LINE = "I put the details on screen.";
+const MARK = "\u0001";
+export function createSpeechPlanner({ cap = SPEAK_CAP, listItems = 3 } = {}) {
+  let buf = "", chars = 0, noted = false, run = 0;
+  const state = { capped: false, any: false };
+  // Remove complete code fences (leave a marker). Text from an unfinished fence onwards is held back.
+  function scrub(text, final) {
+    let out = "", rest = text, held = "";
+    for (;;) {
+      const i = rest.indexOf("```");
+      if (i < 0) { out += rest; break; }
+      const j = rest.indexOf("```", i + 3);
+      if (j < 0) {
+        if (final) { out += rest.slice(0, i) + `\n${MARK}\n`; } else { out += rest.slice(0, i); held = rest.slice(i); }
+        break;
+      }
+      out += rest.slice(0, i) + `\n${MARK}\n`;
+      rest = rest.slice(j + 3);
+    }
+    return { out, held };
+  }
+  function lines(raw, out) {
+    for (const line of raw.split(/\n+/)) {
+      let l = line, hadMark = false;
+      if (l.includes(MARK)) { hadMark = true; l = l.split(MARK).join(" "); }
+      let skip = false;
+      if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) { run += 1; if (run > listItems) skip = true; } else if (l.trim()) run = 0;
+      if (/^\s*\|.*\|\s*$/.test(l)) skip = true;
+      if (skip) hadMark = true;
+      const plain = skip ? "" : speakable(l, cap).replace(/ The rest is in the chat\.$/, "");
+      if (plain && !state.capped) {
+        if (chars + plain.length > cap) { out.push("The rest is in the chat."); state.capped = true; }
+        else { chars += plain.length; out.push(plain); state.any = true; }
+      }
+      if (hadMark && !noted && !state.capped) { noted = true; out.push(DETAILS_LINE); state.any = true; }
+    }
+  }
+  return {
+    state,
+    feed(chunk, final = false) {
+      if (state.capped) { buf = ""; return []; }
+      const { out, held } = scrub(buf + String(chunk || ""), final);
+      const { done, rest } = splitStream(out, { final });
+      buf = rest + held;
+      const spoken = [];
+      for (const s of done) lines(s, spoken);
+      return spoken;
+    },
+    reset() { buf = ""; chars = 0; noted = false; run = 0; state.capped = false; state.any = false; },
+  };
+}

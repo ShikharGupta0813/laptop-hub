@@ -193,6 +193,9 @@ class Config:
     mcp_idle_seconds: int = 300             # a server with no call for this long is stopped (started again on the next call)
     mcp_max_concurrent: int = 4             # tool calls running at once across all servers
     mcp_call_timeout: int = 60              # seconds before one tool call is given up
+    # Voice output (hub/tts.py, docs/api/tts.md): 'browser' = the phone's own speechSynthesis, i.e. behaviour unchanged until the owner picks a voice.
+    tts_enabled: bool = True                # False: the hub never synthesises (the phone and laptop fall back to their old speech)
+    tts_engine: str = "browser"             # default engine: browser | sapi | piper | command (per-assistant choices live in assistants.json)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -312,6 +315,7 @@ def save(config: Config, path: Path) -> None:
         "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
         "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
         "formfill_never": list(config.formfill_never or []),
+        "tts_enabled": config.tts_enabled is not False, "tts_engine": str(config.tts_engine or "browser"),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

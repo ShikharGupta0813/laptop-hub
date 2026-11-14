@@ -167,6 +167,7 @@ export function init(container, ctx) {
         meta: ui.badge(S.redact_enabled === false ? "Off" : "On", S.redact_enabled === false ? "warn" : "good") })));
     rows.push(group("Assistants and rules",
       ui.listRow({ icon: "jarvis", tone: "accent", title: "Assistants", sub: "Jarvis, Friday and any you add: names, wake words, prompts", chevron: true, onClick: () => openSection("assistants") }),
+      ui.listRow({ icon: "volume", tone: "teal", title: "Voices", sub: "How each assistant sounds: natural laptop voices, test, headphones mode", chevron: true, onClick: () => openSection("voices") }),
       ui.listRow({ icon: "bell", tone: "orange", title: "Notification preferences", sub: "Now, batch, quiet only or off, for each kind of alert", chevron: true, onClick: () => openSection("notifyprefs") }),
       ui.listRow({ icon: "shield", tone: "bad", title: "My safety rules", sub: "Make anything touching a path or command stricter", chevron: true, onClick: () => openSection("safetyrules") }),
       ui.listRow({ icon: "eye-off", tone: "good", title: "My redaction rules", sub: "Words and patterns cloud AI must never see", chevron: true, onClick: () => openSection("redactrules") }),
