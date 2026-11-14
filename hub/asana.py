@@ -96,12 +96,15 @@ def default_http(method: str, url: str, headers: dict) -> tuple[int, dict]:
 
 
 class Poller:
-    def __init__(self, ctx: Ctx, *, http: Http | None = None, store: Any = None, triage: Callable | None = None):
+    def __init__(self, ctx: Ctx, *, http: Http | None = None, store: Any = None, triage: Callable | None = None,
+                 state_file: Any = None, workspace: str | None = None, use_work_token: bool = True):
         self.ctx = ctx
         self.http = http or default_http
         self.store = store or KeyringStore()
         self._triage = triage
-        self.state_file = JsonFile(ctx.config.data_path() / "asana_state.json")
+        self.state_file = state_file or JsonFile(ctx.config.data_path() / "asana_state.json")
+        self.workspace_override = workspace          # a task-source entry carries its own workspace (hub/tasksources.py)
+        self.use_work_token = use_work_token
         self.last_error = ""
         self.last_poll = ""
 
@@ -115,7 +118,7 @@ class Poller:
         return v if isinstance(v, int) and not isinstance(v, bool) and MIN_POLL <= v <= MAX_POLL else 5
 
     def token(self) -> str:
-        return self.store.get() or (find_token() or "")
+        return self.store.get() or ((find_token() or "") if self.use_work_token else "")
 
     # ---- the API ----
     def call(self, path: str, params: dict | None = None) -> dict:
@@ -144,7 +147,7 @@ class Poller:
         return d
 
     def workspace(self, me: dict | None = None) -> str:
-        chosen = str(getattr(self.ctx.config, "asana_workspace", "") or "")
+        chosen = self.workspace_override if self.workspace_override is not None else str(getattr(self.ctx.config, "asana_workspace", "") or "")
         if chosen:
             return chosen
         spaces = (me or self.me()).get("workspaces") or []
@@ -224,6 +227,20 @@ class Poller:
 
     def poll_once(self) -> dict:
         """One round. Returns {"baseline": bool, "events": n, "alerts": n}. Raises AsanaProblem (message is safe to show)."""
+        events, baseline = self.fetch_events()
+        raised = 0
+        for ev in events:
+            try:
+                raised += 1 if self.triage(ev) else 0
+            except Exception:  # noqa: BLE001 - one bad event must not lose the rest
+                log.info("asana event could not be triaged")
+        self.last_poll = self._now()
+        self.last_error = ""
+        return {"baseline": baseline, "events": len(events), "alerts": raised}
+
+    def fetch_events(self) -> "tuple[list[dict], bool]":
+        """The NEW events since the last round (and whether this round was only the baseline). Saves the poll state.
+        Nothing is triaged here: the task-source adapter (hub/tasksources.py) hands these to alerts itself."""
         me = self.me()
         my_gid = str(me.get("gid"))
         ws = self.workspace(me)
@@ -270,15 +287,7 @@ class Poller:
                                        "due_on": str(t.get("due_on") or ""), "link": str(t.get("permalink_url") or ""), "gid": gid})
                 new_known[gid]["story"] = newest
         self.state_file.save({"baseline_done": True, "tasks": new_known})
-        raised = 0
-        for ev in events:
-            try:
-                raised += 1 if self.triage(ev) else 0
-            except Exception:  # noqa: BLE001 - one bad event must not lose the rest
-                log.info("asana event could not be triaged")
-        self.last_poll = self._now()
-        self.last_error = ""
-        return {"baseline": baseline, "events": len(events), "alerts": raised}
+        return events, baseline
 
     def _now(self) -> str:
         import datetime as dt

@@ -50,11 +50,13 @@ log = logging.getLogger("hub.alerts")
 STATUSES = ("new", "seen", "handled", "snoozed")
 KINDS = ("task", "question", "meeting", "mention", "other")
 SOURCE_LABEL = {"whatsapp": "WhatsApp", "slack": "Slack", "teams": "Teams", "gmail": "Gmail", "gchat": "Google Chat",
-                "asana": "Asana", "jira": "Jira", "email": "Email", "sms": "SMS", "test": "Test", "other": "Notification"}
+                "asana": "Asana", "jira": "Jira", "trello": "Trello", "linear": "Linear", "github": "GitHub", "rss": "Feed",
+                "webhook": "Webhook", "telegram": "Telegram", "outlook": "Outlook", "email": "Email", "sms": "SMS", "test": "Test",
+                "other": "Notification"}
 APP_PACKAGES = {"whatsapp": "com.whatsapp", "slack": "com.Slack", "teams": "com.microsoft.teams",
                 "gmail": "com.google.android.gm", "gchat": "com.google.android.apps.dynamite", "asana": "com.asana.app"}
-WORK_SOURCES = ("slack", "teams", "asana", "jira", "gmail", "email", "gchat", "test")
-TASK_SOURCES = ("asana", "jira")
+WORK_SOURCES = ("slack", "teams", "asana", "jira", "trello", "linear", "github", "gmail", "email", "gchat", "test")
+TASK_SOURCES = ("asana", "jira", "trello", "linear", "github")
 
 MAX_ALERTS = 200
 MAX_RECENT = 400
@@ -171,6 +173,8 @@ def normalize_source(event: dict) -> str:
         return "asana"
     if "jira" in probe or "atlassian" in probe:
         return "jira"
+    if given in ("trello", "linear", "github", "rss", "webhook", "telegram", "outlook"):
+        return given
     if "com.google.android.gm" in probe or "gmail" in probe:
         return "gmail"
     if "dynamite" in probe or "google chat" in probe or given == "chat":
@@ -624,8 +628,10 @@ class Alerts:
         except Exception:  # noqa: BLE001 - the rules stand when the hook breaks
             log.info("alerts classifier hook failed")
 
-    def ingest(self, raw: Any) -> dict | None:
-        """Classify, de-duplicate, build the plan or draft, store, deliver. Returns the Alert or None."""
+    def ingest(self, raw: Any, *, trusted: bool = False) -> dict | None:
+        """Classify, de-duplicate, build the plan or draft, store, deliver. Returns the Alert or None.
+        `trusted` is only passed by in-process pollers (hub/tasksources.py) whose source the owner switched on in Settings:
+        it skips the watched-list check. Events from the phone or from POST /ingest are never trusted."""
         ev = self.clean_event(raw)
         if not self.enabled:
             return None
@@ -636,7 +642,7 @@ class Alerts:
         preview = tidy(ev["title"] + ": " + ev["text"] if has_both else message, PREVIEW_CHARS)
         sender = ev["sender"] or ev["title"] or "Unknown sender"
         due_today = bool(ev["due_on"]) and ev["due_on"] <= now.date().isoformat()
-        if not is_watched(ev, effective_sources(self.ctx.config)):
+        if not trusted and not is_watched(ev, effective_sources(self.ctx.config)):
             return None                                 # a source the owner removed from the watched list
         with self.lock:
             d = self._load()
@@ -996,8 +1002,11 @@ class Alerts:
         raised = 0
         try:
             accounts = await maybe(gx.list_accounts(self.ctx)) or []
-            for acct in accounts[:5]:
-                found = await maybe(gx.search(self.ctx, acct, EMAIL_QUERY)) or []
+            for acct in accounts[:12]:
+                if isinstance(acct, dict):
+                    if acct.get("connected") is False or acct.get("alerts") is False:
+                        continue                       # not signed in, or the owner switched alerts off for this account
+                found = await maybe(gx.search(self.ctx, acct.get("id") if isinstance(acct, dict) else acct, EMAIL_QUERY)) or []
                 for m in found[:30]:
                     if not isinstance(m, dict):
                         continue
@@ -1005,7 +1014,7 @@ class Alerts:
                     sender = m.get("from") or m.get("sender") or ""
                     subject = m.get("subject") or ""
                     snippet = m.get("snippet") or m.get("text") or m.get("body") or ""
-                    key = f"{acct if isinstance(acct, str) else (acct or {}).get('email', '')}:{mid}" if mid else ""
+                    key = f"{acct if isinstance(acct, str) else (acct or {}).get('id', '')}:{mid}" if mid else ""
                     try:
                         a = self.ingest({"source": "email", "app": "email-poll", "sender": sender, "title": subject, "text": snippet,
                                          "mail_id": key})
@@ -1038,8 +1047,10 @@ def engine_for(ctx: Ctx) -> Alerts:
     return engine
 
 
-def triage(ctx: Ctx, event: dict) -> dict | None:
+def triage(ctx: Ctx, event: dict, *, trusted: bool = False) -> dict | None:
     """Classify one incoming event and, when it matters, store it and deliver it. The Alert dict, or None."""
+    if trusted:
+        return engine_for(ctx).ingest(event, trusted=True)
     return engine_for(ctx).ingest(event)
 
 
@@ -1103,6 +1114,12 @@ def make_router(ctx: Ctx, *, engine: Alerts | None = None) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         return {"alert": eng.public(alert), "delivery": alert["delivery"], "spoken_text": alert["speech"]}
+
+    @router.get("/capture-config")
+    def capture_config():
+        """The packages the phone capture app should listen to: what the owner switched on in Settings > Alerts."""
+        from . import sources
+        return sources.capture_config(ctx)
 
     @router.get("/pending")
     def pending():

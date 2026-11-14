@@ -106,6 +106,14 @@ def _asana_http(exc: AsanaError) -> HTTPException:
     return HTTPException(status, exc.message)
 
 
+def _when(value: str) -> float:
+    try:
+        d = dt.datetime.fromisoformat(value)
+        return d.timestamp()
+    except (ValueError, OverflowError, OSError):
+        return 0.0
+
+
 def make_router(ctx: Ctx, *, asana=None, today: Callable[[], dt.date] | None = None,
                 clock: Callable[[], float] = time.monotonic, bridge: Bridge | None = None) -> APIRouter:
     """`asana`, `today`, `clock` and `bridge` exist so tests need no network or real clock."""
@@ -250,18 +258,37 @@ def make_router(ctx: Ctx, *, asana=None, today: Callable[[], dt.date] | None = N
             start = dt.date.fromisoformat(day) if day else today()
         except ValueError:
             raise HTTPException(400, "day must look like 2026-11-04.") from None
-        agenda = await need("calendar")
+        # The calendar is a LIST (hub/calendars.py): Google (this Jarvis setup, can be switched off) plus any iCal feeds.
         try:
-            found = await asyncio.to_thread(agenda.meetings, start, days)
-        except RuntimeError as exc:
-            raise HTTPException(503, _safe(exc)) from None
-        except Exception as exc:
-            raise HTTPException(502, f"Couldn't read your calendar: {_safe(exc)}") from None
+            from .. import calendars
+            feeds = await asyncio.to_thread(calendars.meetings_between, ctx, start, days)
+            use_google = calendars.google_enabled(ctx)
+            google_color = calendars.google_color(ctx)
+        except Exception:  # noqa: BLE001 - the feed list must never break the Google calendar
+            feeds, use_google, google_color = [], True, ""
         out = []
-        for m in found:
-            link = m.link if str(m.link).startswith(("https://", "http://")) else ""
-            out.append({"title": m.title, "start": m.start.isoformat(), "end": m.end.isoformat(),
-                        "all_day": bool(m.all_day), "link": link, "platform": m.platform() if link else ""})
+        if use_google:
+            try:
+                agenda = await need("calendar")
+                found = await asyncio.to_thread(agenda.meetings, start, days)
+            except HTTPException:
+                if not feeds:
+                    raise
+                found = []
+            except RuntimeError as exc:
+                raise HTTPException(503, _safe(exc)) from None
+            except Exception as exc:
+                raise HTTPException(502, f"Couldn't read your calendar: {_safe(exc)}") from None
+            for m in found:
+                link = m.link if str(m.link).startswith(("https://", "http://")) else ""
+                row = {"title": m.title, "start": m.start.isoformat(), "end": m.end.isoformat(),
+                       "all_day": bool(m.all_day), "link": link, "platform": m.platform() if link else ""}
+                if feeds:
+                    row.update({"feed": "Google", "color": google_color})
+                out.append(row)
+        if feeds:
+            out += feeds
+            out.sort(key=lambda r: (not r["all_day"], _when(r["start"])))
         return {"meetings": out}
 
     # ---- email ---------------------------------------------------------------------------

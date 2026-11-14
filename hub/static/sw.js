@@ -25,7 +25,7 @@ const SHELL = [
   "/css/devto.css", "/js/devto.js", "/js/watch.js", "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js",
   "/vendor/xterm.js", "/vendor/xterm.css", "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2",
   "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/css/alerts.css",
-  "/js/alerts.js",
+  "/js/alerts.js", "/js/sources.js",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

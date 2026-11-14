@@ -10,9 +10,15 @@ Accounts
 Scopes are the smallest that do the job: `gmail.readonly` always; `gmail.send` ONLY after the owner switches
 "allow sending from this account" on (that needs a fresh consent). Never `mail.google.com`.
 
-Privacy: mail from any account whose label is not "personal" is "protected". Unless `gmail_company_ai_allowed` is
-true, its message BODIES are never given to a cloud model (only sender, subject and Gmail's snippet, and only a
-local model may read a body). hub.redact is applied to anything that does go to a cloud model.
+Third kind of account (hub/mailaccounts.py): a generic IMAP/SMTP account (Outlook / Office 365, Yahoo, Zoho, iCloud, a company
+server). Its password lives in the keyring under `imap:<id>`. It is read-only unless "allow sending" is on, and sending is only
+ever an explicit send_mail call.
+
+Tags are free text chips (personal, company, anything). Privacy is a PER-ACCOUNT switch `cloud_ai_allowed`: when the owner never
+set it, it defaults to False for an account tagged company or work (then `gmail_company_ai_allowed` in settings, the old global
+switch, may still allow it) and True for any other tag. When it is False the message BODIES of that account are never given to
+a cloud model (only sender, subject and the snippet; only a local model may read a body). hub.redact is applied to anything
+that does go to a cloud model.
 
 The module-level functions at the bottom are the interface other modules import (inside try/except ImportError).
 They are BLOCKING (they do network calls): from async code use `await asyncio.to_thread(...)`.
@@ -55,6 +61,11 @@ REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 LEGACY_SCOPES = ["imap: read-only (app password)", "smtp: send (app password)"]
 MAX_ACCOUNTS = 4
+MAX_IMAP_ACCOUNTS = 12
+MAX_TAGS = 8
+PROTECTED_TAGS = ("company", "work")
+IMAP_PREFIX = "imap:"
+_UNSET = object()
 FLOW_TTL = 600
 MAX_ATTACH_BYTES = 20 * 1024 * 1024
 LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,29}$")
@@ -199,6 +210,24 @@ def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
+def tags_protected(tags) -> bool:
+    """True when any tag is company or work (the default that keeps mail bodies off cloud AI)."""
+    return any(str(t).strip().lower() in PROTECTED_TAGS for t in tags or [])
+
+
+def clean_tags(tags: Any) -> list[str]:
+    if not isinstance(tags, list) or len(tags) > MAX_TAGS:
+        raise GmailxError(f"Tags are a list of up to {MAX_TAGS} short words.")
+    out: list[str] = []
+    for t in tags:
+        t = str(t).strip()
+        if not LABEL_RE.match(t):
+            raise GmailxError("A tag is 1 to 30 letters, digits, spaces, . _ -.")
+        if t.lower() not in [x.lower() for x in out]:
+            out.append(t)
+    return out
+
+
 def is_protected_label(label: str) -> bool:
     """Only the label "personal" is ordinary. Anything else (company, a custom word) is treated as work mail."""
     return str(label or "").strip().lower() != DEFAULT_LABEL
@@ -227,7 +256,8 @@ def _ts_of(date: str) -> float:
 
 class Gmailx:
     def __init__(self, ctx: Ctx, *, secrets_store=None, http: Callable | None = None, legacy=None,
-                 now: Callable[[], float] = time.time, listen: bool = True):
+                 now: Callable[[], float] = time.time, listen: bool = True, imap_factory: Callable | None = None,
+                 smtp_factory: Callable | None = None):
         self.ctx = ctx
         self.config = ctx.config
         self.secrets = secrets_store or KeyringStore()
@@ -235,6 +265,8 @@ class Gmailx:
         self.legacy = legacy or LegacyBridge(ctx.config)
         self.now = now
         self.listen = listen
+        self.imap_factory = imap_factory      # tests: (entry, password) -> a mailbox object
+        self.smtp_factory = smtp_factory      # tests: (entry) -> an smtplib.SMTP-like object
         self.lock = threading.RLock()
         self.flows: dict[str, dict] = {}
 
@@ -258,6 +290,22 @@ class Gmailx:
     def company_ai_allowed(self) -> bool:
         return getattr(self.config, "gmail_company_ai_allowed", False) is True
 
+    def _imap_password(self, account_id: str) -> str:
+        try:
+            return self.secrets.get(IMAP_PREFIX + account_id) or ""
+        except GmailxError:
+            return ""
+
+    def _imap_box(self, account_id: str):
+        from . import mailaccounts
+        entry = self._entry(account_id)
+        password = self._imap_password(account_id)
+        if not password:
+            raise GmailxError("This account has no saved password. Edit it and enter the password again.", 409)
+        if self.imap_factory is not None:
+            return self.imap_factory(entry, password)
+        return mailaccounts.open_box(entry, password)
+
     def _entry(self, account_id: str) -> dict:
         entry = self._load()["accounts"].get(str(account_id))
         if entry is None:
@@ -275,6 +323,11 @@ class Gmailx:
                 connected = False
             scopes = list(LEGACY_SCOPES) if connected else []
             reconsent = False
+        elif entry.get("kind") == "imap":
+            connected = bool(self._imap_password(account_id)) and not entry.get("needs_reconnect")
+            address = entry.get("address") or entry.get("username") or ""
+            scopes = ["imap: read-only"] + (["smtp: send"] if entry.get("smtp_host") and entry.get("send_enabled") else [])
+            reconsent = False
         else:
             token = self._token_blob(account_id)
             connected = bool(token and token.get("refresh_token")) and not entry.get("needs_reconnect")
@@ -282,9 +335,33 @@ class Gmailx:
             scopes = list(token.get("scopes") or []) if token else []
             reconsent = bool(entry.get("send_enabled")) and SCOPE_SEND not in scopes
         label = entry.get("label") or DEFAULT_LABEL
-        return {"id": account_id, "label": label, "address": address, "connected": connected, "scopes": scopes,
+        view = {"id": account_id, "label": label, "address": address, "connected": connected, "scopes": scopes,
                 "kind": entry.get("kind", "oauth"), "send_enabled": bool(entry.get("send_enabled")),
-                "reconsent_required": reconsent, "protected": is_protected_label(label)}
+                "reconsent_required": reconsent, "tags": self._tags(entry),
+                "cloud_ai_allowed": self._cloud_ok(entry), "cloud_ai_default": self._cloud_default(entry),
+                "cloud_ai_explicit": isinstance(entry.get("cloud_ai_allowed"), bool), "alerts": entry.get("alerts") is not False}
+        view["protected"] = not view["cloud_ai_allowed"]
+        if entry.get("kind") == "imap":
+            view.update({k: entry.get(k) for k in ("imap_host", "imap_port", "imap_security", "smtp_host", "smtp_port",
+                                                   "smtp_security", "username")})
+            view["has_password"] = bool(self._imap_password(account_id))
+        return view
+
+    @staticmethod
+    def _tags(entry: dict) -> list[str]:
+        t = entry.get("tags")
+        if isinstance(t, list) and t:
+            return [str(x) for x in t]
+        return [str(entry.get("label") or DEFAULT_LABEL)]
+
+    def _cloud_default(self, entry: dict) -> bool:
+        if tags_protected(self._tags(entry)):
+            return self.company_ai_allowed()
+        return True
+
+    def _cloud_ok(self, entry: dict) -> bool:
+        v = entry.get("cloud_ai_allowed")
+        return v if isinstance(v, bool) else self._cloud_default(entry)
 
     def list_accounts(self) -> list[dict]:
         accounts = self._load()["accounts"]
@@ -301,7 +378,10 @@ class Gmailx:
             return DEFAULT_LABEL
 
     def cloud_ai_allowed(self, account_id: str) -> bool:
-        return (not is_protected_label(self.tag_of(account_id))) or self.company_ai_allowed()
+        try:
+            return self._cloud_ok(self._entry(account_id))
+        except GmailxError:
+            return True
 
     # -- tokens
 
@@ -395,7 +475,7 @@ class Gmailx:
         client = self._client()
         if not client:
             raise GmailxError("Add your Google OAuth client id and secret first (Desktop app type; see the Gmail guide).", 409)
-        if not account_id and len([a for a in self._load()["accounts"].values() if a.get("kind") != "legacy"]) >= MAX_ACCOUNTS:
+        if not account_id and len([a for a in self._load()["accounts"].values() if a.get("kind", "oauth") == "oauth"]) >= MAX_ACCOUNTS:
             raise GmailxError(f"At most {MAX_ACCOUNTS} extra accounts can be connected.")
         scopes = [SCOPE_READ] + ([SCOPE_SEND] if send_enabled else [])
         state = secrets.token_urlsafe(24)
@@ -521,7 +601,11 @@ class Gmailx:
 
     # -- changing and removing
 
-    def update(self, account_id: str, label: str | None = None, send_enabled: bool | None = None) -> dict:
+    def update(self, account_id: str, label: str | None = None, send_enabled: bool | None = None, *, tags: Any = _UNSET,
+               cloud_ai_allowed: Any = _UNSET, imap: dict | None = None, password: str | None = None,
+               alerts: bool | None = None) -> dict:
+        """Edit an account. `tags` replaces the chips; `cloud_ai_allowed` True/False pins the switch, None goes back to the
+        default; `imap` (server settings) and `password` apply to IMAP accounts only. The password is never echoed."""
         with self.lock:
             data = self._load()
             entry = data["accounts"].get(account_id)
@@ -534,9 +618,87 @@ class Gmailx:
                 entry["label"] = label
             if send_enabled is not None:
                 entry["send_enabled"] = bool(send_enabled)
+            if tags is not _UNSET:
+                entry["tags"] = clean_tags(tags)
+            if alerts is not None:
+                entry["alerts"] = bool(alerts)
+            if cloud_ai_allowed is not _UNSET:
+                if cloud_ai_allowed is None:
+                    entry.pop("cloud_ai_allowed", None)
+                elif isinstance(cloud_ai_allowed, bool):
+                    entry["cloud_ai_allowed"] = cloud_ai_allowed
+                else:
+                    raise GmailxError("cloud_ai_allowed is true, false or null.")
+            if imap or password:
+                if entry.get("kind") != "imap":
+                    raise GmailxError("Server settings and passwords are only for IMAP accounts.")
+                from . import mailaccounts
+                try:
+                    if imap:
+                        entry.update(mailaccounts.clean_settings(imap, entry))
+                except mailaccounts.ImapProblem as exc:
+                    raise GmailxError(str(exc)) from None
+                if password:
+                    self._set_imap_password(account_id, password)
+                    entry.pop("needs_reconnect", None)
             self._save(data)
         self.ctx.audit("gmail_account_update", account=account_id, label=entry.get("label"), send=bool(entry.get("send_enabled")))
         return self._view(account_id, entry)
+
+    def _set_imap_password(self, account_id: str, password: str) -> None:
+        password = str(password or "").strip()
+        if not 1 <= len(password) <= 300 or any(c in password for c in "\r\n\x00"):
+            raise GmailxError("That password cannot be used.")
+        self.secrets.set(IMAP_PREFIX + account_id, password)
+
+    def add_imap(self, label: str, address: str, password: str, *, tags: Any = None, send_enabled: bool = False,
+                 cloud_ai_allowed: Any = None, **server) -> dict:
+        """Add a generic IMAP/SMTP account. `server` = preset, imap_host, imap_port, imap_security, smtp_host, smtp_port,
+        smtp_security, username. Logs in once to check the password unless `server` says otherwise (tests use a fake)."""
+        from . import mailaccounts
+        label = str(label or "").strip()
+        if not LABEL_RE.match(label):
+            raise GmailxError("Give the account a short label such as work (letters, digits, spaces, . _ -).")
+        address = str(address or "").strip()
+        if not ADDR_RE.match(address):
+            raise GmailxError("Give the account's email address.")
+        server.setdefault("username", address)
+        try:
+            settings = mailaccounts.clean_settings({k: v for k, v in server.items() if k in (
+                "preset", "imap_host", "imap_port", "imap_security", "smtp_host", "smtp_port", "smtp_security", "username")})
+        except mailaccounts.ImapProblem as exc:
+            raise GmailxError(str(exc)) from None
+        with self.lock:
+            data = self._load()
+            if len([a for a in data["accounts"].values() if a.get("kind") == "imap"]) >= MAX_IMAP_ACCOUNTS:
+                raise GmailxError(f"At most {MAX_IMAP_ACCOUNTS} mail-server accounts can be added.")
+            base = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:20] or "mail"
+            account_id, n = "imap-" + base, 1
+            while account_id in data["accounts"]:
+                n += 1
+                account_id = f"imap-{base}-{n}"
+            entry = {"label": label, "kind": "imap", "address": address, "send_enabled": bool(send_enabled),
+                     "tags": clean_tags(tags if tags else [label]), **settings}
+            if isinstance(cloud_ai_allowed, bool):
+                entry["cloud_ai_allowed"] = cloud_ai_allowed
+            data["accounts"][account_id] = entry
+            self._set_imap_password(account_id, password)
+            self._save(data)
+        try:
+            self._imap_box(account_id).unread_count("INBOX")      # one harmless call: does the login work?
+        except Exception as exc:  # noqa: BLE001 - a login that fails is not kept
+            self._forget(account_id)
+            msg = str(exc) if exc.__class__.__name__ == "MailBoxError" else "Couldn't sign in to that mail server."
+            raise GmailxError(msg.replace("Gmail", "The mail server"), 400) from None
+        self.ctx.audit("mail_account_added", account=account_id, kind="imap")
+        return self._view(account_id, entry)
+
+    def _forget(self, account_id: str) -> None:
+        with self.lock:
+            data = self._load()
+            data["accounts"].pop(account_id, None)
+            self._save(data)
+        self.secrets.delete(IMAP_PREFIX + account_id)
 
     def disconnect(self, account_id: str) -> None:
         with self.lock:
@@ -547,8 +709,8 @@ class Gmailx:
             if entry.get("kind") == "legacy":
                 raise GmailxError("The default account is your Gmail app password. Remove it with: python -m hub setup --only gmail "
                                   "(or delete the jarvis-gmail entry in the Windows Credential Manager).")
-            blob = self._token_blob(account_id)
-            self.secrets.delete(account_id)
+            blob = self._token_blob(account_id) if entry.get("kind") != "imap" else None
+            self.secrets.delete(IMAP_PREFIX + account_id if entry.get("kind") == "imap" else account_id)
             data["accounts"].pop(account_id, None)
             self._save(data)
         if blob and blob.get("refresh_token"):   # best effort: tell Google too
@@ -582,8 +744,11 @@ class Gmailx:
 
     def _search_one(self, account_id: str, query: str, limit: int) -> list[dict]:
         tag = self.tag_of(account_id)
-        if self._entry(account_id).get("kind") == "legacy":
+        kind = self._entry(account_id).get("kind")
+        if kind == "legacy":
             return self._legacy_items(account_id, tag, query, limit)
+        if kind == "imap":
+            return self._imap_items(account_id, tag, query, limit)
         found = self._api(account_id, "GET", "/messages", params={"q": query, "maxResults": limit})
         out = []
         for ref in (found.get("messages") or [])[:limit] if isinstance(found, dict) else []:
@@ -595,10 +760,18 @@ class Gmailx:
                 out.append(self._item(account_id, tag, m))
         return out
 
+    def _imap_items(self, account_id: str, tag: str, query: str, limit: int, *, hours: float | None = None,
+                    unread: bool | None = None) -> list[dict]:
+        from .inbox import MailBoxError
+        try:
+            return self._legacy_items(account_id, tag, query, limit, hours=hours, unread=unread, box=self._imap_box(account_id))
+        except MailBoxError as exc:
+            raise GmailxError(str(exc).replace("Gmail", "The mail server"), exc.status if exc.status in (400, 404, 409) else 502) from None
+
     def _legacy_items(self, account_id: str, tag: str, query: str, limit: int, *, hours: float | None = None,
-                      unread: bool | None = None) -> list[dict]:
+                      unread: bool | None = None, box: Any = None) -> list[dict]:
         from .inbox import MailQuery, parse_message
-        box = self.legacy.box()
+        box = box or self.legacy.box()
         q = query.strip()
         text = "" if q.startswith(("after:", "is:", "in:")) else q
         raws = box.list("INBOX", MailQuery(unread=unread, text=text), max(limit, 50) if hours else limit, 6144)
@@ -631,8 +804,11 @@ class Gmailx:
         items: list[dict] = []
         for aid in self._connected_ids(account_id):
             try:
-                if self._entry(aid).get("kind") == "legacy":
+                kind = self._entry(aid).get("kind")
+                if kind == "legacy":
                     items += self._legacy_items(aid, self.tag_of(aid), "", max_results, hours=hours)
+                elif kind == "imap":
+                    items += self._imap_items(aid, self.tag_of(aid), "", max_results, hours=hours)
                 else:
                     items += self._search_one(aid, f"after:{after}", max_results)
             except GmailxError:
@@ -653,6 +829,13 @@ class Gmailx:
                     items = self._legacy_items(aid, v["label"], "", 5, unread=True)
                     row["unread"] = self.legacy.box().unread_count("INBOX")
                     row["items"] = items
+                elif v["kind"] == "imap":
+                    from .inbox import MailBoxError
+                    try:
+                        row["unread"] = self._imap_box(aid).unread_count("INBOX")
+                    except MailBoxError as exc:
+                        raise GmailxError(str(exc).replace("Gmail", "The mail server")) from None
+                    row["items"] = self._imap_items(aid, v["label"], "", 5, unread=True)
                 else:
                     label = self._api(aid, "GET", "/labels/INBOX")
                     row["unread"] = int(label.get("messagesUnread") or 0) if isinstance(label, dict) else 0
@@ -674,9 +857,14 @@ class Gmailx:
         self._connected_ids(account_id)
         tag = self.tag_of(account_id)
         cloud = str(destination).lower() not in LOCAL_PROVIDERS
-        if self._entry(account_id).get("kind") == "legacy":
-            from .inbox import parse_message
-            raw = self.legacy.box().get("INBOX", int(message_id), 3_000_000)
+        kind = self._entry(account_id).get("kind")
+        if kind in ("legacy", "imap"):
+            from .inbox import MailBoxError, parse_message
+            try:
+                box = self.legacy.box() if kind == "legacy" else self._imap_box(account_id)
+                raw = box.get("INBOX", int(message_id), 3_000_000)
+            except MailBoxError as exc:
+                raise GmailxError(str(exc).replace("Gmail", "The mail server"), 502) from None
             if raw is None:
                 raise GmailxError("Gmail has no such message.", 404)
             m = parse_message(raw)
@@ -717,7 +905,7 @@ class Gmailx:
                 raise GmailxError(f"The {v['label']} account isn't connected.", 409)
             if not v["send_enabled"]:
                 raise GmailxError(f"Sending from the {v['label']} account is switched off. Turn on 'Allow sending from this account' "
-                                  "in Settings, Gmail accounts first.", 403)
+                                  "in Settings, Mail accounts first.", 403)
             recipients = [a.strip() for a in re.split(r"[;,]", str(to or "")) if a.strip()]
             if not recipients or len(recipients) > 20 or not all(ADDR_RE.match(a) for a in recipients):
                 raise GmailxError("The recipient must be one or more plain email addresses.")
@@ -730,6 +918,23 @@ class Gmailx:
                 if attachments:
                     raise GmailxError("Attachments aren't supported on the default (app password) account.")
                 self.legacy.send(", ".join(recipients), subject, str(body or ""))
+                mid = ""
+            elif v["kind"] == "imap":
+                from . import mailaccounts
+                entry = self._entry(account_id)
+                files = []
+                total = 0
+                for att in attachments or []:
+                    name, data, mime = _load_attachment(att)
+                    total += len(data)
+                    if total > MAX_ATTACH_BYTES:
+                        raise GmailxError("The attachments are over 20 MB.")
+                    files.append((name, data, mime))
+                try:
+                    mailaccounts.send_smtp(entry, self._imap_password(account_id), v["address"], recipients, subject,
+                                           str(body or ""), attachments=files, smtp_factory=self.smtp_factory)
+                except mailaccounts.ImapProblem as exc:
+                    raise GmailxError(str(exc), 502) from None
                 mid = ""
             else:
                 if SCOPE_SEND not in v["scopes"]:
@@ -867,6 +1072,34 @@ class CompleteBody(BaseModel):
 class UpdateBody(BaseModel):
     label: str | None = None
     send_enabled: StrictBool | None = None
+    tags: list[str] | None = None
+    cloud_ai_allowed: StrictBool | None = None      # null in the JSON = back to the default (see model_fields_set)
+    alerts: StrictBool | None = None                # include this account in urgent-alert mail polling
+    password: str | None = None                      # IMAP accounts only; never echoed
+    imap_host: str | None = None
+    imap_port: int | None = None
+    imap_security: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_security: str | None = None
+    username: str | None = None
+
+
+class ImapBody(BaseModel):
+    label: str
+    address: str
+    password: str
+    preset: str | None = None
+    tags: list[str] | None = None
+    send_enabled: StrictBool = False
+    cloud_ai_allowed: StrictBool | None = None
+    imap_host: str | None = None
+    imap_port: int | None = None
+    imap_security: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_security: str | None = None
+    username: str | None = None
 
 
 class SendBody(BaseModel):
@@ -889,8 +1122,9 @@ def make_router(ctx: Ctx, **overrides) -> APIRouter:
 
     @router.get("/accounts")
     async def accounts():
+        from . import mailaccounts
         return {"accounts": await run(svc.list_accounts), "company_ai_allowed": svc.company_ai_allowed(),
-                "client_configured": svc.client_configured()}
+                "client_configured": svc.client_configured(), "presets": mailaccounts.PRESETS}
 
     @router.post("/accounts/connect")
     async def connect(body: ConnectBody):
@@ -905,9 +1139,24 @@ def make_router(ctx: Ctx, **overrides) -> APIRouter:
     async def flow(state: str):
         return await run(svc.flow_status, state)
 
+    @router.post("/accounts/imap")
+    async def add_imap(body: ImapBody):
+        server = {k: getattr(body, k) for k in ("preset", "imap_host", "imap_port", "imap_security", "smtp_host", "smtp_port",
+                                                "smtp_security", "username") if getattr(body, k) is not None}
+        return await run(svc.add_imap, body.label, body.address, body.password, tags=body.tags,
+                         send_enabled=body.send_enabled, cloud_ai_allowed=body.cloud_ai_allowed, **server)
+
     @router.put("/accounts/{account_id}")
     async def update(account_id: str, body: UpdateBody):
-        view = await run(svc.update, account_id, body.label, body.send_enabled)
+        server = {k: getattr(body, k) for k in ("imap_host", "imap_port", "imap_security", "smtp_host", "smtp_port",
+                                                "smtp_security", "username") if getattr(body, k) is not None}
+        extra: dict = {}
+        if body.tags is not None:
+            extra["tags"] = body.tags
+        if "cloud_ai_allowed" in body.model_fields_set:
+            extra["cloud_ai_allowed"] = body.cloud_ai_allowed
+        view = await run(svc.update, account_id, body.label, body.send_enabled, imap=server or None,
+                         password=body.password, alerts=body.alerts, **extra)
         return view
 
     @router.delete("/accounts/{account_id}")

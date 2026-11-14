@@ -74,3 +74,12 @@ saved. Routes: `GET /status`, `POST /connect {token}`, `/disconnect`, `/workspac
 Endpoints used: `/users/me`, `/tasks?assignee=me&workspace=..&completed_since=now`, `/tasks/{gid}/stories` (comments are
 `resource_subtype: comment_added`). UNVERIFIED against a live account (built from docs and a fake HTTP layer). The first
 poll only records a baseline; later polls alert on new tasks and on comments not written by the owner.
+
+## Inbound sources (generalised)
+Everything the alerts listen to is now a list in Alerts > Settings: notification apps (WhatsApp, Slack, Teams, Gmail, Google Chat, Asana, Jira, Trello,
+Telegram, Outlook, SMS...), task sources (Asana, Jira, Trello, Linear, GitHub, RSS/Atom, inbound webhooks), mail accounts and calendar feeds, each
+with add, switch, test and delete. See `docs/api/sources.md`. `alerts_sources` is kept in step with the enabled apps. New route:
+`GET /api/alerts/capture-config` -> `{version, packages: [{package, label}]}` for the phone capture app. `hub.alerts.triage(ctx, event, trusted=False)`
+gained `trusted` (only in-process pollers of a source the owner switched on pass it). The Asana poller is now the ready-made `asana` entry of the
+task-source list; its routes and behaviour are unchanged. The mail poll (`poll_email`) now passes account ids (it used to pass the whole account
+dict) and skips accounts whose `alerts` flag is off.

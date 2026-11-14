@@ -3,6 +3,7 @@
 // HARD RULE: nothing is sent from here. "Copy" and "Open <app>" hand the draft to the OWNER, who taps send in that app.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { sourcesPanel } from "./sources.js";
 
 const CSS = "/css/alerts.css";
 const GROUPS = [["urgent", "Urgent"], ["today", "Today"], ["later", "Later"]];
@@ -36,7 +37,7 @@ export function init(container, ctx) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
   const root = el("div", { class: "al ui-stack ui-stack--lg" });
   container.append(root);
-  let tab = "list", data = { alerts: [], counts: {}, settings: {} }, loadError = "", asana = null, timer = null, seq = 0;
+  let tab = "list", data = { alerts: [], counts: {}, settings: {} }, loadError = "", asana = null, timer = null, seq = 0, panel = null;
   const open = new Set();
   const head = el("div", { class: "al-head" });
   const body = el("div", { class: "ui-stack ui-stack--lg" });
@@ -163,16 +164,13 @@ export function init(container, ctx) {
     const vips = el("textarea", { class: "ui-input al-vips", rows: "4", "aria-label": "VIP senders", placeholder: "One per line: a name, a phone number or an address" });
     vips.value = (s.vips || []).join("\n");
     const mk = (rows, label) => { const t = el("textarea", { class: "ui-input al-vips", rows: String(rows), "aria-label": label }); return t; };
-    const sources = mk(5, "Watched apps and sources"); sources.value = (s.sources || []).join("\n");
     const ruleBoxes = {};
     for (const [key, label] of RULE_LABELS) { ruleBoxes[key] = mk(4, label); ruleBoxes[key].value = ((s.rules || {})[key] || []).join("\n"); }
     return [
       el("div", { class: "ui-card ui-stack al-set" }, el("h3", { class: "ui-card__title" }, "Who always matters"),
         el("p", { class: "ui-card__sub" }, "Your manager and other important people. A message from them that asks for something is always urgent."), vips,
         ui.button({ label: "Save VIPs", icon: "check-circle", variant: "primary", onClick: () => saveSettings({ vips: vips.value.split("\n").map((x) => x.trim()).filter(Boolean) }, "VIPs saved.") })),
-      el("div", { class: "ui-card ui-stack al-set" }, el("h3", { class: "ui-card__title" }, "Watched apps and sources"),
-        el("p", { class: "ui-card__sub" }, "Every mention, question and request from these raises an alert. One per line: a name (whatsapp, slack, teams, gmail, asana, sms...) or part of an app package name. Remove a line to stop watching it."), sources,
-        ui.button({ label: "Save sources", icon: "check-circle", variant: "primary", onClick: () => saveSettings({ sources: lines(sources) }, "Sources saved.") })),
+      (panel ||= sourcesPanel({ onChanged: () => api("/api/alerts/settings").then((v) => { data.settings = v; }).catch(() => {}) })),
       el("div", { class: "ui-card ui-stack al-set" }, el("h3", { class: "ui-card__title" }, "Rules"),
         el("p", { class: "ui-card__sub" }, "Priority is worked out from who sent it (VIP list), the words and the time pressure. Edit the lists, one word or phrase per line."),
         ...RULE_LABELS.map(([key, label, sub]) => el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, label), el("span", { class: "al-note" }, sub), ruleBoxes[key])),
@@ -183,7 +181,6 @@ export function init(container, ctx) {
         el("div", { class: "al-row" }, el("span", {}, "Say urgent alerts on the laptop"), ui.switchControl({ checked: !!s.speak_on_laptop, label: "Say urgent alerts on the laptop",
           onChange: (on) => saveSettings({ speak_on_laptop: on }) })),
         el("p", { class: "ui-card__sub" }, `The phone reads them aloud while this app is open. Quiet hours (${s.quiet_start || "22:00"} to ${s.quiet_end || "07:00"}, set in Settings > Notifications) hold everything except critical alerts.`)),
-      asanaCard(),
       el("div", { class: "ui-card ui-stack al-set" }, el("h3", { class: "ui-card__title" }, "Test it end to end"),
         el("p", { class: "ui-card__sub" }, "Fires a fake critical alert: classification, plan, push and voice. Nothing is sent to anyone."),
         ui.button({ label: "Test alert", icon: "bell", variant: "tonal", onClick: async (e) => {

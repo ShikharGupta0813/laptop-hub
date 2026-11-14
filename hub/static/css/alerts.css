@@ -21,3 +21,6 @@
 #view-alerts .al-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 #view-alerts .al-vips, #view-alerts .ui-input { width: 100%; }
 .al-offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }
+#view-alerts .src-row { padding: var(--sp-2) 0; border-top: 1px solid var(--c-line); }
+#view-alerts .src-row:first-of-type { border-top: 0; }
+#view-alerts .src-title { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
