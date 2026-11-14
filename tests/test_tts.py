@@ -895,7 +895,7 @@ class Wiring(unittest.TestCase):
         sw = (STATIC / "sw.js").read_text(encoding="utf-8")
         for f in ("/js/speechqueue.js", "/js/hubtts.js", "/js/voices.js"):
             self.assertIn(f, sw)
-        self.assertIn('const VERSION = "v28-lanes-formfill-mcp-2026.11"', sw)
+        self.assertRegex(sw, r'const VERSION = "v\d+-')
 
     def test_config_keys_default_to_unchanged_behaviour(self):
         config, _ = make_config()

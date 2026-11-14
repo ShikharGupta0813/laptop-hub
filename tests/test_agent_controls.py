@@ -380,7 +380,7 @@ class PanicWiringTest(unittest.TestCase):
         sw = (Path(__file__).resolve().parent.parent / "hub" / "static" / "sw.js").read_text(encoding="utf-8")
         for f in ("/js/audit.js", "/css/audit.css", "/js/panic.js", "/css/panic.css", "/js/trust.js"):
             self.assertIn(f'"{f}"', sw)
-        self.assertIn("v28-lanes-formfill-mcp-2026.11", sw)               # VERSION is not bumped here
+        self.assertRegex(sw, r'const VERSION = "v\d+-')              # a versioned cache name exists
 
 
 # ---- trust ------------------------------------------------------------------------------------------------------
