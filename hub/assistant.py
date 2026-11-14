@@ -224,6 +224,10 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                           r"\bwho (?:messaged|pinged|needs) me\b", re.I)),
     "buildflow": ({"build_start", "build_answer", "build_spec", "build_plan", "build_next", "build_status", "build_list"},
                   re.compile(r"\bbuild me\b|\bbuild a\b|\bnew project\b|\bspec\b|\bplan the\b|\bnext step\b", re.I)),
+    "lanes": ({"run_in_lane", "lanes_status"},
+              re.compile(r"\b(?:give|send|hand|pass|put) (?:this|that|it|the \w+) (?:to|through|in) (?:the )?(?:council|free (?:model|lane)|local model)\b|\bto (?:the )?council\b|"
+                         r"\bwork lanes?\b|\broutine (?:work|job|task)s?\b|\bsave (?:my |the )?(?:tokens|claude|gemini|quota)\b|\bsaved calls?\b|"
+                         r"\bstronger model\b|\bprivate work\b|\bkeep (?:it|this) (?:local|private|on (?:the|my) laptop)\b", re.I)),
     "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},
               re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b|"
                          r"\bwordpress\b|\bghost\b|\bmedium\b|\bdestinations?\b|\bpost (?:it|this|that)\b", re.I)),

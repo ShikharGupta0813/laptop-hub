@@ -3,6 +3,7 @@
 // Everything shown is text (textContent), never HTML.
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { lanePicker, runInLane } from "./lanepicker.js";
 
 const CSS = "/css/buildflow.css";
 const STAGES = [["brainstorm", "Brainstorm"], ["spec", "Spec"], ["plan", "Plan"], ["build", "Build"]];
@@ -111,12 +112,17 @@ export function init(container) {
 
   function nextButton(flow) {
     if (!flow.plan_path || flow.stage === "done") return null;
+    // "run this step with": Council (default) keeps the old behaviour, which ticks the box. Another lane answers the step
+    // as a one-off (its answer is shown, nothing is ticked); the plan file stays the truth.
+    const lane = lanePicker({ value: "council", label: "Run this step with" });
     const next = ui.button({ label: flow.job_id ? "Working on a step..." : "Do next step", icon: "play", disabled: !!flow.job_id || !flow.next, onClick: async () => {
-      if (!(await ui.confirm({ title: "Hand this step to the Council?", message: flow.next, confirmLabel: "Do it", icon: "play" }))) return;
+      const other = lane.value !== "council";
+      if (!(await ui.confirm({ title: other ? "Run this step with another lane?" : "Hand this step to the Council?", message: flow.next, confirmLabel: "Do it", icon: "play" }))) return;
+      if (other) { await runInLane(flow.next, lane.value, { cls: "coding" }); return; }
       const out = await post(flow, "next", {}, next);
       if (out) { ui.toast("Started. It runs in the background.", { kind: "good" }); load(); }
     } });
-    return next;
+    return el("div", { class: "lp-step" }, lane.el, next);
   }
 
   async function remove(flow) {

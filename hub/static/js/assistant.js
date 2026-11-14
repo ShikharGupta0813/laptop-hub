@@ -3,6 +3,7 @@
 // through renderMarkdown (sanitised). innerHTML is never fed raw text.
 import { sse, renderMarkdown, el, ApiError } from "./api.js";
 import * as ui from "./ui.js";
+import { lanePicker, runInLane } from "./lanepicker.js";
 import { providerSegmented, normalizeProvider, defaultProvider, loadProviders } from "./providers.js";
 
 const SUGGESTIONS = [
@@ -216,7 +217,10 @@ export function init(container, ctx) {
   const fridayChip = el("button", { type: "button", class: "ui-chip as-friday", onclick: () => ctx.open("friday") },
     ui.icon("sparkles"), "Friday");
   const pill = el("div", { class: "as-pill" }, micButton, input, voiceButton, sendButton, stopButton);
-  const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip), pill);
+  // Work lanes (docs/api/lanes.md): Auto = the normal assistant; any other lane hands the message to that lane instead.
+  const lanes = lanePicker({ value: "auto", label: "Send to", onChange: (v) => { laneChoice = v; input.placeholder = v === "auto" ? "Message your laptop…" : "Message to hand to this lane…"; } });
+  let laneChoice = "auto";
+  const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip, lanes.el), pill);
 
   // The core: Jarvis = cyan orb, Friday = amber orb. It follows whoever answered last (persona routing is server-side,
   // by a leading name), pulses while the assistant works and shows a waveform line while words stream in.
@@ -699,6 +703,10 @@ export function init(container, ctx) {
   async function send(raw, vh = null, persona = "auto") {
     const text = (raw || "").trim();
     if (!text || streaming) return null;
+    if (laneChoice !== "auto" && !vh) {                       // a lane was picked: hand the text to it, not to the chat
+      if (await runInLane(text, laneChoice)) { input.value = ""; resizeInput(); }
+      return null;
+    }
     if (micState === "recording") cancelRecording();
     showNotice("");
     stopSpeech();

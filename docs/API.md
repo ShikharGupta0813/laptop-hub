@@ -21,6 +21,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [settings.md](api/settings.md): settings, models, diagnostics, audit viewer, backups
 - [watch.md](api/watch.md): urgent-mail and Google Chat alerts
 - [council.md](api/council.md): background multi-model side jobs (multi-llm-lab), review packet, per-model switches
+- [lanes.md](api/lanes.md): work lanes: routine work to the free Council or local model first, escalation rules, saved calls
 - [today.md](api/today.md): the whole day on one page + spoken summary, evening review, approve by voice or text
 - [skills.md](api/skills.md): installable community skills (SKILL.md) from GitHub; approval to install; per-persona
 - [privacy-usage.md](api/privacy-usage.md): hides emails, numbers and keys from cloud AI; usage counts and daily caps
