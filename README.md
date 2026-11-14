@@ -1,36 +1,44 @@
-# Laptop Hub
+# REDLINE: your own Jarvis, private and on a leash
 
-Your laptop, from your phone, in one app you install on the home screen.
+**A personal AI agent that runs on your laptop and that you drive from your phone. Your data stays on your machine. It acts only when you say so.**
 
-First time? Run `python -m hub setup` (see docs/SETUP-WINDOWS.md, "One-command setup").
+Most "Jarvis" projects are cloud wrappers that run wild. REDLINE is built the other way round: local-first, with a safety model you can read.
 
-| Screen | What it does |
+- **Local first.** Local models (Ollama) and Whisper work with no internet. Claude and Gemini are optional, and a work-lane router sends routine jobs to local models first so paid tokens aren't wasted.
+- **Never acts behind your back.** Sending mail, applying to jobs, publishing posts and submitting forms always wait for your tap. Voice can't approve a dangerous step. Full Control needs a typed `I UNDERSTAND`.
+- **Graded safety.** Actions are ranked N1 to N3. N3 needs a typed CONFIRM and a 10-second cancel window. Untrusted text (web pages, mail) can't trigger tools on its own.
+- **Panic button and audit trail.** One tap stops every background job. Every action is logged and searchable. A trust ladder only ever suggests loosening, never does it silently.
+- **Jarvis behaviours.** Wake word (phone, laptop, Android background), natural streaming voice with barge-in, presence-aware delivery (at the desk, away, in a meeting), a consent-first meeting assistant, playbooks ("when X happens, do Y"), and computer control that sees the screen and asks before it clicks.
+- **Real work, not demos.** An opportunities finder with a scam check, a ready-to-send application queue, general alerts from any app, mail, calendar and task sources, form pre-fill that stops before Submit, and publishing to dev.to, Hashnode, WordPress or Ghost.
+- **Everything is a list you edit.** Assistants, providers, sources, wake phrases and destinations are all editable, with nothing hard-coded.
+- **Phone-first.** An installable PWA plus an optional native Android shell, reached over Tailscale so nothing is exposed to the internet.
+
+> Status: a young, fast-moving personal project with a large automated test suite (about 3,000 tests, mostly fakes). Real-device paths such as Windows idle APIs and the Android wake service are still being proven. Issues and stars help.
+
+## Quick start
+
+```powershell
+git clone https://github.com/ShikharGupta0813/laptop-hub
+cd laptop-hub
+python -m hub setup
+```
+
+Full steps are in [docs/SETUP-WINDOWS.md](docs/SETUP-WINDOWS.md) and the guide in `docs/guide/`.
+
+## What's inside
+
+| Area | Highlights |
 |---|---|
-| **Home** | One dashboard: what needs you now (reminders, urgent mail, pending payments), today's meetings, quick actions. |
-| **Talk** | Speak or type to an assistant that acts on your laptop: files, notes, Asana, calendar, reminders, to-dos, laptop actions, Jarvis. Changes wait for your tap. **Hands-free voice mode** lets you talk back and forth without touching the screen. |
-| **Work** | Asana tasks (comment, complete), today's meetings with Join buttons, write and send email (AI drafts it, you review), post to Google Chat, and a daily **briefing**. |
-| **Inbox** | Read-only Gmail with AI summaries, reply drafts (never sent from here) and a digest. |
-| **Reminders** | Reminders, alarms and timers, with quick add in plain language ("in 20 minutes call mum"). |
-| **Learn** | **Chat** with a note, document, web page or topic. **Quiz** from a note, PDF, web page, pasted text or topic. **Flashcards** (spaced repetition, decks, import/export) and AI **roadmaps**. **Ask my files**: cited answers over your documents. **English coach**: speaking practice, role-play, writing fixes, vocabulary, progress. |
-| **Notes, To-do, Habits, Journal, Focus** | Voice or typed Markdown notes with titles and tags; to-dos; habit streaks; a journal; a focus (pomodoro) timer. |
-| **Files** | Browse your shared folders, open and edit text files, upload, rename, move, copy, zip, and a **trash** you can restore from. Changes only work in folders you list as writable. |
-| **Spending** | Expenses with categories. On Android the app can add UPI payments **automatically** from payment-app notifications (and optional bank SMS); each shows up under "Needs a category" and the hub remembers merchant to category. |
-| **Watch** | Alerts for urgent Gmail and for Google Chat messages that match your rules. |
-| **Smart auto** | With the AI set to auto, a free word check sends chit-chat to the local model and tool or code jobs to Gemini; if the local model fumbles a tool call twice, Gemini does that step. Claude is never used automatically. Optional sharper tool model: `local_tool_model`. |
-| **Council** | Optional. Runs your `multi-llm-lab` project (local Ollama, Gemini and free hosted models working together) as a background side job from the phone or the assistant, without using Claude. Live log, result, per-model on/off switches, and a copy-paste review packet for when you want Claude's opinion. Set up with `python -m hub setup --only council`. |
-| **Autopilot** | Optional, off by default. Watches Gmail, chat alerts and Asana, writes draft replies and a weekday standup with a free AI (Gemini or local, never Claude) and queues them as Approve / Edit / Skip cards on the phone. Nothing is sent, posted or changed until you tap. Set up with `python -m hub setup --only autopilot`. |
-| **Today** | On by default, read-only. One page with your meetings, tasks, spending, mail and what you did today, plus a short spoken summary (say or type "summary" or "my day"); an evening review card arrives at 19:30 on weekdays when Autopilot is on. Approve drafts by voice or text ("approve 2"). |
-| **Remote screen** | See the laptop screen. Control is a separate switch you arm for a few minutes. |
-| **Routines** | Named chains of steps ("Good morning", "Leaving desk"), run by hand or on a schedule. Dangerous steps are gated. |
-| **Tools, Read-later** | Calculator, unit converter, world clock, countdowns, snippets and clipboard history; saved links to read later. |
-| **Settings, Notifications, Search** | Models, folders, themes, backups, audit viewer, diagnostics; a notification center (plus optional phone push); one search box across notes, files, tasks, apps and more. |
-| **Apps** | A searchable directory of every feature, plus laptop actions (lock, screenshot, processes, open a link or app, clipboard, volume and media keys, shutdown...). |
-| **Terminal** | A real shell on the laptop (PowerShell, WSL). |
-| **Laptop / Jarvis** | Laptop actions, and start or stop Jarvis on the laptop and send it commands. |
+| **Talk** | Voice or text assistant with tools, hands-free mode, multiple named assistants. |
+| **Work** | Asana, mail, calendar, chat, daily briefing, drafts you approve. |
+| **Autopilot and alerts** | Triage across sources, drafts only, delivery timed to where you are. |
+| **Opportunities** | Finder, scam check, application queue, "applied today" counter. |
+| **Learn** | Chat with docs, quizzes, flashcards, roadmaps, English coach. |
+| **Council** | Optional local multi-model team as a background job. |
+| **Laptop** | Files, terminal, remote screen, routines, playbooks, computer control. |
+| **Safety** | Levels, panic, trust ladder, audit search, redaction, usage caps. |
 
-Every AI feature has a **Local (Ollama) or Claude** switch.
-
-Everything runs on your laptop. The local AI (Ollama) and speech-to-text (Whisper) work with no internet. The assistant can use Claude (needs an API key) or your local model.
+Everything else (notes, to-dos, habits, spending, focus, search) lives in the Apps directory.
 
 ## How it is connected
 
