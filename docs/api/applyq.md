@@ -42,9 +42,12 @@ Optional AI rewrite: `POST /{id}/draft {"ai": true}` or an injected `draft_fn(it
 - `POST /api/applyq/check-replies`: needs `gmailx.search(ctx, account, query)` (guarded). Searches each sent item's contact domain (exact address for gmail.com-style domains); a sender in that domain, or the draft subject inside a message subject, marks the item `replied`.
 
 ## Assistant
-Tools: `list_ready_applications`, `show_application(id)`, `draft_application(id)`, `mark_applied(id)`, `skip_application(id)`, `send_application(id)`.
+Tools: `list_ready_applications`, `show_application(id)`, `draft_application(id)`, `mark_applied(id)`, `skip_application(id)`, `send_application(id)`, plus `fill_application_form(id)` and `submit_form(id)` (see formfill.md).
 `send_application` needs approval, level **N2** (voice may approve it; N3 is for critical laptop actions), names one item, and its card shows recipient, subject, account and "Email cannot be undone". "Send it" without an item id is refused. List/show return posting text (untrusted: the turn is tainted, so a send in the same turn is refused; ask again).
 `TOOL_GROUPS["applyq"]` routes them. Persona: Friday owns the queue and the daily summary; Jarvis helps with technical answers.
+
+## Fill the form on the laptop (optional)
+A ready `web` item can be pre-filled in a browser on the laptop: `POST /api/applyq/{id}/formfill/start`, a review sheet with a screenshot, and a separate Submit tap. The hub never submits on its own; the click needs your confirm and an unchanged page. `Applyq.formfill_result(id, applied, note)` records the outcome (`applied` only when the page says so, else a `needs check` flag on the item). Everything is in [formfill.md](formfill.md). Assistant: `fill_application_form(id)` (N2, prepares only) and `submit_form(id)` (`safety.ALWAYS_ASK`).
 
 ## Notifications and Today
 `applyq_ready` is a BATCH type ("2 applications are ready to review"). `applyq_daily` (a "now" type) is sent once a day after `today_evening_time`: "Today: N applied, M ready, K replies" (skipped when all zero).

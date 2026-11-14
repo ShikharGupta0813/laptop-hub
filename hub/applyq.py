@@ -506,6 +506,21 @@ class Applyq:
         self.store.save(item)
         return self.public(item)
 
+    def formfill_result(self, item_id: str, applied: bool, note: str) -> dict:
+        """Record the outcome of a form the owner submitted from the laptop (hub/formfill.py). `applied` only when the page
+        said so; otherwise the item stays ready and carries a "needs check" flag. Never sends anything."""
+        item = self.get(item_id)
+        stamp = now_iso(self.clock)
+        item["notes"] = [*item.get("notes", []), {"at": stamp, "text": clean(note, 400)}][-20:]
+        flags = [f for f in item.get("flags", []) if f != "needs check"]
+        if applied:
+            item.update(state="applied", applied_at=stamp, error="")
+        else:
+            flags.append("needs check")
+        item["flags"], item["updated"] = flags, stamp
+        self.store.save(item)
+        return self.public(item)
+
     # -- the ONE place that sends ---------------------------------------------------------------------------------
     def sent_today(self) -> int:
         today = self.clock().date().isoformat()

@@ -114,6 +114,11 @@ class Config:
     applyq_enabled: bool = True
     applyq_daily_cap: int = 10              # sends per day before an extra confirm is needed (0 = no cap)
 
+    # Form pre-fill (hub/formfill.py): a browser on the laptop fills an application form and stops for the owner's tap. docs/api/formfill.md.
+    formfill_enabled: bool = False
+    formfill_headed: bool = True            # show the browser window on the laptop (true), or run it hidden (false)
+    formfill_never: list[str] = field(default_factory=lambda: ["linkedin.com"])   # sites this never opens; the owner can edit it
+
     # Claude Code sessions (hub/ccsessions.py): watch the owner's Claude Code transcripts, nudge one from the phone.
     ccsessions_enabled: bool = True
     ccsessions_dir: str = ""                # "" = ~/.claude/projects
@@ -300,6 +305,8 @@ def save(config: Config, path: Path) -> None:
         "dictation_blocklist": config.dictation_blocklist, "dictation_spoken": config.dictation_spoken,
         "dictation_scratch_phrases": config.dictation_scratch_phrases,
         "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
+        "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
+        "formfill_never": list(config.formfill_never or []),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
