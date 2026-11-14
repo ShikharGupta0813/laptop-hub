@@ -80,3 +80,11 @@
 .le-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-sm); margin: 0; }
 
 .le-select { min-height: 36px; padding: 4px 8px; width: auto; max-width: 170px; }
+
+/* Mail accounts card: it reuses Autopilot head/actions classes, whose rules only exist inside #view-autopilot. */
+.gx-card .ap-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; min-width: 0; }
+.gx-card .ap-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.gx-card .ui-row__title, .gx-card .ui-row__sub { white-space: normal; overflow-wrap: anywhere; }
+.gx-card .ap-head > span:last-child { overflow-wrap: anywhere; min-width: 0; }
+.gx-card.ui-stack, .gx-card .ui-stack { grid-template-columns: minmax(0, 1fr); }
+.gx-card .ui-btn { white-space: normal; height: auto; min-height: 44px; max-width: 100%; text-align: left; }

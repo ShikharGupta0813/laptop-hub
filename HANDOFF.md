@@ -539,3 +539,20 @@ Owner: do not waste Claude/Gemini tokens on routine work. General, not specific:
 - UI: `js/lanepicker.js` + `css/lanes.css` (in sw.js SHELL, VERSION not bumped); chip row in the Talk composer (non-Auto lane replaces the chat send), "Send to Council" on Brain task cards and Today task rows, Build flow "Run this step with" (Council = old tick flow; other lanes show a one-off answer and tick nothing), Applications draft editor "Write draft with" (small guarded edit in `js/applyq.js`), "Saved calls this week" tile on Council, Settings > Work lanes (`openLanes` in `js/ownerlists.js`). No hub.json key added.
 - Tests: `tests/test_lanes.py` (fake council, fake model clients, fake think port; one test drives the real CouncilManager with its fake lab process).
 - UNVERIFIED: a real Council run through a lane (argument shape follows the tested `CouncilManager`), real `lab models --json` `kind: "local"` values for the private filter, real Gemini/Claude clients through `model_for`, `providers.availability` skip messages, and every new UI piece in a real browser (`node --check` only; 390px overflow not screenshot-checked).
+
+## Bug bash (2026-11-14)
+Integration pass over the real app (fakes only). New tests: `tests/test_bootcheck.py` (modules load, no duplicate method+path routes, tool names/schemas, TOOL_GROUPS names,
+sw.js SHELL and main.js VIEWS files exist, relative JS imports resolve, `node --check` on every static JS, ALLOWED_KEYS vs Config, every Config key saved + round-trips, create_app < 3 s),
+`tests/test_api_smoke.py` (every GET and every write route with `{}`/junk bodies: no 500 on a first run, start/stop leaves no threads or never-awaited tasks), `tests/test_cross_feature.py`
+(taint after every untrusted tool blocks every changing tool, outbound tools ask in Full Control, new-tool results redacted for Claude, a fake keyring's secrets never in any GET response, audit or data file,
+alert -> notifications -> phone voice queue -> proactive log), `tests/ui_smoke_check.js` + `tests/test_ui_smoke.py` (all 40 screens at 390x844 and 360x740: console/page errors, failed /api calls, blank views,
+elements past the right edge; screenshots go to the folder given as argument; skips when node/playwright/browser are missing). `tests/apiwalk.py` flattens FastAPI's nested included routers.
+Found and fixed:
+- `search_files` was defined twice (built-in file-name search and an `assistant_tools_more` Ask-my-files tool): duplicate tool names are rejected by cloud APIs and the extra silently replaced the built-in at run time. The extra is now `search_documents` (also in the `search` tool group).
+- `screen_explain` schema had no `required` key: `validate()` raised KeyError and ended the whole assistant turn ("Assistant failed: 'required'"). Added the key and made `validate()` tolerant.
+- `Config.save()` dropped `applyq_enabled`, `applyq_daily_cap` and the four `mcp_*` settings (changes made from Settings reverted at the next start).
+- Autopilot "off" screen showed the text `null` (a null child passed to `replaceChildren`).
+- Settings > Mail accounts overflowed the card on phones (it reused Autopilot-only CSS classes; long buttons did not wrap).
+- Dev server `FakeAssistant` lacked `grants/revoke/revoke_all`, so Settings > Active permissions 500'd there.
+Checked and fine: no GET/POST/PUT/DELETE route answers 500 (only deliberate 501/503 "not set up"), route table has no clashes, startup < 1 s, Full Control still asks for send_email/send_application/post_publish/submit_form.
+Not fixed / notes: `chat_send` (Google Chat post) is approval-gated but not in `safety.ALWAYS_ASK`, so Full Control sends it without a tap (design call, left as is). Restarting the same app object in one process fails in modules that pop their engine in `stop()` (council, lanes, watch, autopilot, friday, automations); real runs build one app per process, so left alone.

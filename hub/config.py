@@ -312,6 +312,9 @@ def save(config: Config, path: Path) -> None:
         "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
         "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
         "formfill_never": list(config.formfill_never or []),
+        "applyq_enabled": config.applyq_enabled is not False, "applyq_daily_cap": int(config.applyq_daily_cap or 0),
+        "mcp_enabled": config.mcp_enabled is not False, "mcp_idle_seconds": int(config.mcp_idle_seconds),
+        "mcp_max_concurrent": int(config.mcp_max_concurrent), "mcp_call_timeout": int(config.mcp_call_timeout),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

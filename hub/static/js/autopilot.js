@@ -128,7 +128,7 @@ export function init(container, ctx) {
   function paint() {
     if (loadError === "missing") { root.replaceChildren(ui.emptyState({ icon: "zap", title: "Autopilot isn't on this laptop", body: "Update the hub to get it." })); return; }
     if (loadError && !data) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load Autopilot", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
-    if (!data.enabled && !data.cards?.length) { root.replaceChildren(offState(), historySection()); return; }
+    if (!data.enabled && !data.cards?.length) { root.replaceChildren(...[offState(), historySection()].filter(Boolean)); return; }
     const parts = [];
     if (!data.enabled) parts.push(ui.notice("Autopilot is off. These cards were made earlier.", { tone: "warn" }));
     if (data.cards.length) parts.push(...data.cards.map(card));
