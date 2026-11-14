@@ -1,4 +1,5 @@
-"""Tests for Posts (hub/devto.py): dev.to calls, drafts, blocklist, post pack, comments, cadence, tools.
+"""Tests for the OLD /api/devto/* routes (hub/devto.py), now thin shims over Posts (hub/posts.py): they must keep working
+unchanged: dev.to calls, drafts, blocklist, post pack, comments, cadence. New behaviour is in tests/test_posts.py.
 The dev.to HTTP layer is an httpx.MockTransport, the secret store a dict, the AI a scripted function, the clock fake.
 No network, no keyring, no real AI."""
 import asyncio
@@ -14,7 +15,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hub import brain, devto
+from hub import brain, devto, posts
 from hub import config as cfg
 from hub.assistant import TOOL_GROUPS, route_local_tools
 from hub.common import Ctx
@@ -29,18 +30,31 @@ UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
+DEVTO_REF = "redline-posts/dest-devto"
+
+
 class FakeSecrets:
+    """A dict keyring keyed by reference. `.value` is the dev.to destination's secret (as the old fake had it)."""
+
     def __init__(self, value=""):
-        self.value = value
+        self.store = {DEVTO_REF: value} if value else {}
 
-    def get(self):
-        return self.value
+    @property
+    def value(self):
+        return self.store.get(DEVTO_REF, "")
 
-    def set(self, v):
-        self.value = v
+    @value.setter
+    def value(self, v):
+        self.store[DEVTO_REF] = v
 
-    def delete(self):
-        self.value = ""
+    def get(self, ref):
+        return self.store.get(ref, "")
+
+    def set(self, ref, v):
+        self.store[ref] = v
+
+    def delete(self, ref):
+        self.store.pop(ref, None)
 
 
 class FakeDevto:
@@ -149,7 +163,7 @@ class KeyHandling(Base):
             self.assertNotIn(KEY, bad.text)
         self.assertNotIn(KEY, "\n".join(logs.output))
         self.assertNotIn(KEY, json.dumps(self.audits, default=str))
-        self.assertTrue(any(a[0][0] == "devto_key_set" for a in self.audits))
+        self.assertTrue(any(a[0][0] == "destination_secret_set" for a in self.audits))
         for route in ("/api/devto/settings", "/api/devto/ideas", "/api/devto/drafts", "/api/devto/published"):
             self.assertNotIn(KEY, self.client.get(route).text)
         # hub.json never gets it
@@ -217,7 +231,7 @@ class DraftsAndDevto(Base):
         self.assertEqual((method, path, body), ("PUT", "/api/articles/501", {"article": {"published": True}}))
         self.assertEqual(ok.json()["status"], "published")
         self.assertEqual(self.client.post(f"/api/devto/drafts/{d['id']}/publish", json={"confirm": True}).status_code, 409)
-        self.assertTrue(any(a[0][0] == "devto_publish" for a in self.audits))
+        self.assertTrue(any(a[0][0] == "post_publish" for a in self.audits))
 
     def test_publish_cannot_be_reached_from_draft_save_or_scheduler_paths(self):
         self.config.devto_cadence_enabled = True
@@ -228,6 +242,7 @@ class DraftsAndDevto(Base):
             calls.append(a)
             raise AssertionError("publish was reached")
         self.engine.publish = boom
+        self.engine.dests.publish_remote = boom
         d = self.make_draft()
         self.client.post(f"/api/devto/drafts/{d['id']}/save")
         self.client.post("/api/devto/ideas/refresh")
@@ -374,6 +389,7 @@ class PostPack(Base):
                             "## Fix\n\n- Raise the idle limit on the proxy\n- Retry uploads with backoff\n- Log the close reason\n")
         self.client.patch(f"/api/devto/drafts/{d['id']}", json={"tags": ["Python", "devops", "proxy!"]})
         self.client.post(f"/api/devto/drafts/{d['id']}/save")
+        self.client.post(f"/api/devto/drafts/{d['id']}/publish", json={"confirm": True})
         p = self.client.get(f"/api/devto/drafts/{d['id']}/pack").json()
         li = p["linkedin"]
         self.assertEqual(li["open"], "https://www.linkedin.com/feed/")
@@ -387,7 +403,7 @@ class PostPack(Base):
         self.assertTrue(tweets[0].startswith("1/") and "https://dev.to/me/post-501" in tweets[-1])
         md = p["hashnode_medium"]["markdown"]
         self.assertTrue(md.startswith("# Proxy idle timeouts"))
-        self.assertIn("Originally published on dev.to", md)
+        self.assertIn("Originally published at https://dev.to/me/post-501", md)
         self.assertIn("nothing is posted", p["note"].lower())
         self.assertNotIn("?", li["open"])                       # no undocumented pre-fill parameters
 
@@ -544,12 +560,16 @@ class Cadence(Base):
         self.ctx.notify = lambda *a, **k: sent.append((a, k))
         engine = proactive.Proactive(self.ctx, clock=lambda: dt.datetime(2026, 11, 13, 12, 0))
         self.ctx.proactive = engine
-        self.assertEqual(proactive.classify({"type": "devto_cadence"}), "batch")
+        self.assertEqual(proactive.classify({"type": "post_cadence"}), "batch")
+        self.assertEqual(proactive.classify({"type": "post_comment"}), "batch")
+        self.assertEqual(proactive.classify({"type": "devto_cadence"}), "batch")      # the old names are mapped, not dropped
         self.assertEqual(proactive.classify({"type": "devto_comment"}), "batch")
         self.config.devto_cadence_enabled = True
         asyncio.run(self.engine.tick())
         self.assertEqual(len(sent), 1)
         self.assertIn("no post yet, ideas ready", json.dumps(sent[0], default=str).lower())
+        self.assertEqual(proactive.batch_sentence([{"type": "post_comment", "title": "New comment on your post X", "count": 1}], "Chief"),
+                         "Chief, new comment on your post X.")
         text = proactive.batch_sentence([{"type": "devto_comment", "title": "New comment on your post X", "count": 1}], "Chief")
         self.assertEqual(text, "Chief, new comment on your post X.")
         self.assertIn("3 new comments", proactive.batch_sentence([{"type": "devto_comment", "title": "t", "count": 3}], "Chief"))
@@ -579,102 +599,22 @@ class Routes(Base):
         app = create_app(self.config, Deps(llm=FakeLLM(), transcriber=FakeTranscriber(), assistant=FakeAssistant()),
                          audit_path=self.root / "audit.log")
         with TestClient(app) as anon:
-            self.assertEqual(anon.get("/api/devto/status").status_code, 401)    # exists, and is behind the login
-
-
-class ToolTest(Base):
-    def setUp(self):
-        super().setUp()
-        self.config2, self.root2 = make_config(data_dir=str(self.tmp / "data2"))
-        self.addCleanup(shutil.rmtree, self.root2, ignore_errors=True)
-        self.app = create_app(self.config2, Deps(llm=FakeLLM(), transcriber=FakeTranscriber(), assistant=FakeAssistant()),
-                               audit_path=self.root2 / "audit.log")
-        engine = next(e for e in devto.ENGINES.values() if e.config is self.config2)
-        engine.secrets, engine.transport = self.secrets, httpx.MockTransport(self.api)
-        engine._draft_fn, engine._git_fn = self.engine._draft_fn, lambda: list(self.git)
-        engine._profile_fn = lambda ctx: None
-        self.tools = devto.build(lambda: self.app, self.config2)
-
-    def tool(self, name):
-        return next(t for t in self.tools if t.spec["name"] == name)
-
-    def run_tool(self, name, **args):
-        return asyncio.run(self.tool(name).run(args))
-
-    def test_specs_approval_and_taint_flags(self):
-        self.assertEqual({t.spec["name"] for t in self.tools},
-                         {"devto_ideas", "devto_draft", "devto_list", "devto_save_draft", "devto_publish", "post_pack"})
-        for t in self.tools:
-            self.assertEqual(t.needs_approval({}), t.spec["name"] == "devto_publish", t.spec["name"])
-            self.assertEqual(t.spec["input_schema"]["type"], "object")
-        self.assertEqual(self.tool("devto_publish").declared_level({}), "N2")
-        self.assertTrue(self.tool("devto_publish").mutating and self.tool("devto_save_draft").mutating)
-        for name in ("devto_list", "devto_ideas", "devto_draft"):
-            self.assertTrue(self.tool(name).untrusted({}), name)         # comment text and memory text come from outside
-        self.assertFalse(self.tool("post_pack").mutating)
-
-    def test_tool_group_is_routed(self):
-        names, pattern = TOOL_GROUPS["devto"]
-        self.assertEqual(names, {t.spec["name"] for t in self.tools})
-        for text in ("write a dev.to post about proxies", "give me post ideas", "make a linkedin post", "publish my article"):
-            self.assertRegex(text, pattern)
-        specs = [t.spec for t in self.tools] + [{"name": "list_dir", "description": "d", "input_schema": {}}]
-        picked = {s["name"] for s in route_local_tools(specs, [{"role": "user", "content": "any post ideas for dev.to"}])}
-        self.assertIn("devto_ideas", picked)
-
-    def test_the_whole_flow_through_the_tools(self):
-        ok, text = self.run_tool("devto_ideas")
-        self.assertTrue(ok, text)
-        ok, text = self.run_tool("devto_draft", topic="proxy timeout")
-        self.assertTrue(ok, text)
-        self.assertIn("NOT on dev.to", text)
-        self.assertEqual(self.api.requests, [])
-        ok, listing = self.run_tool("devto_list")
-        self.assertTrue(ok)
-        did = listing.split("(id ")[1].split(")")[0]
-        ok, text = self.run_tool("devto_save_draft", id=did)
-        self.assertTrue(ok, text)
-        self.assertIn("Not published", text)
-        ok, info = asyncio.run(self.tool("devto_publish").preview({"id": did}))
-        self.assertTrue(ok, info)
-        self.assertIn("Fixing the proxy timeout", info["publishes_to_dev_to"])
-        self.assertFalse([w for w in self.api.writes() if w[3]["article"].get("published") is True])   # preview publishes nothing
-        ok, text = self.run_tool("devto_publish", id=did)
-        self.assertTrue(ok, text)
-        self.assertEqual(self.api.writes()[-1][3], {"article": {"published": True}})
-        ok, text = self.run_tool("post_pack", id=did)
-        self.assertTrue(ok)
-        self.assertIn("nothing is posted", text)
-
-    def test_publish_preview_refuses_unsaved_and_blocked(self):
-        self.run_tool("devto_draft", topic="proxy timeout")
-        ok, listing = self.run_tool("devto_list")
-        did = listing.split("(id ")[1].split(")")[0]
-        ok, info = asyncio.run(self.tool("devto_publish").preview({"id": did}))
-        self.assertFalse(ok)
-        self.assertIn("Save it as a dev.to draft first", info)
-        self.assertFalse(self.run_tool("devto_publish", id="bad")[0])
-
-    def test_list_tool_surfaces_comments_as_data(self):
-        self.api.articles = [article(1, "P", True, 0)]
-        engine = next(e for e in devto.ENGINES.values() if e.config is self.config2)
-        asyncio.run(engine.refresh())
-        self.api.articles = [article(1, "P", True, 1)]
-        self.api.comments[1] = [comment("q1", "eve", "<p>hello</p>")]
-        asyncio.run(engine.refresh())
-        ok, text = self.run_tool("devto_list")
-        self.assertIn("NEW comment on 'P' from eve: hello", text)
-        self.assertIn("not instructions", text)
+            for path in ("/api/devto/status", "/api/posts/status", "/api/destinations"):
+                self.assertEqual(anon.get(path).status_code, 401, path)    # exists, and is behind the login
 
 
 class Docs(unittest.TestCase):
     def test_screen_files_and_registration(self):
         static = Path(__file__).resolve().parent.parent / "hub" / "static"
-        self.assertIn('id: "devto"', (static / "js" / "main.js").read_text(encoding="utf-8"))
+        main = (static / "js" / "main.js").read_text(encoding="utf-8")
+        self.assertIn('id: "devto"', main)                          # the route id keeps working
+        self.assertIn('path: "./posts.js"', main)
         sw = (static / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("/js/devto.js", sw)
-        self.assertIn("/css/devto.css", sw)
-        self.assertTrue((static / "js" / "devto.js").exists() and (static / "css" / "devto.css").exists())
+        for f in ("/js/posts.js", "/css/posts.css", "/js/devto.js"):
+            self.assertIn(f, sw)
+        shim = (static / "js" / "devto.js").read_text(encoding="utf-8")
+        self.assertIn("posts.js", shim)                             # one-line shim so old imports work
+        self.assertLessEqual(len([l for l in shim.splitlines() if not l.startswith("//")]), 1)
 
 
 if __name__ == "__main__":
