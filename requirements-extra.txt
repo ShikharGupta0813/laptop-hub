@@ -9,3 +9,8 @@ pynput>=1.7
 # playwright fills application forms in a browser on the laptop (Applications > "Fill the form on my laptop"). It stops before
 # Submit and waits for your tap. After pip install, run once:  python -m playwright install chromium
 playwright>=1.40
+# Computer control (hub/computeruse.py, Apps > Computer): Jarvis looks at the screen and clicks and types in apps YOU approve. OFF until you turn it on.
+# pyautogui does the mouse and keyboard (and its fail-safe: mouse into the top-left corner aborts everything). pywinauto is optional
+# (Windows only): it lets Jarvis click controls by NAME and lets the hub see password fields. Screenshots also need mss and pillow (requirements-screen.txt).
+pyautogui>=0.9.54
+pywinauto>=0.6.8; sys_platform == "win32"

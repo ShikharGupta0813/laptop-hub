@@ -1,0 +1,37 @@
+/* Computer control (js/computeruse.js). Scoped under #view-computer. Tokens only; no horizontal overflow at 390px. */
+#view-computer .cu { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-computer .cu > * { min-width: 0; }
+#view-computer .cu-card { padding: var(--sp-4); }
+#view-computer .cu-card--live { border-color: color-mix(in srgb, var(--c-bad) 50%, transparent); }
+#view-computer .cu-lead { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+#view-computer .cu-goalshow { margin: 0; color: var(--c-text-2); overflow-wrap: anywhere; }
+#view-computer .cu-chips, #view-computer .cu-actions, #view-computer .cu-head { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+#view-computer .cu-head { justify-content: space-between; }
+/* the big red Stop: always on top of the screen while anything is waiting or running */
+#view-computer .cu-stopbar { position: sticky; top: 0; z-index: 5; display: grid; gap: var(--sp-1); padding: var(--sp-2) 0; background: var(--c-bg); }
+#view-computer .cu-stop { min-height: 56px; font-size: var(--fs-lg, 1.2rem); font-weight: 800; letter-spacing: .12em; }
+#view-computer .cu-goal { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; min-height: 84px; }
+#view-computer .cu-num { width: 100%; max-width: 8em; box-sizing: border-box; }
+#view-computer .cu-row { gap: var(--sp-3); }
+#view-computer .cu-apps { display: grid; gap: var(--sp-2); }
+#view-computer .cu-app { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-lg, 12px); background: var(--c-surface-2); cursor: pointer; }
+#view-computer .cu-app.is-blocked { opacity: .55; cursor: not-allowed; }
+#view-computer .cu-app input { width: 24px; height: 24px; flex: none; margin-top: 2px; }
+#view-computer .cu-app__body { display: grid; gap: 2px; min-width: 0; }
+#view-computer .cu-app__name { font-weight: 600; overflow-wrap: anywhere; }
+#view-computer .cu-facts { margin: 0; padding-left: 1.2em; display: grid; gap: var(--sp-1); color: var(--c-text-2); overflow-wrap: anywhere; }
+#view-computer .cu-shot { position: relative; border-radius: var(--r-lg, 12px); overflow: hidden; border: 1px solid var(--c-line); background: #000; }
+#view-computer .cu-img { display: block; width: 100%; height: auto; max-width: 100%; }
+#view-computer .cu-mark { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 3px solid var(--c-bad); background: color-mix(in srgb, var(--c-bad) 25%, transparent); box-shadow: 0 0 0 2px #fff8; pointer-events: none; }
+#view-computer .cu-plan { position: absolute; left: 0; right: 0; bottom: 0; padding: var(--sp-1) var(--sp-2); background: #000b; color: #fff; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+#view-computer .cu-confirm, #view-computer .cu-paused { display: grid; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-lg, 12px); border: 1px solid var(--c-warn); background: color-mix(in srgb, var(--c-warn) 12%, transparent); }
+#view-computer .cu-confirm p, #view-computer .cu-paused p { margin: 0; overflow-wrap: anywhere; }
+#view-computer .cu-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+#view-computer .cu-step { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-2) 0; border-top: 1px solid var(--c-line); }
+#view-computer .cu-step:first-child { border-top: 0; }
+#view-computer .cu-step.is-bad .cu-step__what { color: var(--c-warn); }
+#view-computer .cu-step__n { flex: none; min-width: 1.8em; font-variant-numeric: tabular-nums; color: var(--c-text-3); }
+#view-computer .cu-step__body { flex: 1 1 0; min-width: 0; display: grid; gap: 2px; }
+#view-computer .cu-step__what, #view-computer .cu-step__body .ui-hint { overflow-wrap: anywhere; }
+#view-computer .cu-list { padding: 0; overflow: hidden; }
+#view-computer .cu-settings > * { min-width: 0; }

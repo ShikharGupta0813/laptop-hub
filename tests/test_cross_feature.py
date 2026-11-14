@@ -132,7 +132,7 @@ class TaintAcrossModulesTest(RealRegistry):
 class OutboundAsksEveryTimeTest(RealRegistry):
     async def test_outbound_tools_ask_even_in_full_control_with_auto_approve(self):
         outbound = sorted(safety.ALWAYS_ASK)
-        self.assertEqual(set(outbound), {"send_email", "send_application", "post_publish", "submit_form", "chat_send"})
+        self.assertEqual(set(outbound), {"send_email", "send_application", "post_publish", "submit_form", "chat_send", "computer_run"})
         for name in outbound:
             with self.subTest(tool=name):
                 self.assertIn(name, self.real, f"{name} is not registered")
