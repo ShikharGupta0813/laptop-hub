@@ -41,6 +41,7 @@ from .config import Config
 from . import providers as providers_mod
 from .router import Router
 from . import redact as redact_mod
+from . import endpoints as endpoints_mod
 from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
@@ -55,6 +56,7 @@ VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
+FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -756,6 +758,9 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     # Feature modules (work, study, english). Each exposes make_router(ctx); one that isn't
     # written yet is skipped, but a real error inside a module is never hidden.
     def model_for(provider: str):
+        if isinstance(provider, str) and provider.startswith("endpoint:"):
+            # the owner's own OpenAI-compatible endpoint (hub/endpoints.py), behind the same redaction/usage wrapper
+            return endpoints_mod.build_guarded(config, _audit_late, provider[len("endpoint:"):]) or llm
         choice = providers_mod.resolve(config, provider)
         if choice == "claude":
             return claude

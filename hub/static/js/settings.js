@@ -8,6 +8,7 @@ import * as ui from "./ui.js";
 import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
 import { gmailCard } from "./gmailx.js";
 import { OWNER_SECTIONS } from "./ownerlists.js";
+import { providersCard } from "./provlists.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -67,6 +68,7 @@ export function init(container, ctx) {
   let appearanceCard = null;
   let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
   let gmailEl = null;      // the "Gmail accounts" card (js/gmailx.js)
+  let providersEl = null;  // the "Providers" card: search, vision, AI endpoints (js/provlists.js)
 
   // ---- main page ---------------------------------------------------------------------------------
   function appearance() {
@@ -250,7 +252,8 @@ export function init(container, ctx) {
     appearanceCard = appearanceCard || appearance();
     if (S && !usageEl) usageEl = usageCard({ onEdit: () => capsSheet(S, () => { load(); usageEl.refresh(); }) });
     if (S && !gmailEl) gmailEl = gmailCard({ S });
-    root.replaceChildren(...[glance(), usageEl, gmailEl, appearanceCard, ...main()].filter(Boolean));
+    if (S && !providersEl) providersEl = providersCard();
+    root.replaceChildren(...[glance(), usageEl, gmailEl, providersEl, appearanceCard, ...main()].filter(Boolean));
   }
 
   async function load() {

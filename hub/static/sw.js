@@ -3,6 +3,7 @@
 const VERSION = "v25-opps-queue-alerts-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
+  "/js/provlists.js", "/css/provlists.css",
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
   "/css/automations.css", "/css/bookmarks.css", "/css/cards.css", "/css/design.css", "/css/english.css",
   "/css/expenses.css", "/css/fileops.css", "/css/files.css", "/css/focus.css", "/css/habits.css", "/css/home.css",

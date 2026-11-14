@@ -23,7 +23,7 @@ context through the hub's read-only routes (`GET /api/work/calendar`, `GET /api/
 | `research_enabled` | `true` | routes, tool and screen |
 | `research_max_hops` | `3` | search rounds (1-5) |
 | `research_max_sources` | `8` | pages read in total (1-20) |
-| `research_search_backend` | `"auto"` | `auto` (DuckDuckGo, then Wikipedia), `ddg` or `wikipedia`; hand-edit |
+| `research_search_backend` | `"auto"` | only SEEDS the search-provider list the first time (`ddg` = Wikipedia off, `wikipedia` = DuckDuckGo off). After that the list in Settings > Providers decides, see `searchprov.md` |
 | `research_daily_ai_calls` | `20` | model calls per day (0-500); planning and each writing round count, a JSON retry counts |
 
 ## Routes
@@ -42,7 +42,7 @@ It starts a job, waits about 25 s and returns the short answer (at most 120 word
 (SSRF-guarded), writes only its own history, and the model behind it has no tools.
 
 ## Safety
-- Search needs no key: DuckDuckGo's HTML endpoint, Wikipedia's API as the fallback.
+- Search uses the owner's ordered list of SEARCH PROVIDERS (`docs/api/searchprov.md`): DuckDuckGo and Wikipedia are the two ready-made entries; SearXNG, Brave, any JSON search API and Stack Overflow / docs-site search can be added. The first one with results wins, failures fall through with backoff, and the job's progress lines say "Searched with X".
 - Pages: http/https only; localhost, private, link-local, `100.64.0.0/10` (tailnet), reserved and `.local`/`.internal`-style names are refused, the host's DNS answers are
   all checked, and every redirect is checked again (max 4). Timeouts 8 s connect / 12 s read, 1.5 MB cap, only `text/html`, `application/xhtml+xml`, `text/plain` (PDF is skipped).
 - Page text is UNTRUSTED: it is cut to 6000 characters per page, `<<<`/`>>>` are removed so it cannot close its delimiter, and it sits between

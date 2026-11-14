@@ -47,3 +47,18 @@ Cyan badge = Jarvis, amber = Friday.
 ## Assistant tools (one `TOOL_GROUPS` entry: `skills`)
 `skills_list`, `skill_search(query)`, `skill_use(name, input)` (no approval, returns the fenced text), `skill_install(source)` and `skill_remove(name)` (approval card; install shows name, source, description, size, scripts).
 Words: "skill(s)", "install the X skill", "use the X skill".
+
+## Skill SOURCES (an owner-editable list; Skills > Sources tab)
+Places skills can come from. The list is `<data>/skill_sources.json` (ready-made entries = today's `skills_sources`, seeded once); approved Git hosts are `<data>/skill_hosts.json`. Kinds:
+| kind | settings | install |
+|---|---|---|
+| `github` | `value` = `owner/repo[/path][/*]` | the Browse tab and `POST /install` as before (allowlisted github.com, argv `git clone`) |
+| `git` | `url` (https, no login/port/query), `path?`, `branch?` | same argv clone (`core.symlinks=false`, `protocol.allow=never`, hooks off, `--` before the URL), ONLY on github.com or a host the owner approved |
+| `folder` | `path` on this laptop | files are COPIED after the same checks (no symlinks, 2 MB / 300 files, SKILL.md <= 40 KB); a folder of several skills offers a pick list |
+| `url` | direct link to one `SKILL.md` | markdown/text only (`text/plain`, `text/markdown`...; HTML refused), 40 KB cap, no NUL bytes, public http(s) only (SSRF guard, redirects checked by hand, max 3); only SKILL.md is written |
+Rules that did not change: install needs the owner's confirm (`confirm: true`, the Install button asks), skills are untrusted text, scripts are listed and never run, taint rules unchanged. The assistant's `skill_install` tool still takes GitHub sources only: folder / link / Git-host sources can be installed only from the screen (or its routes).
+Approving a Git host (`POST /hosts {host, confirm: true}`) shows a warning: skills from that host steer the assistant. Hosts are DNS names (no IP addresses, no localhost/.local/.internal/.ts.net, no port); removing a host blocks existing entries on it at install time.
+- `GET /api/skills/sources` -> `{entries[{id, kind, label, enabled, settings}], hosts[], kinds, warning}`; `POST /api/skills/sources {kind, label?, settings}` (a git URL on an unapproved host answers 403); `PUT /api/skills/sources/{id}`; `PUT /api/skills/sources/order {ids}`; `DELETE /api/skills/sources/{id}`.
+- `GET /api/skills/sources/{id}/catalog` (folder kind: skills inside), `POST /api/skills/sources/{id}/preview {name?}`, `POST /api/skills/sources/{id}/install {confirm: true, name?}`.
+- `POST /api/skills/hosts {host, confirm: true}`, `DELETE /api/skills/hosts/{host}`.
+- The Browse tab and `GET /api/skills` `sources[]` list the ENABLED `github` entries. Tests: `tests/test_skill_sources.py` (host allowlist, path traversal, symlinks, size caps, link fetch guards, no execution).
