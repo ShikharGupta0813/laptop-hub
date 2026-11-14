@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse
+from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks
 from . import models as models_mod
 from . import llm as llm_mod
 from . import updater as updater_mod
@@ -69,6 +69,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("presence",)   # where the owner is -> how 
 FEATURE_MODULES = FEATURE_MODULES + ("panic", "trust", "auditview")   # agent controls: panic button, trust ladder, audit screen (docs/api/panic.md, trust.md, audit.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tts",)   # local text to speech, per-assistant voices, streaming synthesis (docs/api/tts.md)
 FEATURE_MODULES = FEATURE_MODULES + ("computeruse",)   # computer control: Jarvis clicks and types in approved apps, step by step (docs/api/computeruse.md)
+FEATURE_MODULES = FEATURE_MODULES + ("playbooks",)   # playbooks: when X happens, do Y, same approvals as everything else (docs/api/playbooks.md)
 FEATURE_MODULES = FEATURE_MODULES + ("meetings",)   # meeting assistant: consent-first recording, local transcript, notes, action items (docs/api/meetings.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
@@ -220,7 +221,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + models_mod.build(lambda: app, config)
         + lanes_tools.build(lambda: app, config)
         + meetings_tools.build(lambda: app, config)
-        + computeruse.build(lambda: app, config))
+        + computeruse.build(lambda: app, config)
+        + playbooks.build(lambda: app, config))
 
     latency = getattr(assistant, "latency", None) or Latency()   # per-turn timings for GET /api/latency
     warming = {"busy": False}

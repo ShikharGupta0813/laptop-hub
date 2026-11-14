@@ -217,6 +217,9 @@ class Config:
     computeruse_max_steps: int = 25
     computeruse_blocklist: list | None = None       # window title / program fragments never controlled; None = the built-in list
     computeruse_allow_chords: list | None = None    # key chords the owner allow-listed (for example alt+f4); None = none
+    # Playbooks (hub/playbooks.py): "when X happens, do Y" rules. The feature is on but there are no playbooks until the owner writes one.
+    playbooks_enabled: bool = True          # False: no playbook runs (the list stays); Panic pauses them too
+    playbooks_max_concurrent: int = 3       # playbook runs at the same time, across all playbooks (1 to 20)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -349,6 +352,7 @@ def save(config: Config, path: Path) -> None:
         "computeruse_enabled": config.computeruse_enabled is True, "computeruse_allow_unattended": config.computeruse_allow_unattended is True,
         "computeruse_keep_shots": config.computeruse_keep_shots is True, "computeruse_max_steps": int(config.computeruse_max_steps or 25),
         "computeruse_blocklist": config.computeruse_blocklist, "computeruse_allow_chords": config.computeruse_allow_chords,
+        "playbooks_enabled": config.playbooks_enabled is not False, "playbooks_max_concurrent": int(config.playbooks_max_concurrent or 3),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

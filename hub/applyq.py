@@ -397,6 +397,9 @@ class Applyq:
             from .proactive import submit_or_notify
             submit_or_notify(self.ctx, {"type": "applyq_ready", "title": "Application ready: " + item["title"][:80],
                                         "body": "An application is ready for your review.", "link": "applyq", "source": "applyq"})
+            from . import playbooks                      # playbooks: "when an application is ready, ..."
+            playbooks.emit(self.ctx, "opportunity-ready", {"kind": "application", "item_id": str(item.get("id") or ""),
+                                                           "title": str(item.get("title") or "")[:200], "text": "An application is ready for your review."})
         except Exception:  # noqa: BLE001
             log.warning("applyq: notification failed")
 

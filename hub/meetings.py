@@ -805,6 +805,13 @@ class Meetings:
         except Exception:  # noqa: BLE001
             pass
         self._audit("meeting_notes", id=mid, method=notes["method"], actions=len(notes["actions"]))
+        try:                                                 # playbooks (hub/playbooks.py): "when a meeting ends, ..."
+            from . import playbooks
+            playbooks.emit(self.ctx, "meeting-finished", {"meeting_id": mid, "title": fresh.get("title", ""), "actions": len(notes["actions"]),
+                                                          "mine": n_me, "text": " ".join(str(x) for x in (notes.get("summary") or []))[:1500]
+                                                          if isinstance(notes.get("summary"), list) else str(notes.get("summary") or "")[:1500]})
+        except Exception:  # noqa: BLE001
+            pass
         return fresh
 
     # -- reading -----------------------------------------------------------------------------------------------------------

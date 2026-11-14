@@ -40,6 +40,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 20. [31 · A voice that sounds like Jarvis and Friday](31-voice.md): natural laptop voices, a different voice per assistant, interrupt by talking.
 23. [32 · Meetings](32-meetings.md): record a meeting (with consent), get notes and action items for your tasks.
 24. [33 · Computer control](33-computer-control.md): Jarvis clicks and types in apps you approve, step by step (read the warning first).
+24. [33 · Playbooks](34-playbooks.md): "when this happens, do that" rules, with the same approvals as everything else.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).

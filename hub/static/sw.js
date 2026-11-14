@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v29-agent-controls-voice-meetings-2026.11";
+const VERSION = "v30-playbooks-computer-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css", "/js/dictation.js", "/css/dictation.css", "/js/provlists.js",
@@ -31,6 +31,7 @@ const SHELL = [
   "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/css/alerts.css", "/js/alerts.js",
   "/js/sources.js", "/js/audit.js", "/css/audit.css", "/js/panic.js", "/css/panic.css", "/js/trust.js",
   "/js/meetings.js", "/css/meetings.css", "/js/computeruse.js", "/css/computeruse.css",
+  "/js/meetings.js", "/css/meetings.css", "/js/playbooks.js", "/css/playbooks.css",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

@@ -36,7 +36,7 @@ from . import panic as _panic
 
 log = logging.getLogger("hub.proactive")
 
-NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed", "applyq_daily")
+NOW_TYPES = ("reminder", "morning", "evening_summary", "backup_failed", "applyq_daily", "playbook")
 BATCH_TYPES = ("autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready", "post_comment", "post_cadence", "alert")
 TYPE_ALIASES = {"devto_comment": "post_comment", "devto_cadence": "post_cadence"}   # the old names keep working
 QUIET_PASS = ("meeting", "reminder")       # the only 'now' types that may interrupt quiet hours
@@ -65,7 +65,7 @@ LABELS = {
     "research_done": "Research finished", "backup_done": "Backup finished", "cc_waiting": "Claude Code is waiting for me",
     "build_done": "Build finished", "applyq_ready": "Applications ready to review", "post_comment": "New comments on my posts",
     "post_cadence": "Posting reminders", "alert": "Urgent alerts and requests", "meeting": "Meeting starting soon",
-    "mail": "Mail flagged urgent", "asana": "Work tasks overdue today",
+    "mail": "Mail flagged urgent", "asana": "Work tasks overdue today", "playbook": "Playbook messages",
 }
 
 

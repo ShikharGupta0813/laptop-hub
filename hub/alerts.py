@@ -658,6 +658,8 @@ class Alerts:
             if self._dupe(d, sender, preview):
                 self._save(d)
                 return None
+            self._announce("message", {"source": ev["source"], "sender": sender, "mention": ev["mention"], "title": ev["title"],
+                                       "text": ev["message"][:1500]})      # playbooks: a message or mention arrived
             cls = classify(message, sender, ev["source"], vips=self.vips(), due_today=due_today, kind_hint=ev["kind_hint"],
                            rules=effective_rules(self.ctx.config), names=self.my_names(), mention=ev["mention"])
             self._ai_refine(ev, cls)
@@ -682,7 +684,18 @@ class Alerts:
                            delivery=alert["delivery"])
         except Exception:  # noqa: BLE001
             pass
+        self._announce("alert", {"alert_id": alert["id"], "source": alert["source"], "sender": alert["sender"], "urgency": alert["urgency"],
+                                 "kind": alert["kind"], "vip": bool(is_vip(alert["sender"], self.vips())), "mention": alert["mention"],
+                                 "title": alert["title"], "text": alert["preview"]})
         return alert
+
+    def _announce(self, trigger: str, event: dict) -> None:
+        """Tell the playbooks (hub/playbooks.py) something happened. Never raises, never blocks."""
+        try:
+            from . import playbooks
+            playbooks.emit(self.ctx, trigger, event)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---- plan, evidence, draft, task ----
     def _enrich(self, alert: dict, ev: dict) -> None:
