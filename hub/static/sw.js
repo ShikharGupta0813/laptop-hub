@@ -3,6 +3,7 @@
 const VERSION = "v26-general-lists-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
+  "/js/models.js", "/css/models.css",
   "/js/provlists.js", "/css/provlists.css",
   "/", "/index.html", "/style.css", "/manifest.webmanifest", "/css/apps.css", "/css/assistant.css",
   "/css/automations.css", "/css/bookmarks.css", "/css/cards.css", "/css/design.css", "/css/english.css",

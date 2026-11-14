@@ -9,6 +9,7 @@ import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
 import { gmailCard } from "./gmailx.js";
 import { OWNER_SECTIONS } from "./ownerlists.js";
 import { providersCard } from "./provlists.js";
+import { modelsPanel } from "./models.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -314,9 +315,17 @@ export function init(container, ctx) {
         ? ui.notice(`Cloud AI ready: ${names.join(", ") || "Claude"}. Default for everyday jobs: ${S.resolved_provider || "local"}. Keys are never shown here.`, { tone: "good", icon: "key" })
         : ui.notice("No cloud AI yet. On the laptop, run python -m hub setup --only ai to use Gemini (free key) or your Claude login.", { icon: "key" });
       const status = m.reachable ? null : ui.notice(m.error || "The local model server isn't running. Start Ollama on the laptop.", { tone: "warn" });
+      const catalogueRow = ui.listRow({ icon: "layers", tone: "accent", title: "Local models, deep thinking, benchmark",
+        sub: "Catalogue (DeepSeek, Qwen, Gemma...), install, remove, speed test", chevron: true, onClick: () => openLocalModels(s) });
       return el("div", { class: "ui-stack ui-stack--lg" }, status, claude, group("Which model does what", rows),
-        pullCard(s), installedList(installed));
+        group("Local models", catalogueRow), pullCard(s), installedList(installed));
     });
+  }
+
+  function openLocalModels(parent) {
+    const panel = modelsPanel({ patch, onChange: () => parent.reload?.() });
+    return gsheet({ title: "Local models", content: panel, class: "st-sheet st-sheet--tall",
+      onClose: () => { panel.dispatchEvent(new Event("lm-close")); parent.reload?.(); } });
   }
 
   function installedList(installed) {

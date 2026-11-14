@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools
+from . import models as models_mod
 from . import llm as llm_mod
 from . import updater as updater_mod
 from .assistant import LOCAL_CTX_TOOLS, ApprovalError, AssistantService
@@ -58,6 +59,7 @@ VERSION = "1.0"
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
 FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov", "cliprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
+FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull, deep thinking, bench (docs/api/models.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -203,7 +205,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + buildflow_tools.build(lambda: app, config)
         + opps.build(lambda: app, config)
         + gmailx_tools.build(lambda: app, config)
-        + posts.build(lambda: app, config))
+        + posts.build(lambda: app, config)
+        + models_mod.build(lambda: app, config))
 
     latency = getattr(assistant, "latency", None) or Latency()   # per-turn timings for GET /api/latency
     warming = {"busy": False}

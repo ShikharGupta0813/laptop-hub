@@ -1,4 +1,4 @@
-"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater | backup | watchdog | fix-deps"""
+"""Command line: python -m hub setup | init | serve | token | doctor | add-script | update | install-updater | backup | watchdog | fix-deps | models bench"""
 from __future__ import annotations
 
 import argparse
@@ -234,6 +234,19 @@ def cmd_setup(args) -> int:
     return run_setup(args)
 
 
+def cmd_models(args) -> int:
+    """python -m hub models bench [--models a,b] [--only puzzle,json] [--think auto|on|off] [--timeout S]"""
+    from . import models as models_mod
+    path = Path(args.config) if args.config else cfg.default_path()
+    try:
+        config = cfg.load(path)
+    except cfg.ConfigError as exc:
+        print(exc)
+        return 1
+    split = lambda v: [x.strip() for x in v.split(",") if x.strip()] if v else None  # noqa: E731
+    return models_mod.bench_cli(config, split(args.models), split(args.only), args.think, args.timeout)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m hub", description=__doc__)
     parser.add_argument("--config", help="path to hub.json (default ~/.laptop-hub/hub.json)")
@@ -258,6 +271,12 @@ def main(argv=None) -> int:
     wd = sub.add_parser("watchdog", help="check the hub and Tailscale, repair them, push to the phone if needed")
     wd.add_argument("--once", action="store_true", help="one pass then exit (what the scheduled task uses)")
     sub.add_parser("fix-deps", help="install requirements.txt and requirements-voice.txt through python -m pip")
+    mdl = sub.add_parser("models", help="local models: `models bench` times each installed model on your laptop")
+    mdl.add_argument("action", choices=["bench"])
+    mdl.add_argument("--models", help="comma list of installed model names (default: all installed, except embedding models)")
+    mdl.add_argument("--only", help="comma list of prompts: puzzle,summary,json (default: all three)")
+    mdl.add_argument("--think", choices=["auto", "on", "off"], default="auto", help="auto = the model's own default")
+    mdl.add_argument("--timeout", type=float, default=600.0, help="seconds allowed per prompt (default 600)")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -275,7 +294,8 @@ def main(argv=None) -> int:
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
             "add-script": cmd_add_script, "setup": cmd_setup, "update": cmd_update,
-            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog, "fix-deps": cmd_fix_deps}[args.command](args)
+            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog, "fix-deps": cmd_fix_deps,
+            "models": cmd_models}[args.command](args)
 
 
 if __name__ == "__main__":

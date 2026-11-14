@@ -160,6 +160,11 @@ class Config:
     asana_poll_minutes: int = 5
     asana_workspace: str = ""                               # workspace gid; empty = the first one Asana lists
 
+    # Deep thinking (hub/models.py): an optional local REASONING model (e.g. deepseek-r1:8b) for slow background jobs only.
+    local_reasoning_model: str = ""         # empty = off. Never used for chat, greetings, fast commands or voice replies.
+    deep_think_timeout_min: float = 20.0    # a deep-thinking job is stopped after this many minutes
+    deep_think_max_chars: int = 30000       # cap on thinking + answer characters per job
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
@@ -263,6 +268,9 @@ def save(config: Config, path: Path) -> None:
         "provider_daily_caps": dict(config.provider_daily_caps or {}),
         "claude_login_5h_soft_cap": int(config.claude_login_5h_soft_cap or 0),
         "gmail_company_ai_allowed": config.gmail_company_ai_allowed is True,
+        "local_reasoning_model": str(config.local_reasoning_model or ""),
+        "deep_think_timeout_min": float(config.deep_think_timeout_min or 20.0),
+        "deep_think_max_chars": int(config.deep_think_max_chars or 30000),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
