@@ -30,7 +30,7 @@ const SHELL = [
   "/vendor/xterm.css", "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg",
   "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/css/alerts.css", "/js/alerts.js",
   "/js/sources.js", "/js/audit.js", "/css/audit.css", "/js/panic.js", "/css/panic.css", "/js/trust.js",
-  "/js/meetings.js", "/css/meetings.css",
+  "/js/meetings.js", "/css/meetings.css", "/js/computeruse.js", "/css/computeruse.css",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

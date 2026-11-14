@@ -210,6 +210,13 @@ class Config:
     meetings_keep_audio: bool = False       # True also writes WAV files beside the transcript (a warning is shown)
     meetings_max_minutes: int = 120         # a recording stops by itself after this long (1 to 480)
     meetings_model: str = "base"            # local Whisper model for meetings: tiny | base | small | medium
+    # Computer control (hub/computeruse.py): Jarvis looks at the screen and clicks/types inside an approved scope. OFF by default.
+    computeruse_enabled: bool = False
+    computeruse_allow_unattended: bool = False      # False: refuses to start or continue while presence says you are away
+    computeruse_keep_shots: bool = False            # False: the rolling folder of the last 20 pictures is deleted when the job ends
+    computeruse_max_steps: int = 25
+    computeruse_blocklist: list | None = None       # window title / program fragments never controlled; None = the built-in list
+    computeruse_allow_chords: list | None = None    # key chords the owner allow-listed (for example alt+f4); None = none
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -339,6 +346,9 @@ def save(config: Config, path: Path) -> None:
         "tts_enabled": config.tts_enabled is not False, "tts_engine": str(config.tts_engine or "browser"),
         "meetings_enabled": config.meetings_enabled is True, "meetings_keep_audio": config.meetings_keep_audio is True,
         "meetings_max_minutes": int(config.meetings_max_minutes or 120), "meetings_model": str(config.meetings_model or "base"),
+        "computeruse_enabled": config.computeruse_enabled is True, "computeruse_allow_unattended": config.computeruse_allow_unattended is True,
+        "computeruse_keep_shots": config.computeruse_keep_shots is True, "computeruse_max_steps": int(config.computeruse_max_steps or 25),
+        "computeruse_blocklist": config.computeruse_blocklist, "computeruse_allow_chords": config.computeruse_allow_chords,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

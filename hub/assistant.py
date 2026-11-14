@@ -236,6 +236,9 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                  re.compile(r"\brecord (?:the |this |my |a |our )?(?:meeting|call|standup|stand-up)\b|\bstop recording\b|\bmeeting (?:notes|summary|recording|transcript|minutes)\b|"
                             r"\bminutes of\b|\baction items?\b|\b(?:my|past|recorded|last|previous) meetings?\b|\bwhat did we (?:decide|agree)\b.{0,60}\b(?:meeting|call|standup)\b|"
                             r"\bwhat (?:was|were) (?:said|decided|agreed) (?:in|at|on) |\bin (?:the|our|that) (?:meeting|call|standup|sync)\b", re.I)),
+    "computeruse": ({"computer_run", "computer_status", "computer_stop"},
+                    re.compile(r"\bon my screen\b|\bclick(?:ing)?\b|\bdo (?:this|that|it) in (?:the |this |that )?(?:app|program|window)\b|\b(?:control|drive|operate) (?:my |the )?(?:pc|computer|laptop|mouse|keyboard)\b|"
+                               r"\buse my (?:mouse|keyboard|computer|pc)\b|\bcomputer[- ]use\b|\bpoint and click\b|\bfor me in (?:explorer|notepad|excel|word|the app)\b|\bstop (?:controlling|clicking)\b", re.I)),
     "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},
               re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b|"
                          r"\bwordpress\b|\bghost\b|\bmedium\b|\bdestinations?\b|\bpost (?:it|this|that)\b", re.I)),
