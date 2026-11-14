@@ -325,6 +325,9 @@ def save(config: Config, path: Path) -> None:
         "panic_active": config.panic_active is True, "panic_confirm": config.panic_confirm is True,
         "panic_phrases": config.panic_phrases, "trust_enabled": config.trust_enabled is not False,
         "trust_threshold": int(config.trust_threshold or 10),
+        "applyq_enabled": config.applyq_enabled is not False, "applyq_daily_cap": int(config.applyq_daily_cap or 0),
+        "mcp_enabled": config.mcp_enabled is not False, "mcp_idle_seconds": int(config.mcp_idle_seconds),
+        "mcp_max_concurrent": int(config.mcp_max_concurrent), "mcp_call_timeout": int(config.mcp_call_timeout),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

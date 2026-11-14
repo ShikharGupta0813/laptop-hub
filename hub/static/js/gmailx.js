@@ -14,7 +14,7 @@ function switchRow(title, sub, control) {
 
 export function gmailCard({ S, onChanged } = {}) {
   const body = el("div", { class: "ui-stack" }, ui.skeleton("list", 2));
-  const card = el("section", { class: "ui-card ui-hud ui-stack", "aria-label": "Mail accounts" },
+  const card = el("section", { class: "ui-card ui-hud ui-stack gx-card", "aria-label": "Mail accounts" },
     el("h2", { class: "ui-caps" }, "Mail accounts"), body);
 
   async function refresh() {

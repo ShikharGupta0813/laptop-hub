@@ -193,7 +193,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
              re.compile(r"\be-?mails?\b|\binbox\b|\bmail\b|\bunread\b|\bgmail\b|\boutlook\b", re.I)),
     "alerts": ({"watch_alerts", "notifications_recent"},
                re.compile(r"\balerts?\b|\bnotifications?\b|\bwatch(?:ing)?\b", re.I)),
-    "search": ({"search_everything"}, re.compile(r"\bsearch|\blook up\b|\bwhere did i\b|\bwhat did i\b", re.I)),
+    "search": ({"search_everything", "search_documents"}, re.compile(r"\bsearch|\blook up\b|\bwhere did i\b|\bwhat did i\b", re.I)),
     "laptop": ({"laptop_action"},
                re.compile(r"\bvolume|\bmute\b|\block\b|\bsleep\b|\bshut ?down\b|\brestart\b|\bscreenshot|"
                           r"\bbrightness|\blaptop\b", re.I)),
@@ -374,7 +374,7 @@ def validate(spec: dict, args: Any) -> tuple[dict | None, str | None]:
         if "enum" in props[key] and value not in props[key]["enum"]:
             return None, f"'{key}' must be one of: {', '.join(map(str, props[key]['enum']))}."
         out[key] = value
-    missing = [k for k in schema["required"] if k not in out]
+    missing = [k for k in schema.get("required", []) if k not in out]
     if missing:
         return None, f"Missing required argument(s): {', '.join(missing)}."
     return out, None

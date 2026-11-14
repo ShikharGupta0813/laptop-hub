@@ -554,3 +554,20 @@ Guide `docs/guide/29-agent-controls.md`; API `docs/api/panic.md`, `trust.md`, `a
 - UI: `js/panic.js`, `js/trust.js`, `js/audit.js`, `css/panic.css`, `css/audit.css` (sw.js SHELL, VERSION not bumped); one line each in `main.js`, `home.js` (quick actions), `settings.js` (Agent controls group).
 - Tests: `tests/test_agent_controls.py` (fakes).
 - UNVERIFIED: the UI in a real browser (no screenshots, 390px not checked), real wake word/dictation/MCP/formfill/council stop paths (only the registry and fake hooks are tested; each module hook is not exercised individually), Windows process behaviour, whether the wake word thread restarts cleanly after `stop()` on Resume, the 423 guards on start routes (source-checked only).
+
+## Bug bash (2026-11-14)
+Integration pass over the real app (fakes only). New tests: `tests/test_bootcheck.py` (modules load, no duplicate method+path routes, tool names/schemas, TOOL_GROUPS names,
+sw.js SHELL and main.js VIEWS files exist, relative JS imports resolve, `node --check` on every static JS, ALLOWED_KEYS vs Config, every Config key saved + round-trips, create_app < 3 s),
+`tests/test_api_smoke.py` (every GET and every write route with `{}`/junk bodies: no 500 on a first run, start/stop leaves no threads or never-awaited tasks), `tests/test_cross_feature.py`
+(taint after every untrusted tool blocks every changing tool, outbound tools ask in Full Control, new-tool results redacted for Claude, a fake keyring's secrets never in any GET response, audit or data file,
+alert -> notifications -> phone voice queue -> proactive log), `tests/ui_smoke_check.js` + `tests/test_ui_smoke.py` (all 40 screens at 390x844 and 360x740: console/page errors, failed /api calls, blank views,
+elements past the right edge; screenshots go to the folder given as argument; skips when node/playwright/browser are missing). `tests/apiwalk.py` flattens FastAPI's nested included routers.
+Found and fixed:
+- `search_files` was defined twice (built-in file-name search and an `assistant_tools_more` Ask-my-files tool): duplicate tool names are rejected by cloud APIs and the extra silently replaced the built-in at run time. The extra is now `search_documents` (also in the `search` tool group).
+- `screen_explain` schema had no `required` key: `validate()` raised KeyError and ended the whole assistant turn ("Assistant failed: 'required'"). Added the key and made `validate()` tolerant.
+- `Config.save()` dropped `applyq_enabled`, `applyq_daily_cap` and the four `mcp_*` settings (changes made from Settings reverted at the next start).
+- Autopilot "off" screen showed the text `null` (a null child passed to `replaceChildren`).
+- Settings > Mail accounts overflowed the card on phones (it reused Autopilot-only CSS classes; long buttons did not wrap).
+- Dev server `FakeAssistant` lacked `grants/revoke/revoke_all`, so Settings > Active permissions 500'd there.
+Checked and fine: no GET/POST/PUT/DELETE route answers 500 (only deliberate 501/503 "not set up"), route table has no clashes, startup < 1 s, Full Control still asks for send_email/send_application/post_publish/submit_form.
+Not fixed / notes: `chat_send` (Google Chat post) is approval-gated but not in `safety.ALWAYS_ASK`, so Full Control sends it without a tap (design call, left as is). Restarting the same app object in one process fails in modules that pop their engine in `stop()` (council, lanes, watch, autopilot, friday, automations); real runs build one app per process, so left alone.

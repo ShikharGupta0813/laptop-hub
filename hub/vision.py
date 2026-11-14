@@ -459,7 +459,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
     async def preview(_args: dict):
         return True, {"what": "Look at your screen"}
 
-    schema = {"type": "object", "additionalProperties": False, "properties": {
+    schema = {"type": "object", "required": [], "additionalProperties": False, "properties": {
         "question": {"type": "string", "description": "What the owner wants to know about the screen."},
         "region": {"type": "object", "description": "Optional part of the screen as fractions 0..1.",
                    "properties": {"x": {"type": "number"}, "y": {"type": "number"},

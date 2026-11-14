@@ -129,6 +129,15 @@ class FakeAssistant:
     def reset(self, session_id):
         pass
 
+    def grants(self):
+        return []
+
+    def revoke(self, grant_id):
+        return False
+
+    def revoke_all(self):
+        return 0
+
 
 class DemoSystem:
     """A stand-in for the operating system, so the phone UI can be tried without locking, killing,

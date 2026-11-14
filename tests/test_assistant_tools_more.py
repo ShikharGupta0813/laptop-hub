@@ -8,7 +8,7 @@ from tests.fakes_assistant import reply, tool_block
 from tests.test_assistant import Base, collect, of
 
 READS = {"reminders_list", "todos_list", "habits_today", "focus_status", "spending_summary", "inbox_unread",
-         "watch_alerts", "notifications_recent", "search_files", "search_everything"}
+         "watch_alerts", "notifications_recent", "search_documents", "search_everything"}
 WRITES = {"reminder_add", "todo_add", "todo_done", "habit_check", "focus_start", "journal_add", "expense_add",
           "bookmark_add"}
 
@@ -75,7 +75,7 @@ class MoreToolsTest(Base):
         self.assertIn("No tasks", listing)
 
     async def test_missing_features_give_a_sentence_not_a_crash(self):
-        for name, args in (("inbox_unread", {}), ("watch_alerts", {}), ("search_files", {"query": "x"})):
+        for name, args in (("inbox_unread", {}), ("watch_alerts", {}), ("search_documents", {"query": "x"})):
             ok, text = await self.by_name(name).run(args)
             self.assertIsInstance(text, str)
 

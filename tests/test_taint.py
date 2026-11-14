@@ -156,7 +156,7 @@ class TaintTest(Harness):
         for t in research.build(app, self.config):
             tools[t.spec["name"]] = t
         for name in ("asana_tasks", "asana_task", "calendar", "inbox_unread", "watch_alerts", "recall",
-                     "skill_use", "deep_research", "autopilot_cards", "friday_brief", "search_files"):
+                     "skill_use", "deep_research", "autopilot_cards", "friday_brief", "search_documents"):
             self.assertTrue(tools[name].untrusted({}), name)
         for name in ("remember", "task_update", "autopilot_decide"):
             self.assertTrue(tools[name].mutating, name)

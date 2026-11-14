@@ -14,7 +14,7 @@ Code: `ExtraTool(untrusted=..., mutating=...)`, `UNTRUSTED_BUILTIN` and the guar
 Untrusted tools (reading their result taints the turn):
 - built-in: `read_file`, `search_files`
 - Work/mail/chat: `asana_tasks`, `asana_task`, `calendar`, `inbox_unread`, `watch_alerts`,
-  `notifications_recent`, `search_files` (Ask my files), `search_everything`
+  `notifications_recent`, `search_documents` (Ask my files), `search_everything`
 - laptop: `laptop_action` when the action reads the clipboard, screen, windows or OCR
 - Friday/Autopilot/Today: `today_summary`, `friday_brief`, `friday_plan`, `friday_laptop_prep`,
   `autopilot_pending`, `autopilot_cards`
