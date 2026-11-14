@@ -16,7 +16,7 @@ export function mountWakeBridge(ctx) {
   // ---- incoming wake: open voice mode for the persona, with the words said after the wake phrase -------------
   let busy = false;
   async function openVoice(persona, text) {
-    const p = persona === "friday" ? "friday" : "jarvis";
+    const p = /^[a-z][a-z0-9_-]{1,23}$/.test(String(persona || "")) ? String(persona) : "jarvis";   // any assistant id from Settings
     const t = String(text || "").slice(0, 300);
     try {
       const vm = await import("./voicemode.js");

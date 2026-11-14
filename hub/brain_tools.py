@@ -23,6 +23,8 @@ def _short(value: Any, n: int = 160) -> str:
 def fmt_item(i: dict, body_chars: int = 400) -> str:
     when = str(i.get("created") or "")[:10]
     bits = [i.get("kind"), when, i.get("persona")]
+    if i.get("tags"):
+        bits.append("tags " + ",".join(str(t) for t in i["tags"][:6]))
     if i.get("who"):
         bits.append("from " + str(i["who"]))
     if i.get("remind_at"):
@@ -67,6 +69,11 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
             params["kind"] = a["kind"]
         if a.get("persona"):
             params["persona"] = a["persona"]
+        tags = a.get("tags")
+        if isinstance(tags, str):
+            tags = [tags]
+        if isinstance(tags, list) and tags:
+            params["tag"] = ",".join(str(t) for t in tags)       # every tag listed must be on the item
         ok, d = await hub.call("GET", "/api/brain/items", params=params)
         if not ok:
             return False, d
@@ -98,8 +105,10 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
             body["status"] = a["status"]
         if a.get("note") is not None:
             body["note"] = a["note"]
+        if a.get("tags") is not None:
+            body["add_tags"] = a["tags"]
         if not body:
-            return False, "Give a status or a note."
+            return False, "Give a status, a note or tags."
         ok, d = await hub.call("PATCH", f"/api/brain/items/{item_id}", body=body)
         return (True, "Updated: " + fmt_item(d, 200)) if ok else (False, d)
 
@@ -122,15 +131,16 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         tool("remember", "Save something to the owner's long-term memory: a note, fact, decision, RCA, research or a "
              "task. Use remind_at (like 'tomorrow 9am') when they want to be told later.",
              {"text": {"type": "string", "description": "What to remember, in full."},
-              "kind": {"type": "string", "enum": ["note", "fact", "decision", "rca", "task", "research"]},
-              "tags": {"type": "array", "items": {"type": "string"}},
+              "kind": {"type": "string", "description": "One of the owner's memory kinds (note, fact, decision, rca, task, research by default)."},
+              "tags": {"type": "array", "items": {"type": "string"}, "description": "Free-form labels, as many as useful."},
               "remind_at": {"type": "string", "description": "When to tell the owner, e.g. 'tomorrow 9am'."},
               "who": {"type": "string", "description": "Who asked for it, if a person."},
               "project": {"type": "string"}}, ["text"], remember),
         tool("recall", "Search the owner's long-term memory (RCAs, decisions, facts, tasks, notes). Use it for 'what was "
              "the RCA for X', 'what did we decide', 'who asked me for what'. Answers carry dates.",
-             {"query": {"type": "string"}, "kind": {"type": "string", "enum": ["note", "fact", "decision", "rca", "task", "research"]},
-              "persona": {"type": "string", "enum": ["jarvis", "friday", "both"]}}, ["query"], recall),
+             {"query": {"type": "string"}, "kind": {"type": "string", "description": "Only this memory kind."},
+              "tags": {"type": "array", "items": {"type": "string"}, "description": "Only items carrying all of these tags."},
+              "persona": {"type": "string", "description": "Only this assistant's memories (jarvis, friday, or the owner's own), plus shared ones."}}, ["query"], recall),
         tool("task_intake", "Someone gave the owner a task. Assess whether it can be done (using the owner's memory), "
              "save it as a task and return a short verdict with blockers.",
              {"from": {"type": "string", "description": "Who gave the task."},
@@ -138,7 +148,8 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
               "project": {"type": "string"}, "remind_at": {"type": "string"}}, ["request"], task_intake),
         tool("task_update", "Change a saved task's status (open, done, blocked, dropped) and/or add a note to it.",
              {"id": {"type": "string"}, "status": {"type": "string", "enum": ["open", "done", "blocked", "dropped"]},
-              "note": {"type": "string"}}, ["id"], task_update),
+              "note": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags to add."}},
+             ["id"], task_update),
         tool("tasks_list", "List the owner's saved tasks (default: open) and the follow-ups due today.",
              {"status": {"type": "string", "enum": ["open", "done", "blocked", "dropped", "all"]}}, [], tasks_list),
     ], untrusted=['recall', 'tasks_list'], mutating=['remember', 'task_intake', 'task_update'])

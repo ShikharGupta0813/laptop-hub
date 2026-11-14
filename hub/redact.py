@@ -24,9 +24,12 @@ PREFIX = {k: k.upper() for k in KINDS}
 TOOL_OPEN, TOOL_CLOSE = "<tool_call>", "</tool_call>"
 MAX_NAMES = 50
 MAX_KNOWN = 400
+CUSTOM_KIND = re.compile(r"^[A-Z][A-Z0-9]{1,15}$")
+MAX_CUSTOM_RULES = 50
+CUSTOM_LABEL_MAX = 40
 
 _MARK_RE = re.compile(r"(<tool_call>|</tool_call>)")
-_PH_RE = re.compile(r"\[(" + "|".join(PREFIX.values()) + r")_(\d{1,6})\]", re.I)
+_PH_RE = re.compile(r"\[([A-Za-z][A-Za-z0-9]{1,15})_(\d{1,6})\]")   # built-in kinds and the owner's own (custom rules)
 
 # ---- patterns (ordered: most specific first) ------------------------------------------------------------
 
@@ -113,8 +116,11 @@ def _phone_ok(m: str) -> bool:
 class Redactor:
     """One turn's placeholder map. Same value -> same placeholder; restore() undoes it."""
 
-    def __init__(self, kinds=KINDS, names=()):
+    def __init__(self, kinds=KINDS, names=(), custom=()):
         self.kinds = frozenset(k for k in (kinds or ()) if k in KINDS)
+        # the owner's own patterns (Settings > My redaction rules): [(compiled pattern, placeholder kind in lower case)]
+        self._custom = [(p, k) for p, k in (custom or ()) if isinstance(k, str) and CUSTOM_KIND.match(k.upper())]
+        self.kinds |= frozenset(k for _p, k in self._custom)
         words = []
         for n in (names or ())[:MAX_NAMES]:
             n = str(n).strip()
@@ -147,7 +153,7 @@ class Redactor:
         while n in reserved:
             n += 1
         self._next[kind] = n
-        ph = f"[{PREFIX[kind]}_{n}]"
+        ph = f"[{PREFIX.get(kind) or kind.upper()}_{n}]"
         self._fwd[key] = ph
         self._back[ph] = value
         return ph
@@ -171,6 +177,8 @@ class Redactor:
         with self._lock:
             for m in _PH_RE.finditer(text):          # a literal "[EMAIL_1]" in the input keeps its meaning
                 self._reserved.setdefault(m.group(1).lower(), set()).add(int(m.group(2)))
+            for pattern, kind in self._custom:       # the owner's own words and patterns first: they win over the built-ins
+                text = self._sub(pattern, kind, text)
             if "-----BEGIN" in text:
                 text = self._sub(_PRIVATE_KEY, "key", text)
             if "eyJ" in text:
@@ -357,12 +365,101 @@ def enabled(config) -> bool:
     return getattr(config, "redact_enabled", True) is not False
 
 
+# ---- the owner's own rules (redact_rules.json in the data folder) ----------------------------------------------------
+# {label, pattern (plain words, one per line or comma-separated, or a regular expression when regex is true),
+#  kind (the placeholder, e.g. PAYROLL -> [PAYROLL_1]), enabled}. Validated by hub/safepattern.py.
+
+def rules_path(config):
+    return config.data_path() / "redact_rules.json"
+
+
+def _split_words(pattern: str) -> list[str]:
+    return re.split(r"[,\n]", pattern)
+
+
+def clean_rule(raw: Any) -> dict:
+    """One rule, validated. ValueError (a plain sentence) when it cannot be used."""
+    from .safepattern import PatternError, compile_pattern, words_pattern
+    if not isinstance(raw, dict):
+        raise ValueError("A rule must be an object.")
+    label = " ".join(str(raw.get("label") or "").split())[:CUSTOM_LABEL_MAX]
+    pattern = str(raw.get("pattern") or "").strip()
+    regex = raw.get("regex") is True
+    kind = str(raw.get("kind") or "").strip().upper() or re.sub(r"[^A-Z0-9]", "", label.upper())[:12]
+    if not label:
+        raise ValueError("Give the rule a label.")
+    if not CUSTOM_KIND.match(kind):
+        raise ValueError("The placeholder must be 2 to 16 capital letters or digits, starting with a letter (like PAYROLL).")
+    if kind in PREFIX.values():
+        raise ValueError(f"{kind} is already used by a built-in kind; choose another placeholder.")
+    try:
+        if regex:
+            compile_pattern(pattern, True)
+        else:
+            words_pattern(_split_words(pattern))
+    except PatternError as exc:
+        raise ValueError(str(exc)) from None
+    return {"label": label, "pattern": pattern, "regex": regex, "kind": kind, "enabled": raw.get("enabled") is not False}
+
+
+def clean_rules(items: Any) -> list[dict]:
+    if not isinstance(items, list):
+        raise ValueError("The rules must be a list.")
+    if len(items) > MAX_CUSTOM_RULES:
+        raise ValueError(f"At most {MAX_CUSTOM_RULES} rules.")
+    out = [clean_rule(i) for i in items]
+    for n, rule in enumerate(out):
+        rule["id"] = f"r{n + 1}"
+    return out
+
+
+def load_rules(config) -> list[dict]:
+    try:
+        data = json.loads(rules_path(config).read_text(encoding="utf-8"))
+        return clean_rules(data.get("rules") if isinstance(data, dict) else [])
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def save_rules(config, items: Any) -> list[dict]:
+    import os
+    clean = clean_rules(items)
+    path = rules_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"version": 1, "rules": clean}, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return clean
+
+
+def compile_rules(rules: list[dict]) -> list[tuple]:
+    """[(compiled pattern, kind in lower case)] for the enabled rules in the list. Bad ones are skipped."""
+    from .safepattern import PatternError, compile_pattern, words_pattern
+    out = []
+    for rule in rules:
+        if not rule.get("enabled", True):
+            continue
+        try:
+            pat = compile_pattern(rule["pattern"], True) if rule["regex"] else words_pattern(_split_words(rule["pattern"]))
+        except PatternError:
+            continue
+        out.append((pat, rule["kind"].lower()))
+    return out
+
+
+def compiled_rules(config) -> list[tuple]:
+    try:
+        return compile_rules(load_rules(config))
+    except Exception:  # noqa: BLE001 - a config without a data folder just has no custom rules
+        return []
+
+
 def make(config) -> Redactor | None:
     if not enabled(config):
         return None
     kinds = getattr(config, "redact_kinds", None)
     kinds = KINDS if kinds is None else kinds
-    return Redactor(kinds, getattr(config, "redact_names", None) or ())
+    return Redactor(kinds, getattr(config, "redact_names", None) or (), compiled_rules(config))
 
 
 _TURN: ContextVar["Redactor | None"] = ContextVar("redact_turn", default=None)

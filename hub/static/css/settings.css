@@ -60,3 +60,23 @@
 /* Descriptions are sentences, so let them wrap instead of truncating (the audit log keeps its clamp). */
 .st-sheet .ui-row__sub:not(.ui-clamp-2), #view-settings .ui-row__sub { white-space: normal; }
 .st-sheet .ui-row__sub.ui-clamp-2 { white-space: normal; overflow-wrap: anywhere; }
+
+/* List editor (js/listeditor.js): the shared look for every list the owner edits */
+.le { display: grid; gap: var(--sp-2); }
+.le-hint { margin: 0; padding: 0 var(--sp-3); }
+.le-list { min-width: 0; }
+.le-row { align-items: center; gap: var(--sp-2); }
+.le-row.is-off .ui-row__title { color: var(--c-text-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+.le-row .ui-row__sub { white-space: normal; overflow-wrap: anywhere; }
+.le-meta { max-width: 40%; overflow-wrap: anywhere; }
+.le-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.le-foot { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: 0 var(--sp-3); }
+.le-empty { margin: 0; padding: var(--sp-3); }
+.le-switchfield { padding-left: 0; padding-right: 0; }
+.le-accent { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.le-accent[data-accent="cyan"] { background: #5EE7FF; } .le-accent[data-accent="amber"] { background: #FFB02E; }
+.le-accent[data-accent="green"] { background: #4FF0A8; } .le-accent[data-accent="violet"] { background: #A78BFA; }
+.le-accent[data-accent="white"] { background: #E6EEF5; }
+.le-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-sm); margin: 0; }
+
+.le-select { min-height: 36px; padding: 4px 8px; width: auto; max-width: 170px; }

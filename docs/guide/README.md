@@ -29,6 +29,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 20. [20 · Applications](20-applications.md): drafted applications wait for your tap; nothing is sent by itself.
 20. [21 · Posts](21-posts.md): drafts for dev.to and copy-paste packs for LinkedIn.
 20. [22 · Urgent alerts](22-urgent-alerts.md): Friday tells you first, with a draft you send yourself.
+20. [23 · Your lists](23-your-lists.md): assistants, notification choices, your own safety and privacy rules, memory kinds and tags.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).

@@ -28,3 +28,6 @@ goes to `POST /api/assistant/message` in-process with `voice: true`, `auto_appro
 - Echo guard: the microphone is ignored while the laptop speaks and for 0.5 s after.
 - Speaking: Windows SAPI through a fixed PowerShell argv (the text goes in on stdin, never into the command line); macOS `say`; Linux `espeak-ng`/`espeak` when installed; otherwise silent.
 - Lifecycle: `start(ctx)` starts the thread when enabled; the hub shutting down stops it.
+
+## Names come from the assistants list
+The wake check uses the owner's assistants (Settings > Assistants, docs/api/assistants.md): every enabled assistant's name, wake names and mis-hearings, so a renamed Jarvis or a third assistant ("Hey Atlas") wakes the laptop too. `match_wake(text, jarvis_name, assistants)`; without a list the old Jarvis/Friday rules apply. The browser does the same through `js/wakephrase.js` and `GET /api/assistants` (cached, with the old constants as fallback). The always-on Android service keeps its built-in phrases.

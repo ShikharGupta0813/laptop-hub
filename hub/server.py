@@ -35,6 +35,7 @@ from . import updater as updater_mod
 from .assistant import LOCAL_CTX_TOOLS, ApprovalError, AssistantService
 from .latency import Latency
 from .persona import clean_persona, split_persona
+from . import assistants as assistants_mod
 from .common import Ctx
 from .config import Config
 from . import providers as providers_mod
@@ -53,7 +54,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VERSION = "1.0"
 # Feature modules, each `hub/<name>.py` (or a package) with make_router(ctx) and optionally start(ctx).
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
-                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana")
+                   "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "assistants", "rules")
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -651,9 +652,10 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     @api.post("/assistant/message")
     async def assistant_message(body: AssistantBody):
         # A leading name routes the message (typed or spoken alike): "Jarvis, run the tests" / "Friday, my day?"
-        persona, text = clean_persona(body.persona), body.text
+        owner_list = assistants_mod.load(config)      # the owner's assistants (Settings > Assistants)
+        persona, text = clean_persona(body.persona, owner_list), body.text
         if not persona:
-            named, stripped = split_persona(body.text, config.jarvis_name)
+            named, stripped = split_persona(body.text, config.jarvis_name, owner_list)
             if named and stripped:
                 persona, text = named, stripped
         provider, decision = router.route(body.provider, text, ollama_seen["up"], body.override_cap)
@@ -686,7 +688,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     @api.get("/assistant/info")
     def assistant_info():
         return {"full_control": config.full_control is True, "fast_commands": config.fast_commands is True,
-                "jarvis_name": config.jarvis_name, "display_name": config.display_name}
+                "jarvis_name": next((a["name"] for a in assistants_mod.load(config) if a["id"] == "jarvis"), config.jarvis_name),
+                "display_name": config.display_name}
 
     @api.post("/assistant/warm")
     async def assistant_warm():

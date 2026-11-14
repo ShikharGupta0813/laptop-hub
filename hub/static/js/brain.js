@@ -1,11 +1,14 @@
 // Memory (Brain): what Jarvis and Friday remember (RCAs, decisions, notes, what people asked you) and the task desk.
+// Kinds come from the owner's list (Settings > Memory kinds); every item can also carry any number of free tags.
 // Routes: docs/api/brain.md. Everything shown is text (textContent), never HTML.
 import { api, ApiError, el, sse } from "./api.js";
 import * as ui from "./ui.js";
+import { formSheet } from "./listeditor.js";
+import { cachedAssistants, refreshAssistants } from "./assistants.js";
 
 const CSS = "/css/brain.css";
-const KINDS = [["", "All"], ["rca", "RCA"], ["decision", "Decisions"], ["task", "Tasks"], ["note", "Notes"]];
-const PERSONAS = [["", "Both voices"], ["jarvis", "Jarvis"], ["friday", "Friday"]];
+const FALLBACK_KINDS = [["rca", "RCA"], ["decision", "Decision"], ["task", "Task"], ["note", "Note"], ["fact", "Fact"], ["research", "Research"]];
+const personaChoices = () => [["", "Both voices"], ...cachedAssistants().filter((a) => a.enabled !== false).map((a) => [a.id, a.name])];   // the owner's assistants
 const KIND_NAME = { note: "Note", fact: "Fact", decision: "Decision", rca: "RCA", task: "Task", research: "Research" };
 const VERDICT = { yes: ["Can do", "good"], partly: ["Partly", "warn"], no: ["Can't yet", "bad"] };
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -17,11 +20,13 @@ export function init(container, ctx) {
   const root = el("div", { class: "bn ui-stack ui-stack--lg" });
   container.append(root);
   let kind = "", persona = "", query = "", status = "open", items = [], total = 0, loadError = "", due = [];
+  let tag = "", tagList = [], kindList = FALLBACK_KINDS.map(([id, label]) => ({ id, label }));
+  const kindName = (id) => kindList.find((k) => k.id === id)?.label || KIND_NAME[id] || id;
   let timer = null, seq = 0;
   const open = new Set();
   const sid = "brain-" + Math.random().toString(36).slice(2, 10);
   let askOut = null;
-  const slot = { list: el("div", { class: "ui-stack" }), intake: null, head: null };
+  const slot = { list: el("div", { class: "ui-stack" }), intake: null, head: null, kinds: el("div", {}), tags: el("div", {}), personas: el("div", {}) };
 
   async function load() {
     const mine = ++seq;
@@ -30,9 +35,14 @@ export function init(container, ctx) {
       if (query) params.set("q", query);
       if (kind) params.set("kind", kind);
       if (persona) params.set("persona", persona);
-      const [list, dueNow] = await Promise.all([api(`/api/brain/items?${params}`), api("/api/brain/due").catch(() => ({ due: [] }))]);
+      if (tag) params.set("tag", tag);
+      const [list, dueNow, tg, kd] = await Promise.all([api(`/api/brain/items?${params}`), api("/api/brain/due").catch(() => ({ due: [] })),
+        api("/api/brain/tags").catch(() => null), api("/api/brain/kinds").catch(() => null)]);
       if (mine !== seq) return;
       items = list.items || []; total = list.total || 0; due = dueNow.due || []; loadError = "";
+      if (tg) tagList = tg.tags || [];
+      if (kd?.kinds?.length) kindList = kd.kinds;
+      drawFilters();
     } catch (error) {
       if (mine !== seq) return;
       loadError = error instanceof ApiError && error.status === 404 ? "off" : error.message;
@@ -48,6 +58,14 @@ export function init(container, ctx) {
     try { await api(`/api/brain/items/${item.id}`, { method: "DELETE" }); load(); } catch (error) { fail(error); }
   }
 
+  // Tags: any number of free words per item (comma separated), kept lower case. Existing tags are offered as hints.
+  function editTags(item) {
+    const known = tagList.filter((t) => !(item.tags || []).includes(t.tag)).slice(0, 8).map((t) => t.tag);
+    formSheet({ title: "Tags", fields: [{ key: "tags", label: "Tags for this memory", type: "chips", maxlength: 600, placeholder: "payroll, q4, urgent",
+      hint: known.length ? `Already in use: ${known.join(", ")}` : "Separate with commas." }],
+    values: { tags: item.tags || [] }, onSave: async (v) => { await patch(item, { tags: v.tags }, "Tags saved."); } });
+  }
+
   function listOf(title, rows) {
     if (!rows?.length) return null;
     return el("div", { class: "ui-stack" }, el("p", { class: "ui-caps bn-label" }, title),
@@ -61,14 +79,15 @@ export function init(container, ctx) {
     const node = el("article", { class: "ui-card ui-stack bn-item" + (open.has(item.id) ? " is-open" : "") + (item.status === "done" ? " is-done" : "") });
     body.addEventListener("click", () => { open.has(item.id) ? open.delete(item.id) : open.add(item.id); node.classList.toggle("is-open"); });
     const meta = el("div", { class: "bn-meta" },
-      ui.badge(item.persona === "both" ? "Both" : item.persona === "friday" ? "Friday" : "Jarvis", item.persona === "friday" ? "warn" : "accent"),
+      ui.badge(item.persona === "both" ? "Both" : (cachedAssistants().find((a) => a.id === item.persona)?.name || item.persona), item.persona === "friday" ? "warn" : "accent"),
       item.who ? el("span", {}, "from " + item.who) : null,
       item.project ? el("span", {}, item.project) : null,
       item.remind_at ? el("span", {}, "follow-up " + at(item.remind_at)) : null,
-      ...(item.tags || []).map((t) => el("span", {}, "#" + t)));
+      ...(item.tags || []).map((t) => el("button", { type: "button", class: "bn-tag" + (t === tag ? " is-on" : ""), title: "Filter by this tag",
+        onclick: () => { tag = tag === t ? "" : t; load(); } }, "#" + t)));
     node.append(
       el("div", { class: "bn-item-head" },
-        ui.badge(KIND_NAME[item.kind] || item.kind, "accent"),
+        ui.badge(kindName(item.kind), "accent"),
         v ? el("span", { class: "ui-badge ui-badge--" + v[1] + " bn-verdict" }, v[0]) : null,
         item.status !== "open" ? ui.badge(item.status, "") : null,
         el("h3", { class: "bn-title" }, item.title),
@@ -83,6 +102,7 @@ export function init(container, ctx) {
           : ui.button({ label: "Reopen", icon: "refresh", variant: "tonal", size: "sm", onClick: () => patch(item, { status: "open" }) }),
         item.kind === "task" && item.status === "open"
           ? ui.button({ label: "Blocked", icon: "alert", variant: "ghost", size: "sm", onClick: () => patch(item, { status: "blocked" }) }) : null,
+        ui.button({ label: "Tags", icon: "tag", variant: "ghost", size: "sm", onClick: () => editTags(item) }),
         ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: () => remove(item) })));
     return node;
   }
@@ -123,18 +143,22 @@ export function init(container, ctx) {
   // ---- quick add
   function quickAdd() {
     const text = el("textarea", { class: "ui-input", placeholder: "Remember this ... (an RCA, a decision, what someone asked)", "aria-label": "What to remember", maxlength: "8000" });
-    const kindSel = el("select", { class: "ui-input", "aria-label": "Kind" }, ...["note", "rca", "decision", "fact", "research", "task"].map((k) => el("option", { value: k }, KIND_NAME[k])));
+    const kindSel = el("select", { class: "ui-input", "aria-label": "Kind" }, ...kindList.map((k) => el("option", { value: k.id }, k.label)));
+    kindSel.value = kindList.some((k) => k.id === "note") ? "note" : kindList[0]?.id;
+    const tagsIn = el("input", { class: "ui-input", type: "text", placeholder: "Tags (optional): payroll, q4", "aria-label": "Tags", maxlength: "200" });
     const who = el("input", { class: "ui-input", type: "text", placeholder: "From (optional)", "aria-label": "From", maxlength: "80" });
     const when = el("input", { class: "ui-input", type: "text", placeholder: "Tell me when (tomorrow 9am)", "aria-label": "Follow-up time", maxlength: "60" });
     const save = ui.button({ label: "Save", icon: "plus", variant: "primary", onClick: () => ui.busy(save, async () => {
       if (!text.value.trim()) { ui.toast("Write what to remember first.", { kind: "warn" }); return; }
       const json = { text: text.value, kind: kindSel.value, source: "app" };
       if (who.value.trim()) json.who = who.value.trim();
+      const tg = tagsIn.value.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+      if (tg.length) json.tags = tg;
       if (when.value.trim()) json.remind_at = when.value.trim();
-      try { await api("/api/brain/items", { method: "POST", json }); text.value = ""; who.value = ""; when.value = ""; ui.toast("Saved.", { kind: "good" }); load(); } catch (error) { fail(error); }
+      try { await api("/api/brain/items", { method: "POST", json }); text.value = ""; who.value = ""; when.value = ""; tagsIn.value = ""; ui.toast("Saved.", { kind: "good" }); load(); } catch (error) { fail(error); }
     }) });
     return el("section", { class: "ui-card ui-stack bn-add" }, ui.eyebrow("01", "Remember"), text,
-      el("div", { class: "bn-fields" }, kindSel, who, when), el("div", { class: "bn-actions" }, save));
+      el("div", { class: "bn-fields" }, kindSel, who, when, tagsIn), el("div", { class: "bn-actions" }, save));
   }
 
   // ---- task intake: "someone gave me this; can it be done?"
@@ -198,13 +222,24 @@ export function init(container, ctx) {
     return el("section", { class: "ui-card ui-stack bn-ask" }, ui.eyebrow("AI", "Ask Jarvis about this"), el("div", { class: "ui-row" }, input, send), askOut);
   }
 
+  // The kind and tag filters are built from the owner's lists, so they are redrawn after every load.
+  function drawFilters() {
+    slot.personas.replaceChildren(chips(personaChoices(), () => persona, (v) => { persona = v; }, "persona"));
+    slot.kinds.replaceChildren(chips([["", "All"], ...kindList.map((k) => [k.id, k.label])], () => kind, (v) => { kind = v; }));
+    const top = tagList.slice(0, 14);
+    if (tag && !top.some((t) => t.tag === tag)) top.unshift({ tag, count: 0 });
+    slot.tags.replaceChildren(top.length ? chips([["", "Any tag"], ...top.map((t) => [t.tag, "#" + t.tag])], () => tag, (v) => { tag = v; }) : "");
+  }
+  drawFilters();
+  refreshAssistants().then(drawFilters).catch(() => {});
+
   slot.count = el("span", { class: "bn-count" }, "");
   const statusChips = chips([["open", "Open"], ["done", "Done"], ["all", "All"]], () => status, (v) => { status = v; });
   root.append(
     el("div", { class: "bn-head" }, el("h2", { class: "ui-title" }, "Memory"), slot.count),
     searchBar(),
-    chips(KINDS, () => kind, (v) => { kind = v; }),
-    chips(PERSONAS, () => persona, (v) => { persona = v; }, "persona"),
+    slot.kinds, slot.tags,
+    slot.personas,
     statusChips,
     slot.list, quickAdd(), intake(), askBar());
   slot.list.replaceChildren(ui.skeleton("card", 2));

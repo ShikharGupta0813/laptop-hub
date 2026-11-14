@@ -35,6 +35,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from . import config as cfg
 from .common import Ctx
+from .assistants import load as load_assistants, wake_table
 from .persona import split_persona
 
 log = logging.getLogger("hub.wakeword")
@@ -51,8 +52,11 @@ _PREFIX = re.compile(r"^\s*(?:hey|hi|ok|okay|yo)[,.!\s]+(?=\S)", re.I)
 _HEARD = {"jarvas": "jarvis", "jarves": "jarvis"}      # common mis-hearings; "service" is NOT one of them
 
 
-def match_wake(transcript: str, jarvis_name: str = "Jarvis") -> tuple[str, str] | None:
-    """(persona, rest of the sentence) when the text starts with a greeting and a name, else None."""
+def match_wake(transcript: str, jarvis_name: str = "Jarvis", assistants=None) -> tuple[str, str] | None:
+    """(persona, rest of the sentence) when the text starts with a greeting and a name, else None.
+
+    `assistants` is the owner's list (hub/assistants.py): its names and mis-hearings wake it. Without it the two
+    built-in names (plus the custom Jarvis name) apply, as before."""
     raw = str(transcript or "")
     pre = _PREFIX.match(raw)
     if not pre:
@@ -62,6 +66,14 @@ def match_wake(transcript: str, jarvis_name: str = "Jarvis") -> tuple[str, str] 
     if not first:
         return None
     word = first.group(0).lower()
+    if assistants is not None:
+        table = wake_table(assistants)
+        if word not in table:
+            return None                                          # the name must come first, never later in the sentence
+        entry = next(a for a in assistants if a["id"] == table[word])
+        rest = entry["wake_names"][0] + rest[first.end():]       # a mis-hearing becomes the real name
+        persona, tail = split_persona(rest, jarvis_name, assistants)
+        return (persona, tail) if persona else None
     custom = (jarvis_name or "Jarvis").strip().lower()
     if word not in ("jarvis", "friday", custom, *_HEARD):      # the name must come first, never later in the sentence
         return None
@@ -353,7 +365,7 @@ class WakeListener:
                 self.awaiting = None
             else:
                 self.awaiting = None
-                hit = match_wake(text, getattr(self.ctx.config, "jarvis_name", "Jarvis")) if text else None
+                hit = match_wake(text, getattr(self.ctx.config, "jarvis_name", "Jarvis"), load_assistants(self.ctx.config)) if text else None
                 if hit is None:
                     return                                   # not for us: nothing kept, nothing logged
                 persona, command = hit

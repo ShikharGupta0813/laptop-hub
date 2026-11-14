@@ -15,7 +15,8 @@ path pushes it), 'backup_done' (batch) and 'backup_failed' (now) from the in-hub
 `python -m hub backup` command and the watchdog run as separate processes without the dispatcher and keep their own
 direct ntfy push.
 
-Routes (login needed): GET /api/proactive/state -> {enabled, pending, events (last 20), last_flush}.
+Routes (login needed): GET /api/proactive/state -> {enabled, pending, events (last 20), last_flush};
+GET/PUT /api/proactive/prefs and POST /api/proactive/prefs/reset (per-type choices, see docs/api/notify.md).
 State lives in `proactive.json` under the data folder. Other modules call `submit_or_notify(ctx, event)`, which uses
 the dispatcher when it is running and falls back to a plain `ctx.notify` when it is not.
 """
@@ -25,9 +26,10 @@ import asyncio
 import datetime as dt
 import logging
 import re
+import threading
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from .common import Ctx, JsonFile
 
@@ -44,6 +46,77 @@ LOOP_TICK = 60.0
 CLOCK_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 Clock = Callable[[], dt.datetime]
 
+# ---- per-type preferences (Settings > Notification preferences) -----------------------------------------------
+# The owner picks, for every kind of event, how it reaches them: now | batch | quiet-only | off. "default" (no
+# entry) keeps the built-in rule above, which for meeting/mail/asana/alert looks inside the event (minutes, urgency).
+# Any module may add its own kind with register_type(name, label, default); a kind that was never registered is
+# added the first time it is submitted, so it always shows up in Settings.
+CHANNELS = ("now", "batch", "quiet-only", "off")
+_DECISION = {"now": "now", "batch": "batch", "quiet-only": "quiet", "off": "off"}
+TYPE_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+MAX_TYPES = 200
+_TYPES: dict[str, dict] = {}
+_TYPES_LOCK = threading.Lock()
+LABELS = {
+    "reminder": "Reminders that are due", "morning": "Morning: your day is ready", "evening_summary": "Evening summary",
+    "backup_failed": "Backup failed", "applyq_daily": "Daily applications summary", "autopilot_ready": "Autopilot drafts ready",
+    "research_done": "Research finished", "backup_done": "Backup finished", "cc_waiting": "Claude Code is waiting for me",
+    "build_done": "Build finished", "applyq_ready": "Applications ready to review", "devto_comment": "New comments on my posts",
+    "devto_cadence": "Posting reminders", "alert": "Urgent alerts and requests", "meeting": "Meeting starting soon",
+    "mail": "Mail flagged urgent", "asana": "Work tasks overdue today",
+}
+
+
+def _nice(name: str) -> str:
+    return name.replace("_", " ").strip().capitalize() or name
+
+
+def register_type(name: str, label: str = "", default: str = "quiet-only") -> bool:
+    """Add (or relabel) a kind of event so Settings lists it. Safe to call from anywhere, any number of times:
+    it never raises, and a bad name or default is ignored. `default` is now | batch | quiet-only | off | auto
+    (auto = decided by what is inside each event)."""
+    try:
+        name = str(name or "").strip().lower()
+        if not TYPE_RE.match(name):
+            return False
+        default = default if default in (*CHANNELS, "auto") else "quiet-only"
+        with _TYPES_LOCK:
+            if name not in _TYPES and len(_TYPES) >= MAX_TYPES:
+                return False
+            _TYPES[name] = {"label": " ".join(str(label or LABELS.get(name) or _nice(name)).split())[:60], "default": default}
+        return True
+    except Exception:  # noqa: BLE001 - a registry problem must never break a module that only wants to announce itself
+        return False
+
+
+def label_for(name: str) -> str:
+    with _TYPES_LOCK:
+        hit = _TYPES.get(name)
+    return hit["label"] if hit else (LABELS.get(name) or _nice(name))
+
+
+def known_types() -> dict[str, dict]:
+    with _TYPES_LOCK:
+        return {k: dict(v) for k, v in _TYPES.items()}
+
+
+for _t in NOW_TYPES:
+    register_type(_t, default="now")
+for _t in BATCH_TYPES:
+    register_type(_t, default="batch" if _t != "alert" else "auto")
+for _t in ("meeting", "mail", "asana"):
+    register_type(_t, default="auto")
+
+
+def clean_prefs(raw: Any) -> dict[str, str]:
+    """Only well-formed {type: channel} pairs; anything else is dropped."""
+    out: dict[str, str] = {}
+    if isinstance(raw, dict):
+        for k, v in list(raw.items())[:MAX_TYPES]:
+            if isinstance(k, str) and TYPE_RE.match(k) and v in CHANNELS:
+                out[k] = v
+    return out
+
 
 def _minutes(value: Any, default: int) -> int:
     m = CLOCK_RE.match(str(value or ""))
@@ -58,11 +131,18 @@ def in_quiet(now: dt.datetime, start: str = "22:00", end: str = "07:00") -> bool
 
 
 def classify(event: dict, *, now: dt.datetime | None = None, quiet_start: str = "22:00",
-             quiet_end: str = "07:00") -> str:
-    """'now' | 'batch' | 'quiet'. Pure. Quiet hours apply only when `now` is given."""
+             quiet_end: str = "07:00", prefs: dict | None = None) -> str:
+    """'now' | 'batch' | 'quiet' | 'off'. Pure. Quiet hours apply only when `now` is given.
+
+    `prefs` is the owner's {type: channel} choices (see CHANNELS); a type without one keeps the built-in rule."""
     event = event if isinstance(event, dict) else {}
     kind = str(event.get("type") or "")
-    if kind == "meeting":
+    chosen = (prefs or {}).get(kind)
+    if chosen in CHANNELS:
+        if chosen == "off":
+            return "off"
+        base = _DECISION[chosen]
+    elif kind == "meeting":
         mins = event.get("minutes")
         ok = isinstance(mins, (int, float)) and not isinstance(mins, bool) and 0 <= mins <= MEETING_MINUTES
         base = "now" if ok else "quiet"
@@ -129,7 +209,31 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
         parts.append(f"you have {n_dc} new comments on your posts")
     if cad:
         parts.append(_lower_first(str(cad[-1].get("title") or "no post lately, ideas ready")))
+    parts += _other_parts(events)
     return f"{call}, {_join(parts)}." if parts else ""
+
+
+_TEMPLATED = ("alert", "autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready",
+              "devto_comment", "devto_cadence")
+
+
+def _other_parts(events: list[dict]) -> list[str]:
+    """Kinds with no template of their own (a new module's type, or a 'now' type the owner moved to batch)."""
+    counts: dict[str, int] = {}
+    titles: dict[str, str] = {}
+    for e in events:
+        t = str(e.get("type") or "")
+        if t and t not in _TEMPLATED:
+            counts[t] = counts.get(t, 0) + int(e.get("count") or 1)
+            titles[t] = str(e.get("title") or "")
+    out = []
+    for t, n in counts.items():
+        if n == 1 and titles[t]:
+            out.append(_lower_first(titles[t]))
+        else:
+            label = label_for(t).lower()
+            out.append(f"a {label} update is waiting" if n == 1 else f"{n} {label} updates are waiting")
+    return out
 
 
 class Proactive:
@@ -175,6 +279,48 @@ class Proactive:
         return {"enabled": self.enabled, "pending": d["pending"], "events": d["events"][::-1],
                 "last_flush": d["last_flush"] or None}
 
+    # ---- the owner's per-type choices ----------------------------------------------------------------------
+    @property
+    def prefs_file(self) -> JsonFile:
+        return JsonFile(self.ctx.config.data_path() / "proactive_prefs.json")
+
+    def prefs(self) -> dict[str, str]:
+        d = self.prefs_file.load({})
+        return clean_prefs(d.get("prefs") if isinstance(d, dict) else {})
+
+    def set_prefs(self, changes: dict) -> dict[str, str]:
+        """Merge {type: channel}. A value of null / "default" / "auto" removes the owner's choice for that type."""
+        cur = self.prefs()
+        for k, v in changes.items():
+            if not isinstance(k, str) or not TYPE_RE.match(k):
+                raise ValueError(f"'{str(k)[:30]}' is not a valid notification type.")
+            if v in (None, "default", "auto"):
+                cur.pop(k, None)
+            elif v in CHANNELS:
+                cur[k] = v
+            else:
+                raise ValueError("Choose now, batch, quiet-only, off or default.")
+        self.prefs_file.save({"prefs": cur})
+        return cur
+
+    def reset_prefs(self) -> None:
+        try:
+            self.prefs_file.path.unlink()
+        except OSError:
+            pass
+
+    def prefs_view(self) -> dict:
+        prefs = self.prefs()
+        types = known_types()
+        for k in prefs:
+            types.setdefault(k, {"label": _nice(k), "default": "quiet-only"})
+        rows = [{"type": k, "label": v["label"], "default": v["default"], "value": prefs.get(k) or "default",
+                 "custom": k in prefs} for k, v in types.items()]
+        rows.sort(key=lambda r: (r["label"].lower(), r["type"]))
+        qs, qe = self._quiet()
+        return {"types": rows, "channels": list(CHANNELS), "quiet": {"start": qs, "end": qe},
+                "enabled": self.enabled}
+
     # ---- dispatch ---------------------------------------------------------------------------------------
     def _push(self, title: str, body: str, level: str, link: str | None) -> None:
         try:
@@ -188,7 +334,12 @@ class Proactive:
             event = dict(event)
             now = self.clock()
             qs, qe = self._quiet()
-            decision = classify(event, now=now, quiet_start=qs, quiet_end=qe)
+            kind = str(event.get("type") or "")
+            if kind and kind not in _TYPES:
+                register_type(kind)                  # first sighting: Settings lists it from now on
+            decision = classify(event, now=now, quiet_start=qs, quiet_end=qe, prefs=self.prefs())
+            if decision == "off":
+                return "off"                         # the owner switched this kind off: nothing stored, nothing pushed
             d = self.load()
             dedupe = str(event.get("dedupe") or "")[:80]
             if dedupe:                               # e.g. one push per meeting: the same key is never handled twice
@@ -339,6 +490,30 @@ def make_router(ctx: Ctx, *, clock: Clock | None = None) -> APIRouter:
     @router.get("/state")
     def state():
         return engine.view()
+
+    @router.get("/prefs")
+    def get_prefs():
+        return engine.prefs_view()
+
+    @router.put("/prefs")
+    def put_prefs(body: dict = Body(default_factory=dict)):
+        changes = body.get("prefs")
+        if not isinstance(changes, dict) or len(changes) > MAX_TYPES:
+            raise HTTPException(400, "prefs must be an object of {type: channel}.")
+        try:
+            engine.set_prefs(changes)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        except OSError:
+            raise HTTPException(500, "The preferences could not be saved.") from None
+        ctx.audit("notify_prefs_update", types=sorted(changes)[:20])
+        return engine.prefs_view()
+
+    @router.post("/prefs/reset")
+    def reset_prefs():
+        engine.reset_prefs()
+        ctx.audit("notify_prefs_reset")
+        return engine.prefs_view()
 
     return router
 

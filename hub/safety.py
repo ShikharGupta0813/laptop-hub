@@ -422,6 +422,196 @@ def describe_shape(tool_name: str, args: dict) -> str:
     return tool_name
 
 
+# ---- the owner's own rules (Settings > My safety rules) --------------------------------------------------------------
+# Extra rules on top of classify(). Each is {pattern, regex?, applies_to: command|tool|path, level: N2|N3, note}.
+# A rule can only RAISE a level, never lower it, and the built-in checks always still apply. Patterns are validated
+# and matched through hub/safepattern.py (length limit, no runaway shapes, bounded subject).
+CUSTOM_APPLIES = ("command", "tool", "path")
+CUSTOM_LEVELS = (N2, N3)
+CUSTOM_MAX_RULES = 50
+CUSTOM_NOTE_MAX = 200
+_PATH_ARGS = ("path", "paths", "src", "dest", "dst", "source", "target", "cwd", "folder", "dir", "file", "name", "to", "from")
+_CUSTOM: list[dict] = []                 # compiled rules, set by set_custom_rules() (memory only)
+
+
+def _custom_id(index: int) -> str:
+    return f"r{index + 1}"
+
+
+def clean_custom_rule(raw: Any) -> dict:
+    """One rule, validated. ValueError (one plain sentence) when it cannot be used."""
+    from .safepattern import PatternError, compile_pattern
+    if not isinstance(raw, dict):
+        raise ValueError("A rule must be an object.")
+    pattern = str(raw.get("pattern") or "").strip()
+    regex = raw.get("regex") is True
+    applies = str(raw.get("applies_to") or "command").strip().lower()
+    level = str(raw.get("level") or N3).strip().upper()
+    if applies not in CUSTOM_APPLIES:
+        raise ValueError("applies_to must be command, tool or path.")
+    if level not in CUSTOM_LEVELS:
+        raise ValueError("level must be N2 or N3 (a rule can only make something stricter).")
+    try:
+        compile_pattern(pattern, regex)
+    except PatternError as exc:
+        raise ValueError(str(exc)) from None
+    note = " ".join(str(raw.get("note") or "").split())[:CUSTOM_NOTE_MAX]
+    return {"pattern": pattern, "regex": regex, "applies_to": applies, "level": level, "note": note,
+            "enabled": raw.get("enabled") is not False}
+
+
+def clean_custom_rules(items: Any) -> list[dict]:
+    if not isinstance(items, list):
+        raise ValueError("The rules must be a list.")
+    if len(items) > CUSTOM_MAX_RULES:
+        raise ValueError(f"At most {CUSTOM_MAX_RULES} rules.")
+    out = [clean_custom_rule(i) for i in items]
+    for n, rule in enumerate(out):
+        rule["id"] = _custom_id(n)
+    return out
+
+
+def set_custom_rules(rules: list[dict] | None) -> int:
+    """Install the rules the classifier uses (compiled once). Invalid entries are skipped. Returns how many are live."""
+    from .safepattern import PatternError, compile_pattern
+    live: list[dict] = []
+    for n, rule in enumerate(rules or []):
+        try:
+            ok = clean_custom_rule(rule)
+            if ok["enabled"]:
+                live.append({**ok, "id": rule.get("id") or _custom_id(n),
+                             "compiled": compile_pattern(ok["pattern"], ok["regex"])})
+        except (ValueError, PatternError):
+            continue
+    _CUSTOM[:] = live
+    return len(live)
+
+
+_CUSTOM_STAMP: list = [None]            # (path, mtime_ns) of the file the live rules came from
+
+
+def custom_rules_path(config):
+    return config.data_path() / "safety_rules.json"
+
+
+def load_custom_rules(config) -> list[dict]:
+    """The owner's saved rules (validated, with ids). [] when there is no file or it is unreadable."""
+    import json
+    try:
+        data = json.loads(custom_rules_path(config).read_text(encoding="utf-8"))
+        return clean_custom_rules(data.get("rules") if isinstance(data, dict) else [])
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def save_custom_rules(config, rules: Any) -> list[dict]:
+    """Validate, write atomically and make the rules live at once. ValueError for a bad rule."""
+    import json
+    import os
+    clean = clean_custom_rules(rules)
+    path = custom_rules_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"version": 1, "rules": clean}, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    _CUSTOM_STAMP[0] = None
+    refresh_custom(config)
+    return clean
+
+
+def refresh_custom(config) -> None:
+    """Make the live rules match the saved file (cheap: it only reads when the file changed). Never raises."""
+    try:
+        path = custom_rules_path(config)
+        try:
+            stamp = (str(path), path.stat().st_mtime_ns)
+        except OSError:
+            stamp = (str(path), 0)
+        if _CUSTOM_STAMP[0] == stamp:
+            return
+        set_custom_rules(load_custom_rules(config) if stamp[1] else [])
+        _CUSTOM_STAMP[0] = stamp
+    except Exception:  # noqa: BLE001 - the built-in checks never depend on this
+        return
+
+
+def custom_rules_live() -> list[dict]:
+    return [{k: v for k, v in r.items() if k != "compiled"} for r in _CUSTOM]
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [v for x in value for v in _strings(x)]
+    return []
+
+
+def _subjects(rule_applies: str, tool_name: str, args: dict) -> list[str]:
+    if rule_applies == "tool":
+        return [str(tool_name)]
+    command = _strings(args.get("command")) + _strings(args.get("script")) + _strings(args.get("name") if tool_name == "run_script" else None)
+    if rule_applies == "command":
+        out = command
+    else:                                           # path: the file arguments, and any command line (it names paths too)
+        out = command + [s for k in _PATH_ARGS for s in _strings(args.get(k))]
+        params = args.get("params")
+        if isinstance(params, dict):
+            out += [s for k in _PATH_ARGS for s in _strings(params.get(k))]
+    return out + [normalise(s) for s in out]
+
+
+def custom_hits(tool_name: str, args: Any = None, rules: list[dict] | None = None) -> list[dict]:
+    """The owner's rules that match this call (id, level, note), in order. Never raises."""
+    from .safepattern import search
+    args = args if isinstance(args, dict) else {}
+    hits = []
+    for rule in (_CUSTOM if rules is None else rules):
+        try:
+            compiled = rule["compiled"]
+            plain = not rule["regex"]
+            if any(search(compiled, s, plain) for s in _subjects(rule["applies_to"], str(tool_name), args)):
+                hits.append({"id": rule.get("id", ""), "level": rule["level"], "note": rule.get("note", ""),
+                             "applies_to": rule["applies_to"], "pattern": rule["pattern"]})
+        except Exception:  # noqa: BLE001 - a broken rule must never stop the built-in checks
+            continue
+    return hits
+
+
+def apply_custom(level: str, tool_name: str, args: Any = None) -> tuple[str, list[dict]]:
+    """(the level after the owner's rules, the rules that fired). Only ever raises the level."""
+    hits = custom_hits(tool_name, args)
+    return (worst(level, *(h["level"] for h in hits)), hits) if hits else (level, [])
+
+
+def classify_with_custom(tool_name: str, args: Any = None, *, base: str | None = None) -> tuple[str, list[dict]]:
+    """classify() plus the owner's rules, and which rules fired (for the audit log)."""
+    return apply_custom(classify(tool_name, args, base=base), tool_name, args)
+
+
+def try_custom_input(kind: str, text: str, rules: list[dict] | None = None) -> dict:
+    """The Settings test box: what level would this command / tool / path get, and why."""
+    from .safepattern import PatternError, compile_pattern
+    kind = kind if kind in CUSTOM_APPLIES else "command"
+    text = str(text or "")[:2000]
+    args = {"command": text} if kind == "command" else {"path": text} if kind == "path" else {}
+    tool = "run_command" if kind == "command" else "read_file" if kind == "path" else text.strip()
+    built_in = classify(tool, args)
+    live = None
+    if rules is not None:
+        live = []
+        for n, rule in enumerate(rules):
+            try:
+                ok = clean_custom_rule(rule)
+                if ok["enabled"]:
+                    live.append({**ok, "id": rule.get("id") or _custom_id(n), "compiled": compile_pattern(ok["pattern"], ok["regex"])})
+            except (ValueError, PatternError):
+                continue
+    hits = custom_hits(tool, args, live)
+    return {"level": worst(built_in, *(h["level"] for h in hits)), "built_in": built_in, "rules": hits,
+            "reason": (command_reason(text) if kind == "command" else path_reason(text) if kind == "path" else None)}
+
+
 def classify(tool_name: str, args: Any = None, *, base: str | None = None) -> str:
     """'N1' | 'N2' | 'N3' for one tool call. Pure: no I/O, no state.
 

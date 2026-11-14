@@ -193,3 +193,6 @@ prompt crosshair redline (the monogram). `sparkles` is drawn as a prompt with a 
 ## Service worker
 `sw.js` precaches the shell (it is network-first, with the cache as fallback; current `VERSION` is `v17-arc-glass-2026.11`, which added `wheel.js`, `wheel.css` and the Orbitron font). **Bump `VERSION`** whenever you add or rename a shell file, and add new core files to `SHELL`.
 Lazily loaded screens are cached the first time they load. If one file fails to download, the install still completes.
+
+## List editor (js/listeditor.js)
+The one look for every list the owner edits in Settings: an inset `ui-list` of rows (tile, title, sub line, optional meta, an on/off `ui-switch`, edit and delete icon buttons), then a footer with `Add` (tonal) and `Reset to defaults` (ghost, confirmed). Forms open as a `ui.sheet` (`formSheet`). Classes: `.le`, `.le-row`, `.le-actions`, `.le-foot`, `.le-meta`, `.le-accent[data-accent]`, in `settings.css`. Switched-off rows are struck through. Use it for any new list instead of writing a custom editor.
