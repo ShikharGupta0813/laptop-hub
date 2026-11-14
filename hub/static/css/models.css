@@ -1,0 +1,16 @@
+/* Local models panel (js/models.js), shown inside the Settings > Models sheet. Scoped under .lm; tokens only. */
+.lm { display: grid; gap: var(--sp-4); min-width: 0; }
+.lm > * { min-width: 0; }
+.lm-card { padding: var(--sp-3); display: grid; gap: var(--sp-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface-2); }
+.lm-row { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+.lm-row > .grow { flex: 1 1 12rem; min-width: 0; }
+.lm-badges { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
+.lm-input, .lm-text { width: 100%; box-sizing: border-box; }
+.lm-text { min-height: 84px; resize: vertical; }
+.lm-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.lm-reason { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--c-text-3); font-size: var(--fs-sm); max-height: 16rem; overflow: auto; }
+.lm-tablewrap { overflow-x: auto; }
+.lm-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+.lm-table th, .lm-table td { text-align: left; padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--c-line); white-space: nowrap; }
+.lm-pass { color: var(--c-good, inherit); }
+.lm-fail { color: var(--c-bad, inherit); }

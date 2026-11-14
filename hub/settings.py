@@ -50,6 +50,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "wake_laptop_enabled", "wake_laptop_device", "opps_enabled", "opps_interval_min", "opps_min_score",
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
+ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -153,6 +154,18 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         value = body[key]
         if key in MODEL_KEYS:
             changes[key] = _clean_name(value, key)
+        elif key == "local_reasoning_model":
+            if value != "" and not valid_model_name(value):
+                raise HTTPException(400, "local_reasoning_model must be empty (off) or a model name like deepseek-r1:8b.")
+            changes[key] = value.strip()
+        elif key == "deep_think_timeout_min":
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 1 <= value <= 240:
+                raise HTTPException(400, "deep_think_timeout_min must be a number from 1 to 240.")
+            changes[key] = float(value)
+        elif key == "deep_think_max_chars":
+            if isinstance(value, bool) or not isinstance(value, int) or not 1000 <= value <= 200000:
+                raise HTTPException(400, "deep_think_max_chars must be a whole number from 1000 to 200000.")
+            changes[key] = value
         elif key == "default_provider":
             if value not in ("auto", "local", "claude", "claude-login", "gemini", "duo"):
                 raise HTTPException(400, "default_provider must be auto, local, claude, claude-login, gemini or duo.")
@@ -557,6 +570,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "cloud_daily_cap": config.cloud_daily_cap, "provider_daily_caps": dict(config.provider_daily_caps),
             "claude_login_5h_soft_cap": config.claude_login_5h_soft_cap,
             "gmail_company_ai_allowed": config.gmail_company_ai_allowed is True,
+            "local_reasoning_model": config.local_reasoning_model, "deep_think_timeout_min": config.deep_think_timeout_min,
+            "deep_think_max_chars": config.deep_think_max_chars,
             "providers": providers.availability(config),
             "resolved_provider": providers.resolve_default(config),
             "version": _version(), "data_dir_exists": config.data_path().is_dir(),
