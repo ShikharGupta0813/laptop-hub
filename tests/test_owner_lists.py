@@ -295,7 +295,7 @@ class NotifyPrefs(Base):
     def test_settings_lists_every_known_type_with_its_default(self):
         d = self.c.get("/api/proactive/prefs").json()
         by = {t["type"]: t for t in d["types"]}
-        for t in ("reminder", "autopilot_ready", "applyq_ready", "applyq_daily", "devto_comment", "devto_cadence", "alert", "meeting",
+        for t in ("reminder", "autopilot_ready", "applyq_ready", "applyq_daily", "post_comment", "post_cadence", "alert", "meeting",
                   "backup_done", "cc_waiting", "morning"):
             self.assertIn(t, by, t)
         self.assertEqual(by["reminder"]["default"], "now")

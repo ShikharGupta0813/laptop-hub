@@ -62,8 +62,8 @@ LABELS = {
     "reminder": "Reminders that are due", "morning": "Morning: your day is ready", "evening_summary": "Evening summary",
     "backup_failed": "Backup failed", "applyq_daily": "Daily applications summary", "autopilot_ready": "Autopilot drafts ready",
     "research_done": "Research finished", "backup_done": "Backup finished", "cc_waiting": "Claude Code is waiting for me",
-    "build_done": "Build finished", "applyq_ready": "Applications ready to review", "devto_comment": "New comments on my posts",
-    "devto_cadence": "Posting reminders", "alert": "Urgent alerts and requests", "meeting": "Meeting starting soon",
+    "build_done": "Build finished", "applyq_ready": "Applications ready to review", "post_comment": "New comments on my posts",
+    "post_cadence": "Posting reminders", "alert": "Urgent alerts and requests", "meeting": "Meeting starting soon",
     "mail": "Mail flagged urgent", "asana": "Work tasks overdue today",
 }
 
@@ -215,7 +215,7 @@ def batch_sentence(events: list[dict], call: str = "Chief") -> str:
 
 
 _TEMPLATED = ("alert", "autopilot_ready", "research_done", "backup_done", "cc_waiting", "build_done", "applyq_ready",
-              "devto_comment", "devto_cadence")
+              "devto_comment", "devto_cadence", "post_comment", "post_cadence")
 
 
 def _other_parts(events: list[dict]) -> list[str]:
