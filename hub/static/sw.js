@@ -24,7 +24,7 @@ const SHELL = [
   "/vendor/fonts/jetbrains-mono-var-latin.woff2", "/css/launcher.css", "/js/launcher.js", "/css/friday.css",
   "/js/friday.js", "/js/notes.js", "/js/notifications.js", "/js/omnibox.js", "/js/providers.js", "/js/quiz.js",
   "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js", "/js/studychat.js",
-  "/js/lanepicker.js", "/css/lanes.css", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js",
+  "/js/lanepicker.js", "/js/presence.js", "/css/lanes.css", "/js/terminal.js", "/js/todos.js", "/js/tools.js", "/js/ui.js",
   "/js/voicemode.js", "/js/wakebridge.js", "/css/posts.css", "/js/posts.js", "/js/devto.js", "/js/watch.js",
   "/js/work.js", "/vendor/marked.js", "/vendor/purify.min.js", "/vendor/xterm.js", "/vendor/xterm.css",
   "/vendor/addon-fit.js", "/vendor/fonts/inter-var-latin.woff2", "/icons/icon.svg", "/icons/icon-192.png",

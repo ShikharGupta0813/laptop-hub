@@ -118,8 +118,9 @@ class NotifyCenter:
     # ---- push ------------------------------------------------------------------------------------
 
     def push(self, title: str, body: str = "", level: str = "info", link: str | None = None,
-             source: str = "") -> dict | None:
-        """Add a notification. Never raises: a broken notification must not break the caller."""
+             source: str = "", phone: Any = True) -> dict | None:
+        """Add a notification. Never raises: a broken notification must not break the caller.
+        `phone`: True = the usual ntfy push, "silent" = a low-priority push, False = in-app list only (hub/presence.py)."""
         try:
             level = level if level in LEVEL_RANK else "info"
             title = _clean(title, 200, single_line=True) or "Notification"
@@ -141,7 +142,8 @@ class NotifyCenter:
             log.warning("Could not store a notification (%s).", type(exc).__name__)
             return None
         self._announce(item)
-        self._maybe_push_phone(item, now)
+        if phone is not False:
+            self._maybe_push_phone(item, now, silent=phone == "silent")
         return item
 
     __call__ = push
@@ -293,7 +295,7 @@ class NotifyCenter:
             return False
         return start <= minutes < end if start < end else (minutes >= start or minutes < end)
 
-    def _maybe_push_phone(self, item: dict, now: float) -> None:
+    def _maybe_push_phone(self, item: dict, now: float, silent: bool = False) -> None:
         try:
             topic, _ = self.active_topic()
             server = str(getattr(self.config, "ntfy_server", "") or "").rstrip("/")
@@ -306,6 +308,8 @@ class NotifyCenter:
                 return
             headers = {"Title": item["title"].encode("ascii", "replace").decode("ascii")[:100] or "Hub",
                        "Priority": NTFY_PRIORITY[item["level"]], "Tags": NTFY_TAGS[item["level"]]}
+            if silent:
+                headers["Priority"] = "2"
             link = item["link"]
             if link and link.lower().startswith(("http://", "https://")):
                 headers["Click"] = link

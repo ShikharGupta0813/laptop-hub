@@ -351,8 +351,17 @@ class Proactive:
             body = str(event.get("body") or "")[:400]
             link = event.get("link") if isinstance(event.get("link"), str) else None
             at = now.isoformat(timespec="seconds")
-            if decision == "now":
-                level = event.get("level") if event.get("level") in ("info", "warn", "error") else ("warn" if event.get("urgent") else "info")
+            level = event.get("level") if event.get("level") in ("info", "warn", "error") else ("warn" if event.get("urgent") else "info")
+            routed = None
+            if decision in ("now", "batch"):         # presence-aware delivery (hub/presence.py); None keeps the rules below
+                try:
+                    from . import presence
+                    routed = presence.route(self.ctx, event, decision, title, body, link, level)
+                except Exception:  # noqa: BLE001 - never let it break delivery
+                    routed = None
+                if routed is not None:               # presence already delivered it ("now"/"handled"), held it, or asked for the batch
+                    decision = routed
+            if decision == "now" and routed is None:
                 self._push(title or "Friday", body, level, link)
             elif decision == "batch":
                 d["pending"].append({"type": str(event.get("type")), "title": title,

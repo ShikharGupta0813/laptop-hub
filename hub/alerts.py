@@ -799,9 +799,14 @@ class Alerts:
         if reg is not None and decision in ("now", "batch"):
             reg.claim(*dedupe, "alerts")             # Watch stays silent for this message from now on
         if decision == "now" and u >= 2:
+            try:                                     # presence-aware delivery: None = speak as before
+                from . import presence
+                acts = presence.alert_actions(self.ctx, event)
+            except Exception:  # noqa: BLE001
+                acts = None
             alert["speech"] = self.speech_text(alert)
-            alert["speak_phone"] = True
-            if getattr(self.ctx.config, "alerts_speak_on_laptop", False) is True:
+            alert["speak_phone"] = acts is None or "speak-phone" in acts
+            if getattr(self.ctx.config, "alerts_speak_on_laptop", False) is True and (acts is None or "speak-laptop" in acts):
                 text = alert["speech"]
                 self.spawn(lambda: self.speaker(text))
 

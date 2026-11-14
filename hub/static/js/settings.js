@@ -168,6 +168,7 @@ export function init(container, ctx) {
     rows.push(group("Assistants and rules",
       ui.listRow({ icon: "jarvis", tone: "accent", title: "Assistants", sub: "Jarvis, Friday and any you add: names, wake words, prompts", chevron: true, onClick: () => openSection("assistants") }),
       ui.listRow({ icon: "bell", tone: "orange", title: "Notification preferences", sub: "Now, batch, quiet only or off, for each kind of alert", chevron: true, onClick: () => openSection("notifyprefs") }),
+      ui.listRow({ icon: "bell", tone: "info", title: "Delivery rules", sub: "How alerts reach you at the laptop, away, in a meeting or in focus", chevron: true, onClick: () => openSection("deliveryrules") }),
       ui.listRow({ icon: "shield", tone: "bad", title: "My safety rules", sub: "Make anything touching a path or command stricter", chevron: true, onClick: () => openSection("safetyrules") }),
       ui.listRow({ icon: "eye-off", tone: "good", title: "My redaction rules", sub: "Words and patterns cloud AI must never see", chevron: true, onClick: () => openSection("redactrules") }),
       ui.listRow({ icon: "tag", tone: "info", title: "Memory kinds", sub: "What kinds of memory exist and who sees them", chevron: true, onClick: () => openSection("memorykinds") }),

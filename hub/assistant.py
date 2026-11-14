@@ -913,7 +913,7 @@ class AssistantService:
             hello = greeting_reply(text, session.persona, getattr(self.config, "display_name", "Chief"),
                                    getattr(self.config, "jarvis_name", "Jarvis"), assistants=roster)
             fast = None if hello else self._fast_match(text)
-            saved = "" if (hello or fast is not None) else self._brain_save(text)
+            saved = "" if (hello or fast is not None) else (self._presence_say(text) or self._brain_save(text))
             session.memory = "" if (hello or fast is not None or saved) else self._brain_memory(text, session.persona)
             if hello:
                 span["fast"] = True
@@ -1137,6 +1137,14 @@ class AssistantService:
         except Exception:  # noqa: BLE001  a matcher bug must never block a normal message
             return None
         return hit if hit and hit["tool"] in self._spec_by_name else None
+
+    def _presence_say(self, text: str) -> str:
+        """"I am going out" / "I'm back" / "focus for an hour": a manual presence flag, no model (hub/presence.py)."""
+        try:
+            from . import presence
+            return presence.fast_reply(self.config, text)
+        except Exception:  # noqa: BLE001 - never block a normal message
+            return ""
 
     def _brain_save(self, text: str) -> str:
         """"remember ..." / "note ..." is saved at once, with no model (hub/brain.py). "" when it is anything else."""

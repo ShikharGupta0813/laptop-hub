@@ -193,6 +193,9 @@ class Config:
     mcp_idle_seconds: int = 300             # a server with no call for this long is stopped (started again on the next call)
     mcp_max_concurrent: int = 4             # tool calls running at once across all servers
     mcp_call_timeout: int = 60              # seconds before one tool call is given up
+    # Presence-aware delivery (hub/presence.py): where the owner is decides how each notification reaches them.
+    presence_enabled: bool = True           # False = every notification goes out the old way; 'unknown' presence does too
+    presence_laptop_toasts: bool = False    # also show a Windows toast (title only) when a rule says toast-on-laptop
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -312,6 +315,7 @@ def save(config: Config, path: Path) -> None:
         "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
         "formfill_enabled": config.formfill_enabled is True, "formfill_headed": config.formfill_headed is not False,
         "formfill_never": list(config.formfill_never or []),
+        "presence_enabled": config.presence_enabled is not False, "presence_laptop_toasts": config.presence_laptop_toasts is True,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

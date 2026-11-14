@@ -8,6 +8,7 @@
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 import { gaugeRow } from "./privacy.js";
+import { presenceChip } from "./presence.js";
 
 // ---- quick actions (also listed in the search overlay) -------------------------------------------
 // open: [view, section] opened with ctx.open; run(ctx): an action. Add one by adding a line.
@@ -320,6 +321,7 @@ export function init(container, ctx) {
     }
     if (cpu != null) chips.push(kvRow("cpu", el("span", { class: "ui-num" }, `${Math.round(cpu)}%`)));
     if (countdown) chips.push(countdown);
+    try { chips.push(presenceChip(ctx)); } catch (_) { /* optional */ }
     status.replaceChildren(...chips);
   }
 
