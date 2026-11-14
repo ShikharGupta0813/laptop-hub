@@ -165,6 +165,25 @@ class Config:
     deep_think_timeout_min: float = 20.0    # a deep-thinking job is stopped after this many minutes
     deep_think_max_chars: int = 30000       # cap on thinking + answer characters per job
 
+    # Dictation hotkey (hub/dictation.py): hold a key on the LAPTOP, speak, release; the text is typed into the focused window.
+    # Off by default. None for a list/dict means "the built-in default"; an empty list really is empty.
+    dictation_enabled: bool = False
+    dictation_paused: bool = False
+    dictation_hotkey: str = "ctrl+alt+space"
+    dictation_mode: str = "hold"            # hold (push to talk) | toggle
+    dictation_language: str = ""            # Whisper language code; "" = detect
+    dictation_punctuate: bool = True
+    dictation_add_space: bool = True
+    dictation_max_seconds: int = 120
+    dictation_max_chars: int = 2000
+    dictation_use_clipboard: bool = False   # paste instead of typing keys (restores the old clipboard)
+    dictation_newline: bool = False         # may "new line" press Enter? Off: it becomes a space
+    dictation_assistant_commands: bool = False
+    dictation_blocklist: list | None = None         # window title / program fragments where nothing is ever typed
+    dictation_spoken: dict | None = None            # spoken punctuation: phrase -> symbol
+    dictation_scratch_phrases: list | None = None   # phrases that undo the last dictated chunk
+    dictation_assistant_prefixes: list | None = None   # "send to jarvis" style prefixes
+
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
         return Path(self.data_dir) if self.data_dir else Path.home() / ".laptop-hub" / "data"
@@ -271,6 +290,16 @@ def save(config: Config, path: Path) -> None:
         "local_reasoning_model": str(config.local_reasoning_model or ""),
         "deep_think_timeout_min": float(config.deep_think_timeout_min or 20.0),
         "deep_think_max_chars": int(config.deep_think_max_chars or 30000),
+        "dictation_enabled": config.dictation_enabled is True, "dictation_paused": config.dictation_paused is True,
+        "dictation_hotkey": str(config.dictation_hotkey or ""), "dictation_mode": str(config.dictation_mode or "hold"),
+        "dictation_language": str(config.dictation_language or ""), "dictation_punctuate": config.dictation_punctuate is not False,
+        "dictation_add_space": config.dictation_add_space is not False,
+        "dictation_max_seconds": int(config.dictation_max_seconds or 120), "dictation_max_chars": int(config.dictation_max_chars or 2000),
+        "dictation_use_clipboard": config.dictation_use_clipboard is True, "dictation_newline": config.dictation_newline is True,
+        "dictation_assistant_commands": config.dictation_assistant_commands is True,
+        "dictation_blocklist": config.dictation_blocklist, "dictation_spoken": config.dictation_spoken,
+        "dictation_scratch_phrases": config.dictation_scratch_phrases,
+        "dictation_assistant_prefixes": config.dictation_assistant_prefixes,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

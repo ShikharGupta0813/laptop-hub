@@ -1,0 +1,4 @@
+/* Settings > Dictation (laptop): small additions on top of the shared ARC-Glass pieces. */
+.dc .dc-key { width: 100%; font-family: var(--font-mono, ui-monospace, monospace); letter-spacing: .04em; }
+.dc .dc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dc [role="status"] { overflow-wrap: anywhere; }

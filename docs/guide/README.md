@@ -32,6 +32,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 20. [23 · Your lists](23-your-lists.md): assistants, notification choices, your own safety and privacy rules, memory kinds and tags.
 20. [24 · Provider lists](24-provider-lists.md): search, vision, AI endpoints, skill sources, coding agents.
 20. [25 · Local models](25-local-models.md): DeepSeek and other Ollama models, install, deep thinking, speed test.
+20. [26 · Dictation](26-dictation.md): hold a key on the laptop, speak, and it types into the window in front.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).

@@ -171,7 +171,7 @@ def check_wake(config=None) -> list[tuple]:
     """Wake word / safety / redaction modules, reported only when they exist (other workers add them)."""
     out = []
     for mod, label in (("hub.wakeword", "laptop wake listener"), ("hub.safety", "safety levels"),
-                       ("hub.redact", "redaction"), ("hub.usage", "usage tracking")):
+                       ("hub.redact", "redaction"), ("hub.usage", "usage tracking"), ("hub.dictation", "dictation hotkey")):
         try:
             found = importlib.util.find_spec(mod) is not None
         except (ImportError, ValueError):

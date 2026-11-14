@@ -10,6 +10,7 @@ import { gmailCard } from "./gmailx.js";
 import { OWNER_SECTIONS } from "./ownerlists.js";
 import { providersCard } from "./provlists.js";
 import { modelsPanel } from "./models.js";
+import { dictationRow } from "./dictation.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -168,6 +169,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "shield", tone: "bad", title: "My safety rules", sub: "Make anything touching a path or command stricter", chevron: true, onClick: () => openSection("safetyrules") }),
       ui.listRow({ icon: "eye-off", tone: "good", title: "My redaction rules", sub: "Words and patterns cloud AI must never see", chevron: true, onClick: () => openSection("redactrules") }),
       ui.listRow({ icon: "tag", tone: "info", title: "Memory kinds", sub: "What kinds of memory exist and who sees them", chevron: true, onClick: () => openSection("memorykinds") })));
+    rows.push(group("Dictation", dictationRow()));
     rows.push(group("Alerts",
       ui.listRow({ icon: "bell", tone: "bad", title: "Phone push", sub: notify ? (notify.ntfy_enabled ? "On. Alerts reach your phone." : "Off. Alerts stay in the app.") : "Alerts on your phone through ntfy", chevron: true, onClick: () => openSection("push") }),
       ui.listRow({ icon: "eye", tone: "info", title: "Mail and chat watching", sub: "Rules for important mail and chat", chevron: true, onClick: () => ctx.open("watch") }),
