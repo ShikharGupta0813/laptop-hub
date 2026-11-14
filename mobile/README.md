@@ -168,12 +168,26 @@ The app handles files natively (`android/.../HubWeb.java`). The page must **navi
 ## Hey Jarvis in the background
 
 An optional, **off by default** native feature: the phone keeps listening with the screen off and the app closed, and
-opens the app in voice mode when you say "Hey Jarvis" or "Hey Friday" (plus the rest of the sentence, if you say one).
+opens the app in voice mode when you say "Hey" and the name of one of your assistants: Jarvis and Friday, or whatever you
+renamed or added in **Settings, Assistants** (plus the rest of the sentence, if you say one).
 
 **Turn it on:** open the app, **Settings**, the card **Always-on Hey Jarvis (background)**. Press **Download voice model**
 (one time, about 40 MB, from `alphacephei.com/vosk/models`, kept in the app's private storage), then switch it on and allow
-the microphone and notifications when Android asks. A notification "Listening for Hey Jarvis or Hey Friday" with a **Stop**
+the microphone and notifications when Android asks. A notification "Listening for your wake word" with a **Stop**
 button stays up while it listens.
+
+**Renamed or added assistants.** The phone does not read your hub by itself: the page inside the app does. When you open
+the app (and again on resume, at most every 15 minutes, or at once after you edit Assistants in the app) it reads
+`GET /api/assistants` and hands the names of the **enabled** assistants (name, wake names, mis-hearings) to the native
+service. The phone keeps the last list (SharedPreferences `hub_wake`, key `assistants`), so it keeps working offline; with
+nothing stored yet it uses the built-in Jarvis and Friday. A running service rebuilds its recogniser by itself, no restart.
+After you change an assistant on another device, **open the app once** so the phone learns it. This needs a **new APK**:
+an older build only knows Jarvis and Friday (the page then simply cannot send the list).
+**Accuracy caveat.** The small English model hears common words well and rare or invented names poorly. Add mis-hearings
+(Settings, Assistants, variants) for a name that is often missed. Names the model has no word for are left out of the
+grammar (when the model ships a word list) and the Settings card says "some names are not in the speech model; accuracy
+lower"; if Vosk still refuses the grammar the built-in Jarvis/Friday grammar is used. Same rule as everywhere else: a name
+inside a normal sentence ("Atlas is a nice name") does not wake.
 
 **Privacy.** Recognition is offline with [Vosk](https://alphacephei.com/vosk/) (Apache-2.0) on the phone. Sound is never
 stored or sent anywhere. Only the text after the wake phrase reaches your hub, the same as if you had typed it.
@@ -181,13 +195,15 @@ stored or sent anywhere. Only the text after the wake phrase reaches your hub, t
 much, switch it off or use the browser wake word while the app is open.
 
 **How it works** (`android/app/src/main/java/dev/shikhar/laptophub/wake/`): `WakeService` (foreground service, type
-`microphone`, `AudioRecord` 16 kHz) feeds a Vosk recognizer limited to a small grammar of the wake phrases. On a match it
+`microphone`, `AudioRecord` 16 kHz) feeds a Vosk recognizer limited to a grammar built from the assistants' names ("hey X", "ok X", "okay X", "X", `[unk]`;
+`WakeGrammar`, `WakeMatcher`, `WakeAssistants`). On a match it
 vibrates, re-listens for up to 4 s with free recognition to catch the rest of the sentence, stores it in memory, tries to
 open the app and posts a high-priority "tap to talk" notification (with a full-screen intent). It then pauses 10 s so it
 does not hear itself. The page (`hub/static/js/wakebridge.js`) asks the plugin `consumePending()` whenever it becomes
-visible and calls `voicemode.setPreload(text, persona)`; a `#/voice?persona=jarvis&text=...` link does the same.
-Plugin `HubWake`: `status / enable / disable / modelStatus / downloadModel / consumePending`.
-Pure logic with JVM tests (`app/src/test/java/dev/shikhar/laptophub/wake/WakeLogicTest.java`): phrase matching, URL
+visible and calls `voicemode.setPreload(text, assistantId)`; a `#/voice?assistant=atlas&text=...` link does the same (the launch
+extras are `wake_assistant`, `wake_text`, `wake_hash`).
+Plugin `HubWake`: `status / enable / disable / modelStatus / downloadModel / consumePending / setAssistants`.
+Pure logic with JVM tests (`app/src/test/java/dev/shikhar/laptophub/wake/WakeLogicTest.java`): phrase matching for several assistants, grammar building, URL
 encoding (300 character cap), zip-slip-safe unzip, the model state machine. Dependency: `com.alphacephei:vosk-android:0.3.75`
 (Maven Central, no extra repository needed). The model is `vosk-model-small-en-us-0.15`.
 

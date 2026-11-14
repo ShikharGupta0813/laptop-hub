@@ -26,11 +26,13 @@ import org.vosk.Model;
 import org.vosk.Recognizer;
 
 import java.io.File;
+import java.util.Set;
 
 import dev.shikhar.laptophub.MainActivity;
 
 /**
- * Foreground service (type microphone) that listens for "Hey Jarvis" / "Hey Friday" while the screen is off.
+ * Foreground service (type microphone) that listens for "Hey <name>" (the names of the owner's enabled assistants;
+ * Jarvis and Friday until the hub list has reached the phone) while the screen is off.
  * Audio is processed on the phone by Vosk and is never stored or sent anywhere. Started only from the visible
  * app (Android 14 forbids starting a microphone service from the background) and only when the owner switched
  * it on; it is NOT restarted by the system or at boot.
@@ -45,8 +47,6 @@ public class WakeService extends Service {
     private static final int SAMPLE_RATE = 16000;
     private static final long PAUSE_AFTER_WAKE_MS = 10_000L;
     private static final long REST_MAX_MS = 4_000L;
-    private static final String GRAMMAR =
-        "[\"hey jarvis\",\"hey friday\",\"ok jarvis\",\"okay jarvis\",\"ok friday\",\"okay friday\",\"jarvis\",\"friday\",\"[unk]\"]";
 
     static volatile boolean running = false;
 
@@ -137,7 +137,7 @@ public class WakeService extends Service {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new NotificationCompat.Builder(this, CH_LISTEN)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Listening for Hey Jarvis or Hey Friday")
+            .setContentTitle("Listening for your wake word")
             .setContentText("Audio stays on this phone. Tap Stop to turn it off.")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -179,11 +179,15 @@ public class WakeService extends Service {
         Model model = null;
         Recognizer rec = null;
         AudioRecord ar = null;
+        WakeMatcher.Table table;
         try {
             File dir = ModelManager.get(this).modelDirIfReady();
             if (dir == null) throw new IllegalStateException("The voice model is missing. Download it again.");
             model = new Model(dir.getAbsolutePath());
-            rec = new Recognizer(model, (float) SAMPLE_RATE, GRAMMAR);
+            Set<String> vocab = WakeGrammar.loadVocab(dir);   // null when the model ships no word list
+            int version = WakeState.assistantsVersion();
+            table = WakeMatcher.table(WakeState.assistants(this));
+            rec = newRecognizer(model, vocab);
             int min = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             int bufBytes = Math.max(min, SAMPLE_RATE * 2);
             ar = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
@@ -205,11 +209,25 @@ public class WakeService extends Service {
                 failedReads = 0;
                 if (n == 0) continue;
                 ring.add(buf, n);
+                if (version != WakeState.assistantsVersion()) {
+                    // The owner renamed or added an assistant: switch to the new names without stopping the service.
+                    version = WakeState.assistantsVersion();
+                    try {
+                        Recognizer fresh = newRecognizer(model, vocab);
+                        table = WakeMatcher.table(WakeState.assistants(this));
+                        try {
+                            rec.close();
+                        } catch (Throwable ignored) {
+                        }
+                        rec = fresh;
+                    } catch (Throwable ignored) {   // keep listening with the old names rather than stop
+                    }
+                }
                 boolean fin = rec.acceptWaveForm(buf, n);
-                WakeMatcher.Match m = WakeMatcher.match(fin ? rec.getResult() : rec.getPartialResult(), fin);
+                WakeMatcher.Match m = WakeMatcher.match(table, fin ? rec.getResult() : rec.getPartialResult(), fin);
                 if (m == null) continue;
-                String rest = captureRest(model, ar, ring.snapshot());
-                onWake(m.persona, rest.isEmpty() ? m.rest : rest);
+                String rest = captureRest(model, ar, ring.snapshot(), table);
+                onWake(m.assistant, rest.isEmpty() ? m.rest : rest);
                 // Do not hear ourselves or the app: release the microphone for a while, then start fresh.
                 ar.stop();
                 rec.reset();
@@ -240,10 +258,29 @@ public class WakeService extends Service {
     }
 
     /**
+     * A recogniser limited to the grammar of the current names. Names the model does not know are left out when the
+     * model's word list is available; if Vosk still refuses the grammar, the built-in Jarvis/Friday grammar is used
+     * and the Settings card says so (WakeState.notice).
+     */
+    private Recognizer newRecognizer(Model model, Set<String> vocab) throws java.io.IOException {
+        WakeGrammar.Result g = WakeGrammar.build(WakeState.assistants(this), vocab);
+        String notice = g.notice();
+        Recognizer r;
+        try {
+            r = new Recognizer(model, (float) SAMPLE_RATE, g.json);
+        } catch (Throwable t) {   // the grammar was refused: fall back to the one that always worked
+            r = new Recognizer(model, (float) SAMPLE_RATE, WakeGrammar.DEFAULT_JSON);
+            notice = WakeGrammar.NOTICE_PARTIAL;
+        }
+        WakeState.setNotice(notice);
+        return r;
+    }
+
+    /**
      * The wake phrase was heard by the small grammar. Re-listen to the last seconds with a free-speech
      * recognizer (same model) to get the rest of the sentence, for at most a few seconds. "" if nothing.
      */
-    private String captureRest(Model model, AudioRecord ar, short[] recent) {
+    private String captureRest(Model model, AudioRecord ar, short[] recent, WakeMatcher.Table table) {
         Recognizer free = null;
         try {
             free = new Recognizer(model, (float) SAMPLE_RATE);
@@ -254,7 +291,7 @@ public class WakeService extends Service {
                 int n = ar.read(buf, 0, buf.length);
                 if (n > 0) done = free.acceptWaveForm(buf, n);
             }
-            WakeMatcher.Match m = WakeMatcher.match(done ? free.getResult() : free.getFinalResult(), true);
+            WakeMatcher.Match m = WakeMatcher.match(table, done ? free.getResult() : free.getFinalResult(), true);
             return m == null ? "" : m.rest;
         } catch (Throwable t) {
             return "";
@@ -268,14 +305,14 @@ public class WakeService extends Service {
         }
     }
 
-    private void onWake(String persona, String rest) {
+    private void onWake(String assistantId, String rest) {
         vibrate();
-        String p = WakeLaunch.persona(persona);
+        String p = WakeLaunch.assistant(assistantId);
         String text = WakeLaunch.clean(rest);
         WakeState.putPending(p, text);   // the page picks this up as soon as it is visible
         Intent launch = new Intent(this, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra("wake_persona", p)
+            .putExtra("wake_assistant", p)
             .putExtra("wake_text", text)
             .putExtra("wake_hash", WakeLaunch.hash(p, text));
         try {
@@ -285,7 +322,7 @@ public class WakeService extends Service {
         try {
             Notification n = new NotificationCompat.Builder(this, CH_ALERT)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentTitle(p.equals("friday") ? "Friday is listening" : "Jarvis is listening")
+                .setContentTitle(displayName(p) + " is listening")
                 .setContentText("Tap to talk")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -298,6 +335,12 @@ public class WakeService extends Service {
             nm.notify(ID_ALERT, n);
         } catch (Exception ignored) {
         }
+    }
+
+    /** "Jarvis" for "jarvis", "Atlas" for "atlas": a readable label from the id (the phone only stores ids and words). */
+    private static String displayName(String id) {
+        if (id == null || id.isEmpty()) return "Your assistant";
+        return Character.toUpperCase(id.charAt(0)) + id.substring(1).replace('_', ' ').replace('-', ' ');
     }
 
     private void vibrate() {

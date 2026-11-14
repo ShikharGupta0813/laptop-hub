@@ -198,7 +198,7 @@ at once. Changes that need approval still wait for you on the phone, and you get
 The browser version above only works while the app is open. The Android app can do more: open **Settings** and find
 **Always-on Hey Jarvis (background)**. Press the download button once (about 40 MB, best on Wi-Fi), then switch it on and
 say yes to the microphone and notification questions. From then on the phone listens quietly, even with the screen off, and
-when you say "Hey Jarvis" or "Hey Friday" it buzzes and opens voice mode. A notification tells you it is listening, with a
+when you say "Hey" and the name of one of your assistants (Jarvis, Friday, or the ones you renamed or added in Settings, Assistants) it buzzes and opens voice mode. The phone learns new names when you open the app, so open it once after changing an assistant (you also need the newest app build). Unusual names are heard less reliably; add "variants" for a name that gets missed. A notification tells you it is listening, with a
 **Stop** button.
 
 Your voice is recognised on the phone itself. Nothing you say is recorded or sent anywhere; only the words after "Hey

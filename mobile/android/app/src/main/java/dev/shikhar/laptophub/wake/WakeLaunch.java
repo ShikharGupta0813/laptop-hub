@@ -9,8 +9,9 @@ public final class WakeLaunch {
 
     public static final int MAX_TEXT = 300;
 
-    public static String persona(String p) {
-        return "friday".equals(p) ? "friday" : "jarvis";
+    /** The assistant id to open (any id from the owner's list); anything that is not a valid id becomes "jarvis". */
+    public static String assistant(String id) {
+        return WakeMatcher.validId(id) ? id : "jarvis";
     }
 
     /** Trims, collapses whitespace, drops control characters and caps the length (never splits a character). */
@@ -34,10 +35,10 @@ public final class WakeLaunch {
         }
     }
 
-    /** e.g. "#/voice?persona=jarvis&text=what%20time%20is%20it" (no text key when there is no text). */
-    public static String hash(String persona, String rest) {
+    /** e.g. "#/voice?assistant=atlas&text=what%20time%20is%20it" (no text key when there is no text). */
+    public static String hash(String assistant, String rest) {
         String t = clean(rest);
-        StringBuilder sb = new StringBuilder("#/voice?persona=").append(persona(persona));
+        StringBuilder sb = new StringBuilder("#/voice?assistant=").append(assistant(assistant));
         if (!t.isEmpty()) sb.append("&text=").append(encode(t));
         return sb.toString();
     }

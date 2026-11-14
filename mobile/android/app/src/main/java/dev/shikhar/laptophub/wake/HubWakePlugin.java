@@ -15,12 +15,15 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * JS name: HubWake. Called by the hub page (js/wakebridge.js) as window.Capacitor.Plugins.HubWake.*
- * status / enable / disable / modelStatus / downloadModel / consumePending.
+ * status / enable / disable / modelStatus / downloadModel / consumePending / setAssistants.
  */
 @CapacitorPlugin(
     name = "HubWake",
@@ -64,6 +67,7 @@ public class HubWakePlugin extends Plugin {
         o.put("micGranted", micGranted());
         o.put("notifGranted", notifGranted());
         o.put("error", WakeState.lastError());
+        o.put("notice", WakeState.notice());
         o.put("model", modelObject());
         return o;
     }
@@ -130,13 +134,45 @@ public class HubWakePlugin extends Plugin {
         call.resolve(statusObject());
     }
 
-    /** Returns {persona, text} once if a wake phrase was heard recently, otherwise {}. */
+    /**
+     * The page sends the owner's enabled assistants after reading GET /api/assistants:
+     * {assistants: [{id, names: ["atlas", "atlass"]}]}. Stored on the phone; a running service rebuilds its
+     * recogniser by itself. Resolves {changed}.
+     */
+    @PluginMethod
+    public void setAssistants(PluginCall call) {
+        List<WakeMatcher.Assistant> list = new ArrayList<>();
+        try {
+            JSONArray arr = call.getArray("assistants");
+            for (int i = 0; arr != null && i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                List<String> names = new ArrayList<>();
+                JSONArray na = o.optJSONArray("names");
+                for (int j = 0; na != null && j < na.length(); j++) names.add(na.optString(j, ""));
+                list.add(new WakeMatcher.Assistant(o.optString("id", ""), names));
+            }
+        } catch (Exception e) {
+            call.reject("The assistants list could not be read.");
+            return;
+        }
+        if (WakeAssistants.sanitize(list).isEmpty()) {   // never replace a good list by an empty or broken one
+            call.reject("The assistants list has no usable name.");
+            return;
+        }
+        JSObject r = new JSObject();
+        r.put("changed", WakeState.setAssistants(getContext(), list));
+        call.resolve(r);
+    }
+
+    /** Returns {assistant, text} once if a wake phrase was heard recently, otherwise {}. */
     @PluginMethod
     public void consumePending(PluginCall call) {
         JSObject o = new JSObject();
         String[] p = WakeState.takePending();
         if (p != null) {
-            o.put("persona", p[0]);
+            o.put("assistant", p[0]);
+            o.put("persona", p[0]);   // older page code reads this name
             o.put("text", p[1]);
         }
         call.resolve(o);
