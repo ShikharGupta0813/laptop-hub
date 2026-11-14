@@ -24,6 +24,8 @@ final class Delivery {
 
     static final String PATH_CAPTURE = "/api/expenses/capture";
     static final String PATH_WATCH = "/api/watch/ingest";
+    /** General alerts: notifications from any app the owner enabled (see AlertConfigStore / AlertPolicy). */
+    static final String PATH_ALERTS = "/api/alerts/ingest";
     static final int TIMEOUT_MS = 10_000;
     /** One thread, so sends are strictly ordered and the queue head is never sent twice at once. */
     static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
@@ -53,6 +55,51 @@ final class Delivery {
     /** Only these paths are ever posted to; anything else found in the queue is dropped. */
     private static boolean knownPath(String path) {
         return PATH_CAPTURE.equals(path) || PATH_WATCH.equals(path);
+    }
+
+    /** Queue one alert event (a JSON line in its own file, 200 at most, oldest dropped), then try to send. Blocking. */
+    static Result enqueueAlertAndFlush(Context c, JSONObject payload) {
+        AlertConfigStore.queue(c).add(payload.toString());
+        return flush(c);
+    }
+
+    /** Sends queued alert events oldest first. Same keep / drop rules as the payment queue. Returns an error code or null. */
+    private static String flushAlerts(Context c, String origin, String cookie) {
+        EventQueue q = AlertConfigStore.queue(c);
+        while (true) {
+            String line = q.peek();
+            if (line == null) return null;
+            int code = post(origin + PATH_ALERTS, cookie, line);
+            if (code >= 200 && code < 300) {
+                q.removeHead();
+            } else if (code == 0 || code == 401 || code == 403 || code == 408 || code == 429 || code >= 500) {
+                return code == 0 ? "network" : "http-" + code;
+            } else {
+                q.removeHead(); // rejected for good: do not block the queue
+            }
+        }
+    }
+
+    /**
+     * Fetches the owner's capture list from the hub and caches it. Keeps the old cache on any failure (offline,
+     * logged out, 404 from an older hub). Blocking: call from EXEC. Returns true when a new list was stored.
+     */
+    static synchronized boolean refreshConfig(Context c) {
+        try {
+            String origin = HubStore.origin(c);
+            if (origin == null) return false;
+            String cookie = CookieManager.getInstance().getCookie(origin + PATH_CAPTURE);
+            if (cookie == null || cookie.isEmpty()) return false;
+            String body = get(origin + AlertConfigStore.PATH_CONFIG, cookie);
+            return body != null && AlertConfigStore.save(c, body);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** Refresh when the cache is older than 15 minutes. Blocking. */
+    static void refreshConfigIfStale(Context c) {
+        if (AlertConfigStore.isStale(c)) refreshConfig(c);
     }
 
     static synchronized Result flush(Context c) {
@@ -90,7 +137,40 @@ final class Delivery {
                 HubStore.remove(c, id); // the hub rejected this item for good (other 4xx): do not block the queue
             }
         }
-        return new Result(any, HubStore.queueSize(c), null);
+        String alertErr = flushAlerts(c, origin, cookie);
+        return new Result(any, HubStore.queueSize(c), alertErr);
+    }
+
+    /** GET a small JSON document (at most 64 KB); null on any failure or non-2xx status. */
+    private static String get(String endpoint, String cookie) {
+        if (!endpoint.startsWith("https://")) return null;
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpsURLConnection) new URL(endpoint).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("X-Hub", "1");
+            conn.setRequestProperty("Cookie", cookie);
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) return null;
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = conn.getInputStream()) {
+                byte[] b = new byte[4096];
+                int n;
+                while ((n = in.read(b)) > 0) {
+                    buf.write(b, 0, n);
+                    if (buf.size() > 65536) return null;
+                }
+            }
+            return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     /** Returns the HTTP status, or 0 for a network failure. */

@@ -42,7 +42,11 @@ public class HubCapturePlugin extends Plugin {
     @Override
     protected void handleOnResume() {
         final Context c = getContext().getApplicationContext();
-        Delivery.EXEC.execute(() -> Delivery.flush(c));
+        // App start / return to the app: refresh the owner's capture list from the hub (keeps the cache when offline), then send what is waiting.
+        Delivery.EXEC.execute(() -> {
+            Delivery.refreshConfigIfStale(c);
+            Delivery.flush(c);
+        });
     }
 
     private boolean listenerEnabled() {
@@ -64,6 +68,7 @@ public class HubCapturePlugin extends Plugin {
         ret.put("watchMail", HubStore.watchMail(getContext()));
         ret.put("watchChat", HubStore.watchChat(getContext()));
         ret.put("queued", HubStore.queueSize(getContext()));
+        ret.put("alertsQueued", AlertConfigStore.queue(getContext()).size());
         ret.put("hubOrigin", origin == null ? JSONObject.NULL : origin);
         return ret;
     }
@@ -132,6 +137,19 @@ public class HubCapturePlugin extends Plugin {
             }
         }
         call.resolve(statusObject());
+    }
+
+    /** refreshAlertConfig(): fetch the owner's app list from the hub now (the app also does it on start and every 15 minutes). */
+    @PluginMethod
+    public void refreshAlertConfig(final PluginCall call) {
+        final Context c = getContext().getApplicationContext();
+        Delivery.EXEC.execute(() -> {
+            boolean ok = Delivery.refreshConfig(c);
+            JSObject r = new JSObject();
+            r.put("updated", ok);
+            r.put("mode", AlertConfigStore.policy(c).mode());
+            call.resolve(r);
+        });
     }
 
     @PluginMethod

@@ -69,7 +69,7 @@ already show (GPay, PhonePe, Paytm, BHIM, CRED, Amazon and common bank apps) and
 
 **What is captured.** Only notifications from that fixed list of apps, and only when the text looks like money
 you spent (for example "Paid Rs 250 to ..."). Money you received, refunds, cashback, payment requests, reminders,
-offers and OTPs are ignored on the phone and never sent. Notifications from every other app are never read (apart from the optional Gmail / Google Chat watching below).
+offers and OTPs are ignored on the phone and never sent. Other apps are only read through the separate, owner-controlled alerts list described in **Alerts from any app** below.
 
 **Privacy.** Only payment-app notifications and bank SMS that pass those checks are forwarded, and only to your own
 laptop hub, over HTTPS, using the login you already have inside the app. Nothing goes to any other server, no new
@@ -101,7 +101,7 @@ checks them against sample notifications and confirms the Java and JS copies mat
 
 The app includes a native plugin called **HubCapture** (`android/app/src/main/java/dev/shikhar/laptophub/capture/`).
 
-- **What it forwards, and only to your own hub:** (1) payment-app notifications that look like money you spent, and optional bank SMS, to `/api/expenses/capture`; (2) only if you switch watching on in the hub, Gmail and Google Chat message notifications to `/api/watch/ingest`. Notifications from every other app are never read.
+- **What it forwards, and only to your own hub:** (1) payment-app notifications that look like money you spent, and optional bank SMS, to `/api/expenses/capture`; (2) only if you switch watching on in the hub, Gmail and Google Chat message notifications to `/api/watch/ingest`. Every other app is read only if you enabled it in the Alerts list (see **Alerts from any app**), and then it goes to `/api/alerts/ingest`.
 - **Permissions:** `INTERNET`, `RECORD_AUDIO` (microphone), `RECEIVE_SMS` (optional, receive-only, off until you grant it) and the **Notification access** special permission (`BIND_NOTIFICATION_LISTENER_SERVICE`), which you switch on yourself.
 - **How to grant:** Settings, Notifications, Device and app notifications, switch **Laptop Hub** on (or use the hub's Settings > Phone capture button, which opens that screen). On Android 13+ first do Settings, Apps, Laptop Hub, three-dot menu, **Allow restricted settings**. Then press **Test** in the hub: a fake "Paid Rs 1" item should appear in Spending.
 - **Control from the page:** `HubCapture.status / openListenerSettings / requestSms / setEnabled / setWatch / flush / test`, documented in `docs/api/capture-android.md`.
@@ -114,9 +114,45 @@ tell you about things you might miss. This is off until you switch on monitoring
 separate switches, and independent of payment capture). When a switch is off the app does not read those
 notifications at all. When on, it forwards the sender or space, the message text (a Gmail subject and snippet),
 and the time, only to your own hub over HTTPS. Summary ("3 new messages") and ongoing notifications are skipped,
-repeats within 2 minutes are sent once, and Slack, WhatsApp and every other app are never read. Turning it on needs
+repeats within 2 minutes are sent once, and other apps follow the alerts list below, not this switch. Turning it on needs
 the same Notification access steps as above. Developers: see `docs/api/capture-android.md` and
 `node scripts/test-watch-filter.js`.
+
+## Alerts from any app (WhatsApp, Slack, Teams, Asana, Jira, Telegram, SMS and more)
+
+The same Notification access also feeds the hub's **Alerts** triage, for **any app you choose**, not a fixed pair.
+
+**Which apps.** The list lives on the hub (Alerts settings, served as `GET /api/alerts/capture-config`) and is edited there:
+switch an app on or off, or add any other app by its package name. The phone caches the list, refreshes it when the app
+opens and about every 15 minutes while notifications arrive (only when the hub is reachable), and uses the last cache if
+the hub cannot be reached. With no list at all (first run, or an older hub without that endpoint) it uses a safe built-in
+default: WhatsApp, Slack, Teams, Gmail, Google Chat, Asana, Jira, Trello, Telegram, Outlook and Messages / SMS apps.
+Anything not on the list is ignored before its content is read. The hub may also set `mode: "all-but-blocklist"` (forward
+every app except the ones switched off), `deny` (extra packages never to forward) and `names` (your names, for the mention hint).
+
+**What is read.** Only the notification **preview** (title, one or two lines of text, the sender, the chat name), never
+the full chat, the app or any other data. Sent to the hub: package, app name, title, sender, text, a conversation id,
+whether it looks like a group, a `mentioned: true|false|unknown` hint (true when a group message contains one of your
+names or says "mentioned you"), the time and the notification key. Group summaries ("3 new messages"), ongoing, media and
+foreground-service notifications and notifications the app marks secret on the lock screen are dropped; the same update
+of the same notification is sent once (5 minute window).
+
+**Never forwarded:** this app's own notifications, password managers and authenticators, and anything that looks like a
+banking app (built-in deny list, extendable from the hub, applied even if you add them). Payment apps keep their separate
+spend-only path above.
+
+**Privacy.** Everything goes only to your own hub, over the same HTTPS login the app already uses; nothing else is stored
+on the phone except an unsent queue (a small file, 200 events at most, oldest dropped first) that is retried when the hub is
+reachable. Notification text is never written to the phone's log.
+
+**Battery.** No extra background service or wake lock: Android hands notifications to the listener, and the app does a
+short request only when one passes the list. Set Laptop Hub's battery to Unrestricted so Android does not stop the listener.
+
+**After updating.** This needs a new APK: run the **Build Android APK** workflow again, **uninstall the old Laptop Hub
+first** (debug builds are signed with a fresh key), install the new one, and switch Notification access on again if Android
+turned it off. Not tested on a real phone or in a Gradle build: the logic classes (`AlertPolicy`, `AlertFilter`,
+`EventQueue`) have JVM tests (`app/src/test/.../capture/AlertLogicTest.java`); how each app words its notification
+(sender versus chat name, group flags) is unverified.
 
 ## Opening and downloading files
 
