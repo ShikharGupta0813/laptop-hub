@@ -6,6 +6,8 @@
 import { api, ApiError } from "./api.js";
 import * as ui from "./ui.js";
 import { openSearch } from "./omnibox.js";
+import { nudge, startPoller, subscribe } from "./poller.js";
+import { backAction, EXIT_WINDOW_MS, shouldReplace } from "./navstack.js";
 import { mountWheel } from "./wheel.js";
 import { mountWake } from "./wake.js";
 
@@ -63,6 +65,7 @@ export const VIEWS = [
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
+document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("is-hidden", document.hidden));
 const byId = new Map(VIEWS.map((v) => [v.id, v]));
 const NAV = VIEWS.filter((v) => v.nav);
 
@@ -203,7 +206,7 @@ async function show(id, { section, item, push = true, replace = false } = {}) {
   }
   const hash = "#/" + v.id + (section ? "/" + section : "");
   try {
-    if (replace) history.replaceState({ view: v.id, section: section || null }, "", hash);
+    if (replace || (push && shouldReplace(prev, v) && history.state?.view)) history.replaceState({ view: v.id, section: section || null }, "", hash);
     else if (push && (history.state?.view !== v.id || (section && history.state?.section !== section))) {
       history.pushState({ view: v.id, section: section || null }, "", hash);
     }
@@ -253,9 +256,41 @@ function goBack() {
   else show(v?.under || "home");
 }
 
+// Android Back, one level at a time: a sheet or modal closes first (ui.js layers listen for the popstate),
+// then a sub-view steps back, a top-level screen goes to Home, and Home asks twice before leaving.
+// The browser/PWA path is the popstate below (Home sits on top of an "exit" entry); the Capacitor shell
+// sends its backButton here instead, so the native layer never exits on its own.
+let exitArmedUntil = 0;
+let exitTimer = null;
+function armExit() {
+  exitArmedUntil = Date.now() + EXIT_WINDOW_MS;
+  ui.toast("Press back again to exit", { kind: "info" });
+  clearTimeout(exitTimer);
+  exitTimer = setTimeout(() => {
+    exitArmedUntil = 0;
+    // Still parked on the exit entry: put Home back on top of it so the next Back asks again.
+    try { if (history.state?.exit) history.pushState({ view: "home" }, "", "#/home"); } catch (_) { /* ignore */ }
+  }, EXIT_WINDOW_MS);
+}
+function handleNativeBack() {
+  const plan = backAction({ layers: ui.openLayers(), current, view: byId.get(current), armed: Date.now() < exitArmedUntil });
+  if (plan === "layer" || plan === "history") history.back();
+  else if (plan === "home") show("home");
+  else if (plan === "arm") armExit();
+  else if (plan === "exit") { exitArmedUntil = 0; try { window.Capacitor?.Plugins?.App?.exitApp?.(); } catch (_) { /* ignore */ } }
+}
+window.addEventListener("hub:back", handleNativeBack);
+try { window.Capacitor?.Plugins?.App?.addListener?.("backButton", () => window.dispatchEvent(new Event("hub:back"))); } catch (_) { /* browser */ }
+
 window.addEventListener("popstate", (event) => {
   if (!started) return;
   const state = event.state;
+  if (state?.exit) {
+    // Back from Home landed on the base entry. First time: warn and stay. Second time within the window
+    // the next system Back has nothing left to pop, so the app closes.
+    if (Date.now() >= exitArmedUntil) { show("home", { push: false }); armExit(); }
+    return;
+  }
   if (state?.view) show(state.view, { section: state.section || undefined, push: false });
   else show(parseHash().view || "home", { push: false });
 });
@@ -284,27 +319,19 @@ function setBadge(id, count) {
   }
 }
 
-// Unread notifications: polled every 30 s while the app is visible. A hub without the notify module
-// answers 404, so polling backs off to every 5 minutes and the bell shows no count.
-let pollTimer = null;
+// Unread count, urgent alerts, spoken items, panic and meeting status all arrive through ONE shared poll
+// (poller.js, GET /api/ticker): paused while hidden, 15 s on Home, 30 s elsewhere, an unchanged answer is a 304.
 let lastUnread = 0;
-async function pollUnread() {
-  clearTimeout(pollTimer);
-  let delay = 30000;
-  if (document.visibilityState === "visible" && started) {
-    try {
-      const { count } = await api("/api/notifications/unread-count");
-      const n = Number(count) || 0;
-      if (n > lastUnread) { $("ab-bell")?.classList.remove("is-ringing"); void $("ab-bell")?.offsetWidth; $("ab-bell")?.classList.add("is-ringing"); }
-      lastUnread = n;
-      setBadge("notifications", n);
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) delay = 300000;
-    }
+function onTicker(t) {
+  if (typeof t.unread === "number") {
+    const n = t.unread;
+    if (n > lastUnread) { $("ab-bell")?.classList.remove("is-ringing"); void $("ab-bell")?.offsetWidth; $("ab-bell")?.classList.add("is-ringing"); }
+    lastUnread = n;
+    setBadge("notifications", n);
   }
-  pollTimer = setTimeout(pollUnread, delay);
+  if (t.alerts?.length) readAlerts(t.alerts);
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollUnread(); });
+const pollUnread = () => nudge();
 
 // ---- ctx -------------------------------------------------------------------------------------------
 const ctx = {
@@ -328,6 +355,7 @@ const ctx = {
   search: (q = "") => openSearch(ctx, q),
   setBadge,
   refreshNotifications: pollUnread,
+  ticker: { subscribe },
   current: () => current,
 };
 
@@ -381,24 +409,34 @@ function startApp() {
     $("app").classList.add("is-entering");
     const { view, section } = parseHash();
     const target = view && view !== "search" ? view : "home";
-    try { history.replaceState({ view: "home" }, "", "#/home"); } catch (_) { /* ignore */ }
-    show("home", { push: false }).then(() => { if (target !== "home") show(target, { section }); });
-    setTimeout(pollUnread, 800);
-    setTimeout(pollAlerts, 2500);
-    setInterval(pollAlerts, 20000);
+    // A refresh keeps the browser's own stack: leave it alone and just redraw the screen from the hash.
+    // A fresh open or deep link builds [exit base, Home] so Back from Home can ask before leaving.
+    const restored = !!history.state?.view && !history.state.exit;
+    if (!restored) {
+      try {
+        history.replaceState({ view: "home", exit: true }, "", "#/home");
+        history.pushState({ view: "home" }, "", "#/home");
+      } catch (_) { /* ignore */ }
+    }
+    if (restored) show(target, { section, push: false, replace: true });
+    else show("home", { push: false }).then(() => { if (target !== "home") show(target, { section }); });
+    subscribe(onTicker);
+    startPoller({ isHome: () => current === "home" });
   }
 }
 
 // Urgent alerts (hub/alerts.py): while the app is open and visible, read out what the hub flagged urgent, once.
-async function pollAlerts() {
+const spokenAlerts = new Set();
+async function readAlerts(alerts) {
   if (document.hidden || $("app").hidden) return;
+  const fresh = alerts.filter((a) => !spokenAlerts.has(a.id));
+  if (!fresh.length) return;
+  for (const a of fresh) spokenAlerts.add(a.id);
   try {
-    const { alerts } = await api("/api/alerts/pending");
-    if (!alerts?.length) return;
-    speak(alerts.map((a) => a.speech).join(" "));
-    for (const a of alerts) ui.toast(a.title, { kind: "warn", action: { label: "Open", onClick: () => show("alerts") } });
-    await api("/api/alerts/pending/ack", { method: "POST", json: { ids: alerts.map((a) => a.id) } });
-  } catch (_) { /* module missing or hub asleep: try again next time */ }
+    speak(fresh.map((a) => a.speech).join(" "));
+    for (const a of fresh) ui.toast(a.title, { kind: "warn", action: { label: "Open", onClick: () => show("alerts") } });
+    await api("/api/alerts/pending/ack", { method: "POST", json: { ids: fresh.map((a) => a.id) } });
+  } catch (_) { /* module missing or hub asleep */ }
 }
 
 // ---- login -----------------------------------------------------------------------------------------

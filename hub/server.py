@@ -73,6 +73,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("computeruse",)   # computer control: Jarvi
 FEATURE_MODULES = FEATURE_MODULES + ("playbooks",)   # playbooks: when X happens, do Y, same approvals as everything else (docs/api/playbooks.md)
 FEATURE_MODULES = FEATURE_MODULES + ("jobprefs", "batches")   # job search profiles (hard filters) and scheduled one-tap batches (docs/api/jobprefs.md, batches.md)
 FEATURE_MODULES = FEATURE_MODULES + ("meetings",)   # meeting assistant: consent-first recording, local transcript, notes, action items (docs/api/meetings.md)
+FEATURE_MODULES = FEATURE_MODULES + ("ticker",)   # one combined poll for the app shell (hub/ticker.py)
 FEATURE_MODULES = FEATURE_MODULES + ("oppsources",)   # job/freelance source connectors: ATS boards, remote boards, company watch list (docs/api/oppsources.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tailor", "answerbank")   # per-job resume + cover note from your own facts, fit and honesty check, answer bank (docs/api/tailor.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls

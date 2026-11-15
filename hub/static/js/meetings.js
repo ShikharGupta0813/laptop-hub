@@ -3,6 +3,7 @@
 // Exports init() for the screen and mountIndicator() for the always-visible "recording" pill (one line in main.js).
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import { subscribe } from "./poller.js";
 
 const CSS = "/css/meetings.css";
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -18,7 +19,8 @@ const ind = { node: null, timer: null, base: 0, at: 0, go: null };
 
 function paintIndicator(st) {
   if (!ind.node) return;
-  if (!st || !st.recording) { ind.node.hidden = true; document.body.classList.remove("is-recording-meeting"); return; }
+  if (!st || !st.recording) { ind.node.hidden = true; document.body.classList.remove("is-recording-meeting"); clearInterval(ind.timer); ind.timer = null; return; }
+  if (!ind.timer) ind.timer = setInterval(() => { if (!document.hidden) tickIndicator(); }, 1000);   // only while recording
   ind.base = st.elapsed_s || 0; ind.at = Date.now();
   ind.node.hidden = false;
   document.body.classList.add("is-recording-meeting");
@@ -39,9 +41,7 @@ export function mountIndicator(ctx) {
     onclick: () => ctx?.goto?.("meetings") }, el("span", { class: "mt-ind__dot", "aria-hidden": "true" }), ind.label);
   ind.node.setAttribute("role", "status");
   document.body.append(ind.node);
-  refreshIndicator();
-  setInterval(refreshIndicator, 15000);
-  setInterval(tickIndicator, 1000);
+  subscribe((t) => { if (t.meeting) paintIndicator(t.meeting); });   // the shared poll; no timer of its own
 }
 
 // ---- the screen ----------------------------------------------------------------------------------------
