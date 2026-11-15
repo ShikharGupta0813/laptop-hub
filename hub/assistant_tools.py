@@ -55,7 +55,10 @@ def fmt_tasks(data: dict) -> str:
             f"{counts.get('upcoming', 0)} upcoming.")
     tasks = data.get("tasks", [])
     if not tasks:
-        return head + " No tasks in this list."
+        others = [n for n in ("overdue", "today", "upcoming") if counts.get(n)]
+        hint = (" Ask again with filter overdue, upcoming or all to see the others (then asana_task gives notes and comments)."
+                if others else "")
+        return head + " No tasks in this list." + hint
     lines = [f"- {t['name']} (due {_due(t)}{', ' + t['project'] if t.get('project') else ''}) id {t['gid']}"
              for t in tasks[:MAX_LINES]]
     more = f"\n... and {len(tasks) - MAX_LINES} more." if len(tasks) > MAX_LINES else ""
@@ -245,7 +248,7 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         return True, f"{d['streak_days']} day quiz streak. Recent: {recent}."
 
     return mark_tools([
-        tool("asana_tasks", "List the owner's open Asana tasks. filter: today (default), overdue, upcoming or all. Read-only.",
+        tool("asana_tasks", "List the owner's open Asana tasks. filter: today (default), overdue, upcoming or all (use overdue or all to find a task to read). Read-only.",
              {"filter": {"type": "string", "enum": ["today", "overdue", "upcoming", "all"]}}, [], asana_tasks),
         tool("asana_task", "Details of one Asana task (notes, subtasks, recent comments) by its id. Read-only.",
              {"gid": _s("The task id from asana_tasks.")}, ["gid"], asana_task),
