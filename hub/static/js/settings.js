@@ -57,6 +57,19 @@ function switchRow({ icon, tone, title, sub, checked, onChange, disabled }) {
   return row;
 }
 
+// Extra words people type for a setting (matched together with the row's title and description).
+const SEARCH_WORDS = {
+  models: "ollama gemini claude llm ai chat whisper embedding speech to text", voices: "voice tts speech speak sound piper windows sapi audio read aloud",
+  assistants: "jarvis friday persona wake word prompt name", "notification preferences": "alerts batch quiet mute",
+  "delivery rules": "presence away meeting focus where alerts go", "my safety rules": "path command strict approval",
+  "my redaction rules": "privacy hide secrets words cloud", "job and gig sources": "jobs freelance remote boards watch list",
+  "work lanes": "council routing local free gemini", "phone push": "ntfy notification topic alerts", "google chat channels": "chat spaces gchat",
+  panic: "stop emergency kill halt resume", "trust rules": "allow auto approve permissions", "full control": "no approvals unsafe dangerous",
+  diagnostics: "doctor health fix problems check status", "activity log": "audit history what did", backups: "backup export restore zip save data",
+  folders: "files directories paths roots documents", "privacy redaction": "pii hide secrets keys emails", about: "version uptime update",
+  "log out": "sign out logout sessions token security", dictation: "typing hotkey speech to text keyboard", "phone capture": "upi spending sms notifications listener",
+};
+
 function capture() {
   try { return window.Capacitor?.Plugins?.HubCapture || window.HubCapture || null; } catch (_) { return null; }
 }
@@ -72,6 +85,11 @@ export function init(container, ctx) {
   let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
   let gmailEl = null;      // the "Gmail accounts" card (js/gmailx.js)
   let mcpEl = null;        // the "MCP servers" card (js/mcp.js)
+  let query = "";           // the Settings search box
+  const searchInput = el("input", { type: "search", class: "st-search__input", placeholder: "Search settings", "aria-label": "Search settings", enterkeyhint: "search", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
+  const searchNone = el("p", { class: "ui-hint st-search__none", hidden: true, role: "status" }, "No setting matches that. Try another word.");
+  const searchBar = el("div", { class: "st-search" }, ui.icon("search"), searchInput);
+  searchInput.addEventListener("input", () => { query = searchInput.value; applySearch(); });
   let providersEl = null;  // the "Providers" card: search, vision, AI endpoints (js/provlists.js)
 
   // ---- main page ---------------------------------------------------------------------------------
@@ -270,7 +288,33 @@ export function init(container, ctx) {
     if (S && !gmailEl) gmailEl = gmailCard({ S });
     if (S && !providersEl) providersEl = providersCard();
     if (S && !mcpEl) mcpEl = mcpCard();
-    root.replaceChildren(...[glance(), usageEl, gmailEl, providersEl, mcpEl, appearanceCard, ...main()].filter(Boolean));
+    root.replaceChildren(...[searchBar, searchNone, glance(), usageEl, gmailEl, providersEl, mcpEl, appearanceCard, ...main()].filter(Boolean));
+    applySearch();
+  }
+
+  // Search: every word typed must appear in a row's text (or its keywords). Rows that do not match are hidden, groups with no rows
+  // left disappear, cards (usage, providers, appearance...) stay only if their text matches. Empty search shows everything.
+  function applySearch() {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const hit = (node, extra = "") => { const t = (node.textContent + " " + extra).toLowerCase(); return words.every((w) => t.includes(w)); };
+    const keywords = (row) => { const t = row.querySelector(".ui-row__title")?.textContent.trim().toLowerCase() || ""; return Object.keys(SEARCH_WORDS).filter((k) => t.includes(k)).map((k) => SEARCH_WORDS[k]).join(" "); };
+    let shown = 0;
+    for (const node of root.children) {
+      if (node === searchBar || node === searchNone) continue;
+      if (!words.length) { node.classList.remove("st-hide"); node.querySelectorAll?.(".st-hide").forEach((n) => n.classList.remove("st-hide")); continue; }
+      if (node.classList.contains("st-group")) {
+        const rows = [...node.querySelectorAll(".ui-list > *")];
+        let any = 0;
+        for (const row of rows) { const ok = hit(row, keywords(row)); row.classList.toggle("st-hide", !ok); if (ok) any += 1; }
+        node.classList.toggle("st-hide", !any);
+        shown += any;
+      } else {
+        const ok = hit(node);
+        node.classList.toggle("st-hide", !ok);
+        if (ok) shown += 1;
+      }
+    }
+    searchNone.hidden = !words.length || shown > 0;
   }
 
   async function load() {
