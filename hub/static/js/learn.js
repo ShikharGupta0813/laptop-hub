@@ -86,7 +86,7 @@ export function init(container, ctx) {
       if (mine !== stripSeq) return;
     }
     const pills = [];
-    const days = history?.streak_days ?? summary?.streak ?? 0;
+    const days = Math.max(history?.streak_days || 0, summary?.streak || 0); // a quiz streak of 0 must not hide the card streak
     pills.push(pill("flame", days ? "orange" : "gray", days ? `${days} day streak` : "Start a streak", "Finish a quiz or review", () => select("quiz")));
     if (summary) {
       const due = summary.due_today || 0;
