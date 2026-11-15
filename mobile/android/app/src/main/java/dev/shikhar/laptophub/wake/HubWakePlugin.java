@@ -64,6 +64,7 @@ public class HubWakePlugin extends Plugin {
         o.put("supported", true);
         o.put("enabled", WakeState.enabled(c));
         o.put("running", WakeService.running);
+        o.put("bgReply", WakeState.backgroundReply(c));
         o.put("micGranted", micGranted());
         o.put("notifGranted", notifGranted());
         o.put("error", WakeState.lastError());
@@ -74,6 +75,13 @@ public class HubWakePlugin extends Plugin {
 
     @PluginMethod
     public void status(PluginCall call) {
+        call.resolve(statusObject());
+    }
+
+    /** {enabled: bool}: answer by voice while the screen is off (default on). */
+    @PluginMethod
+    public void setBackgroundReply(PluginCall call) {
+        WakeState.setBackgroundReply(getContext(), Boolean.TRUE.equals(call.getBoolean("enabled", true)));
         call.resolve(statusObject());
     }
 

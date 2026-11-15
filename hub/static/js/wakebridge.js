@@ -98,6 +98,7 @@ export function mountWakeBridge(ctx) {
     const el = ui.el;
     const sw = ui.switchControl({ checked: false, label: "Always-on Hey Jarvis (background)", onChange: onToggle });
     const state = el("p", { class: "ui-card__sub", role: "status", "aria-live": "polite" }, "Checking...");
+    const reply = ui.switchControl({ checked: true, label: "Answer by voice while the screen is off", onChange: onReplyToggle });
     const bar = ui.progressBar(0, "Voice model download");
     bar.hidden = true;
     const dl = ui.button({ label: "Download voice model (about 40 MB)", variant: "tonal", onClick: () => startDownload() });
@@ -113,10 +114,12 @@ export function mountWakeBridge(ctx) {
         + "and it uses some battery. Turn it off any time here or with Stop on that notification."),
       el("p", { class: "ui-card__sub" },
         "If the app does not open by itself when you say it, tap the \"is listening\" notification that appears: some phones only allow that."),
+      el("div", { class: "ui-row", style: "align-items:center;gap:12px" },
+        el("span", { class: "grow ui-card__sub" }, "Answer by voice while the screen is off (uses this phone's voice; needs the hub reachable, and anything that needs your approval waits for a tap)"), reply),
       state, bar, dl);
     const section = el("section", { class: "st-group", id: "st-wakebg" },
       el("h2", { class: "ui-caps st-caps" }, "Background listening"), card);
-    return { section, sw, state, bar, dl };
+    return { section, sw, reply, state, bar, dl };
   }
 
   let parts = null;
@@ -137,6 +140,7 @@ export function mountWakeBridge(ctx) {
     parts.dl.textContent = st === "failed" ? "Try the download again" : "Download voice model (about 40 MB)";
     parts.sw.input.disabled = !(st === "ready");
     parts.sw.input.checked = !!s.enabled;
+    parts.reply.input.checked = s.bgReply !== false;   // older apps do not send it: then the old behaviour
     let text;
     if (st === "downloading") text = m.total > 0 ? `Downloading the voice model: ${MB(m.bytes)} of ${MB(m.total)} MB...` : "Downloading the voice model...";
     else if (st === "unpacking") text = "Unpacking the voice model...";
@@ -164,6 +168,11 @@ export function mountWakeBridge(ctx) {
   async function startDownload() {
     try { await hw.downloadModel(); } catch (error) { ctx.toast?.(error.message || "Could not start the download", { kind: "bad" }); }
     refresh();
+  }
+
+  async function onReplyToggle(on) {
+    try { await hw.setBackgroundReply({ enabled: !!on }); } catch (_) { ctx.toast?.("Update the app to change this", { kind: "bad" }); }
+    await refresh();
   }
 
   async function onToggle(on) {

@@ -13,7 +13,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /** Small persisted state: hub origin, on/off switch and the unsent queue. All data stays on the phone. */
-final class HubStore {
+public final class HubStore {
     private HubStore() {}
 
     static final String PREFS = "hubcapture";
@@ -50,7 +50,7 @@ final class HubStore {
     }
 
     /** The hub origin saved at plugin load, else the one baked into assets/capacitor.config.json at sync time. */
-    static String origin(Context c) {
+    public static String origin(Context c) {
         String o = prefs(c).getString(K_ORIGIN, null);
         if (o != null) return o;
         try (InputStream in = c.getAssets().open("capacitor.config.json")) {

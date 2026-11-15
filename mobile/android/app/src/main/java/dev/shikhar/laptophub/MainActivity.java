@@ -16,6 +16,21 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
     }
 
+    /** True while the app screen is in front; the wake service then leaves the answer to the page. */
+    public static volatile boolean visible = false;
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        visible = true;
+    }
+
+    @Override
+    public void onPause() {
+        visible = false;
+        super.onPause();
+    }
+
     @Override
     public void onStart() {
         super.onStart();
