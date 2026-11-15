@@ -51,7 +51,7 @@ MIN_GAP_SECONDS = 20.0         # between two form starts
 MAX_HTML = 2_000_000
 MAX_DEPTH = 200
 DEFAULT_NEVER = ("linkedin.com",)
-INSTALL_HINT = "pip install playwright, then python -m playwright install chromium"
+INSTALL_HINT = "run scripts\\setup-all.ps1 (or: pip install playwright, then python -m playwright install chromium)"
 _RUN_RE = re.compile(r"^[0-9a-f]{16}$")
 _DOMAIN_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,98}[a-z0-9])?\.[a-z]{2,24}$")
 
@@ -972,7 +972,7 @@ class PlaywrightDriver(Driver):
             try:
                 from playwright.sync_api import sync_playwright as factory  # lazy: optional dependency
             except ImportError:
-                raise FormfillError("Playwright is not installed. Run: " + INSTALL_HINT, 503) from None
+                raise FormfillError("Playwright is not installed: " + INSTALL_HINT, 503) from None
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self._pw = factory().start()
         base = dict(user_data_dir=str(self.profile_dir), headless=not headed, viewport={"width": 1100, "height": 1500},
@@ -989,7 +989,7 @@ class PlaywrightDriver(Driver):
         if ctx is None:
             self.close()
             if "Executable doesn't exist" in last or "playwright install" in last or "not found" in last.lower():
-                raise FormfillError("The browser is not installed. Run: python -m playwright install chromium", 503)
+                raise FormfillError("The browser is not installed: run scripts\\setup-all.ps1 (or python -m playwright install chromium)", 503)
             raise FormfillError("The browser could not be started: " + _clip(last.splitlines()[0] if last else "unknown error", 160), 503)
         self._ctx = ctx
         ctx.route("**/*", self._route)
@@ -1380,7 +1380,7 @@ class Formfill:
         if not self.enabled():
             raise FormfillError("Form filling is switched off (formfill_enabled is false).", 404)
         if not (self._available() or self.driver_factory is not None):
-            raise FormfillError("Playwright is not installed. Run: " + INSTALL_HINT, 503)
+            raise FormfillError("Playwright is not installed: " + INSTALL_HINT, 503)
         item = self.check_item(item_id)
         host = self._guard_url(item["url"])
         self._open_sessions()
@@ -1415,7 +1415,7 @@ class Formfill:
         if not self.enabled():
             raise FormfillError("Form filling is switched off (formfill_enabled is false).", 404)
         if not (self._available() or self.driver_factory is not None):
-            raise FormfillError("Playwright is not installed. Run: " + INSTALL_HINT, 503)
+            raise FormfillError("Playwright is not installed: " + INSTALL_HINT, 503)
         item = self.svc.get(item_id)
         host = self._guard_url(item["url"]) if str(item.get("url") or "").startswith("http") else ""
         if not host:

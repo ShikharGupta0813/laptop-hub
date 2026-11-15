@@ -161,7 +161,7 @@ def cmd_doctor(args) -> int:
         line(True, "faster-whisper installed (voice notes)")
     except ImportError:
         ok = False
-        line(False, "faster-whisper missing: python -m hub fix-deps (voice)")
+        line(False, "faster-whisper missing: run scripts\\setup-all.ps1 (or python -m hub fix-deps)")
     from . import providers as providers_mod
     avail = providers_mod.availability(config)
     ready = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
@@ -183,7 +183,7 @@ def cmd_doctor(args) -> int:
             line(True, "pywinpty installed (Windows terminal)")
         except ImportError:
             ok = False
-            line(False, "pywinpty missing: pip install pywinpty")
+            line(False, "pywinpty missing: run scripts\\setup-all.ps1 (or pip install pywinpty)")
     line(shutil.which("tailscale") is not None or None,
          "tailscale found" if shutil.which("tailscale")
          else "tailscale not found: needed for HTTPS and remote access (tailscale.com/download)")
@@ -200,6 +200,15 @@ def cmd_doctor(args) -> int:
         extra += dc.check_requirements(probe)
     except Exception:  # noqa: BLE001
         extra.append((None, "requirements: could not check"))
+    for fn in (dc.check_voice, dc.check_playwright):
+        try:
+            extra.append(fn())
+        except Exception:  # noqa: BLE001
+            extra.append((None, "a check could not run"))
+    try:
+        extra += dc.check_cli_tools(probe)
+    except Exception:  # noqa: BLE001
+        extra.append((None, "tool checks could not run"))
     extra += dc.wizard_lines(path)
     extra += dc.check_wake(config)
     for good, text in extra:
@@ -215,7 +224,8 @@ def cmd_fix_deps(args) -> int:
     from . import updater
     root = updater.repo_root()
     argv = [sys.executable, "-m", "pip", "install"]
-    for name in ("requirements.txt", "requirements-voice.txt"):
+    for name in ("requirements.txt", "requirements-voice.txt", "requirements-work.txt", "requirements-laptop.txt",
+                 "requirements-extra.txt", "requirements-screen.txt"):
         if (root / name).is_file():
             argv += ["-r", name]
     print("Running: " + " ".join(argv))
@@ -226,6 +236,40 @@ def cmd_fix_deps(args) -> int:
         return 1
     print("Dependencies are installed." if rc == 0 else "pip failed. If Windows blocked it, ask for the Application Control rule, or try: python -m pip --version")
     return rc
+
+
+def cmd_voice(args) -> int:
+    """python -m hub voice [--download en_US-lessac-low]: which laptop voice is ready, and fetch one Piper voice (owner-run)."""
+    import time as _time
+    from . import tts as tts_mod
+    path = Path(args.config) if args.config else cfg.default_path()
+    try:
+        config = cfg.load(path)
+    except cfg.ConfigError as exc:
+        print(exc)
+        return 1
+    svc = tts_mod.TTS(config)
+    if args.download:
+        if svc._piper_base() is None:
+            print("Piper itself is not installed, so a voice would not be used yet. Run scripts\\setup-all.ps1 first.")
+            return 1
+        if any(m.stem == args.download for m in svc._piper_models()):
+            print(f"Voice {args.download} is already downloaded.")
+        else:
+            try:
+                svc.start_download(args.download)
+            except tts_mod.TTSError as exc:
+                print(exc)
+                return 1
+            while svc.job.get("state") == "running":
+                _time.sleep(1)
+            print(svc.job.get("message", ""))
+            if svc.job.get("state") != "done":
+                return 1
+    engines = {e["id"]: e for e in svc.engine_status()}
+    print("Laptop voice: " + ", ".join(f"{k}={'ready' if v['available'] else 'not ready'}" for k, v in engines.items() if k != "command"))
+    print(f"Voice used by default: {svc.settings()['engine']}")
+    return 0
 
 
 def cmd_update(args) -> int:
@@ -293,13 +337,15 @@ def main(argv=None) -> int:
     bk.add_argument("--restore", metavar="ZIP", help="restore a backup zip (asks you to type RESTORE first)")
     wd = sub.add_parser("watchdog", help="check the hub and Tailscale, repair them, push to the phone if needed")
     wd.add_argument("--once", action="store_true", help="one pass then exit (what the scheduled task uses)")
-    sub.add_parser("fix-deps", help="install requirements.txt and requirements-voice.txt through python -m pip")
+    sub.add_parser("fix-deps", help="install every requirements*.txt through python -m pip (scripts\\setup-all.ps1 does this and more)")
     mdl = sub.add_parser("models", help="local models: `models bench` times each installed model on your laptop")
     mdl.add_argument("action", choices=["bench"])
     mdl.add_argument("--models", help="comma list of installed model names (default: all installed, except embedding models)")
     mdl.add_argument("--only", help="comma list of prompts: puzzle,summary,json (default: all three)")
     mdl.add_argument("--think", choices=["auto", "on", "off"], default="auto", help="auto = the model's own default")
     mdl.add_argument("--timeout", type=float, default=600.0, help="seconds allowed per prompt (default 600)")
+    vc = sub.add_parser("voice", help="show which laptop voice is ready; --download VOICE fetches one Piper voice")
+    vc.add_argument("--download", metavar="VOICE", help="a Piper voice id such as en_US-lessac-low (tens of megabytes, from huggingface.co)")
     sub.add_parser("serve", help="start the hub")
     sub.add_parser("token", help="make a new login token and log all phones out")
     sub.add_parser("doctor", help="check that everything the hub needs is in place")
@@ -317,7 +363,7 @@ def main(argv=None) -> int:
         args.argv = tail
     return {"init": cmd_init, "serve": cmd_serve, "token": cmd_token, "doctor": cmd_doctor,
             "add-script": cmd_add_script, "setup": cmd_setup, "update": cmd_update,
-            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog, "fix-deps": cmd_fix_deps,
+            "install-updater": cmd_install_updater, "backup": cmd_backup, "watchdog": cmd_watchdog, "fix-deps": cmd_fix_deps, "voice": cmd_voice,
             "models": cmd_models}[args.command](args)
 
 

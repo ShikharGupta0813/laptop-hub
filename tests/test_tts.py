@@ -88,7 +88,7 @@ def seed_piper(svc, voice="en_US-lessac-medium"):
 
 class Engines(unittest.TestCase):
     def test_default_is_browser_and_makes_no_audio(self):
-        svc, config, runner, _p, _c = make_tts()
+        svc, config, runner, _p, _c = make_tts(platform="linux")
         self.assertTrue(config.tts_enabled)
         self.assertEqual(config.tts_engine, "browser")
         r = svc.synthesize("Hello there, friend.")
@@ -137,7 +137,7 @@ class Engines(unittest.TestCase):
         self.assertNotIn("Piper, say", " ".join(call["argv"]))
 
     def test_piper_without_install_or_model_falls_back(self):
-        svc, *_ = make_tts()
+        svc, *_ = make_tts(platform="linux")
         svc.save_settings(engine="piper")
         r = svc.synthesize("Nothing installed here, sorry.")
         self.assertIsNone(r.wav)
@@ -318,8 +318,9 @@ class Mapping(unittest.TestCase):
         self.assertEqual(old["voice"]["engine"], "")
 
     def test_profiles_say_which_assistants_use_the_hub(self):
-        svc, config, *_ = make_tts()
+        svc, config, *_ = make_tts(platform="linux")
         self.assertFalse(any(p["hub"] for p in svc.profiles().values()))
+        svc.platform = "win32"
         svc.save_settings(engine="sapi")
         self.assertTrue(svc.profiles()["jarvis"]["hub"])
 
@@ -345,6 +346,7 @@ class Routes(unittest.TestCase):
             self.assertEqual(getattr(self.anon, method)(path, **kw).status_code, 401, path)
 
     def test_browser_engine_is_204(self):
+        self.svc.save_settings(engine="browser")
         r = self.c.post("/api/tts", json={"text": "Hello there, friend."})
         self.assertEqual(r.status_code, 204)
         self.assertEqual(r.headers["x-tts-engine"], "browser")
@@ -365,10 +367,12 @@ class Routes(unittest.TestCase):
         self.assertEqual(self.c.post("/api/tts", json={"text": "hello", "engine": "festival"}).status_code, 400)
 
     def test_engine_failure_is_502_with_a_plain_sentence(self):
+        self.svc.platform = "linux"                    # no Windows voices to fall back on
         self.svc.save_settings(engine="piper")
         r = self.c.post("/api/tts", json={"text": "No piper here, sorry."})
         self.assertEqual(r.status_code, 502)
         self.assertNotIn("No piper here", r.text)
+        self.assertEqual(r.json()["reason"], "engine")
 
     def test_overrides_are_for_test_voice(self):
         r = self.c.post("/api/tts", json={"text": "Test this one.", "engine": "sapi", "voice": "Microsoft Zira Desktop", "rate": 1.3})
@@ -398,6 +402,7 @@ class Routes(unittest.TestCase):
         self.assertEqual([p.endswith(t.encode()) for (_, p), t in zip(frames, ("First sentence here.", "Second sentence here.", "Third one right here."))], [True] * 3)
 
     def test_stream_browser_and_bad_lines(self):
+        self.svc.save_settings(engine="browser")
         r = self.c.post("/api/tts/stream", content=b'{"text": "Hello friend, how are you."}\nnot json\n')
         kinds, data = [], r.content
         while data:
@@ -409,7 +414,7 @@ class Routes(unittest.TestCase):
     def test_status_voices_and_settings(self):
         s = self.c.get("/api/tts/status").json()
         self.assertTrue(s["enabled"])
-        self.assertEqual(s["engine"], "browser")
+        self.assertEqual(s["engine"], "sapi")          # nothing picked yet, Piper missing, Windows laptop: SAPI needs nothing extra
         self.assertEqual({e["id"] for e in s["engines"]}, set(tts.ENGINES))
         self.assertIn("jarvis", s["profiles"])
         self.assertEqual(self.c.put("/api/tts/settings", json={"engine": "sapi", "headphones": True}).json()["engine"], "sapi")
@@ -434,12 +439,92 @@ class Routes(unittest.TestCase):
 
     def test_panic_silenced_is_423_not_a_phone_fallback(self):
         self.svc.save_settings(engine="sapi")
-        self.svc.silence()
+        self.config.panic_active = True
         r = self.c.post("/api/tts", json={"text": "Should not be heard."})
         self.assertEqual(r.status_code, 423)
+        self.assertEqual(r.json()["reason"], "panic")
+        self.assertIn("Resume", r.json()["detail"])
         self.assertTrue(self.c.get("/api/tts/status").json()["silenced"])
-        self.svc.resume()
+        self.config.panic_active = False               # Resume only flips the persisted flag
+        self.assertFalse(self.c.get("/api/tts/status").json()["silenced"])
         self.assertEqual(self.c.post("/api/tts", json={"text": "Should be heard now."}).status_code, 200)
+
+
+class FallbackChainAndPanicState(unittest.TestCase):
+    """Bug-fix round: Friday and Jarvis were silent (stuck 'paused by the panic button', Piper missing, no phone voice)."""
+
+    def test_windows_default_is_sapi_when_piper_is_missing(self):
+        svc, *_ = make_tts(platform="win32")
+        self.assertEqual(svc.settings()["engine"], "sapi")
+        r = svc.synthesize("Hello there, friend.", "friday")
+        self.assertEqual(r.engine, "sapi")
+        self.assertTrue(tts.is_wav(r.wav))
+        self.assertTrue(svc.profiles()["friday"]["hub"])
+
+    def test_an_explicit_browser_choice_is_respected(self):
+        svc, *_ = make_tts(platform="win32")
+        svc.save_settings(engine="browser")
+        self.assertEqual(svc.synthesize("Hello there, friend.").reason, "browser")
+
+    def test_piper_chosen_but_missing_falls_through_to_sapi(self):
+        svc, *_ = make_tts(platform="win32")
+        svc.save_settings(engine="piper")
+        r = svc.synthesize("Hello there, friend.")
+        self.assertEqual(r.engine, "sapi")
+        self.assertTrue(tts.is_wav(r.wav))
+
+    def test_piper_crash_falls_through_to_sapi(self):
+        class Runner(FakeRunner):
+            def __call__(self, argv, *, stdin_text, env=None, timeout=60):
+                if "--model" in argv:
+                    return 1, b""
+                return super().__call__(argv, stdin_text=stdin_text, env=env, timeout=timeout)
+        svc, *_ = make_tts(platform="win32", runner=Runner(), which=lambda n: "/bin/piper" if n == "piper" else None)
+        seed_piper(svc)
+        svc.save_settings(engine="piper")
+        r = svc.synthesize("Hello there, friend.")
+        self.assertEqual((r.engine, tts.is_wav(r.wav)), ("sapi", True))
+
+    def test_everything_failing_gives_a_clear_reason_never_a_crash(self):
+        svc, *_ = make_tts(platform="linux")
+        svc.save_settings(engine="sapi")
+        r = svc.synthesize("Hello there, friend.")
+        self.assertIsNone(r.wav)
+        self.assertIn("setup-all", r.reason)
+
+    def test_silenced_follows_panic_active_live_and_survives_restart(self):
+        svc, config, *_ = make_tts()
+        self.assertFalse(svc.silenced)
+        config.panic_active = True
+        self.assertTrue(svc.silenced)
+        fresh = tts.TTS(config, runner=FakeRunner(), player=FakePlayer(), platform="win32", which=lambda n: None)
+        self.assertTrue(fresh.silenced)                # a new service after a hub restart is still quiet while panic is on
+        self.assertIn("Panic", fresh.why_silent())
+        config.panic_active = False
+        self.assertFalse(svc.silenced)
+        self.assertFalse(fresh.silenced)
+
+    def test_real_panic_resume_unsilences_voice_even_when_nothing_was_speaking(self):
+        import asyncio
+        from hub import panic
+        svc, config, *_ = make_tts()
+        ctx = Ctx(config=config, model_for=None, transcriber=None, notes=None, need_auth=need_auth, audit=lambda *a, **k: None)
+        ctx.notify = lambda **k: None
+        panic.register("voice", svc.silence, svc.resume, ctx=ctx)
+        eng = panic.Panic(ctx)
+        asyncio.run(eng.activate("button"))
+        self.assertTrue(svc.silenced)
+        asyncio.run(eng.resume())
+        self.assertFalse(svc.silenced)
+        self.assertEqual(svc.synthesize("Spoken again after resume.").reason, "")
+
+    def test_why_silent_names_the_real_reason(self):
+        svc, config, *_ = make_tts(presence=lambda: "in_meeting")
+        self.assertIn("meeting", svc.why_silent())
+        svc.save_settings(enabled=False)
+        self.assertIn("switched off", svc.why_silent())
+        config.panic_active = True
+        self.assertIn("Panic", svc.why_silent())
 
 
 class PiperDownload(unittest.TestCase):
@@ -557,7 +642,7 @@ class LaptopSpeaker(unittest.TestCase):
         self.assertLess(order.index(("played", 1)), order.index(("made", "The third sentence is right here.")))
 
     def test_browser_engine_uses_the_old_speaker(self):
-        svc, *_ = make_tts()
+        svc, *_ = make_tts(platform="linux")
         said = []
         res = svc.speak_aloud("Hello there, this is a test.", fallback=said.append)
         self.assertEqual(res, "fallback")
@@ -605,14 +690,15 @@ class LaptopSpeaker(unittest.TestCase):
 
 class PanicAndPresence(unittest.TestCase):
     def test_panic_silences_clears_and_resumes(self):
-        svc, *_ = make_tts()
+        svc, config, *_ = make_tts()
         svc.save_settings(engine="sapi")
+        config.panic_active = True
         svc.silence()
         self.assertEqual(svc.speak_aloud("Nobody hears this one."), "suppressed")
         self.assertEqual(svc.synthesize("Nobody hears this one.").reason, "silenced")
         self.assertEqual(svc.player.played, [])
         self.assertGreaterEqual(svc.player.stops, 1)
-        svc.resume()
+        config.panic_active = False
         self.assertEqual(svc.speak_aloud("Everybody hears this one."), "spoken")
 
     def test_register_hook_is_called_when_panic_exists(self):
@@ -630,9 +716,7 @@ class PanicAndPresence(unittest.TestCase):
             tts.make_router(ctx, service=svc)
             self.assertEqual(calls[0][0], "voice")
             calls[0][1]()
-            self.assertTrue(svc.silenced)
-            calls[0][2]()
-            self.assertFalse(svc.silenced)
+            self.assertFalse(svc.silenced)             # the hook only cuts off audio; the gate is the persisted flag
             self.assertIs(calls[0][3], ctx)
         finally:
             sys.modules.pop("hub.panic", None)
@@ -686,7 +770,7 @@ class WakewordWiring(unittest.TestCase):
         self.assertEqual(lis.state, "off")
 
     def test_default_behaviour_is_the_old_speaker(self):
-        r, svc = self.rig()
+        r, svc = self.rig(platform="linux")
         spoken = []
         old = wakeword.default_speaker
         wakeword.default_speaker = spoken.append

@@ -6,6 +6,7 @@ pypdf>=4.0
 # (the `keyboard` package also works as a second backend). The microphone needs sounddevice (also used by the wake word):
 #   python -m pip install pynput sounddevice
 pynput>=1.7
+sounddevice>=0.4
 # playwright fills application forms in a browser on the laptop (Applications > "Fill the form on my laptop"). It stops before
 # Submit and waits for your tap. After pip install, run once:  python -m playwright install chromium
 playwright>=1.40

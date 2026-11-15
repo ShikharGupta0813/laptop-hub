@@ -15,7 +15,9 @@ from typing import Callable
 
 Status = "bool | None"
 PIP_ADVICE = ("Windows Application Control may be blocking pip.exe / python -m pip. Always go through the interpreter: "
-              "python -m pip install -r requirements.txt -r requirements-voice.txt  (or: python -m hub fix-deps)")
+              "python -m pip install -r requirements.txt -r requirements-voice.txt  (or: python -m hub fix-deps, or run scripts\\setup-all.ps1)")
+REQUIREMENT_FILES = ("requirements.txt", "requirements-voice.txt", "requirements-work.txt", "requirements-laptop.txt",
+                     "requirements-extra.txt", "requirements-screen.txt")
 
 
 def repo_root() -> Path:
@@ -99,7 +101,7 @@ def check_requirements(probe: Probe, root: Path | None = None, platform: str | N
     root = root or repo_root()
     platform = platform or sys.platform
     results: list[tuple] = []
-    for name in ("requirements.txt", "requirements-voice.txt"):
+    for name in REQUIREMENT_FILES:
         path = root / name
         try:
             reqs = parse_requirements(path.read_text(encoding="utf-8"))
@@ -118,10 +120,73 @@ def check_requirements(probe: Probe, root: Path | None = None, platform: str | N
             hint = ""
             if any(p.startswith("av ") and "needs" in p for p in problems):
                 hint = " (voice returns 500 with av 17+)"
-            results.append((False, f"{name}: {', '.join(problems)}{hint}. Fix: python -m hub fix-deps"))
+            results.append((False, f"{name}: {', '.join(problems)}{hint}. Fix: run scripts\\setup-all.ps1 (or python -m hub fix-deps)"))
         else:
             results.append((True, f"{name}: all {len(reqs)} packages installed at the right versions"))
     return results
+
+
+# ---- tools the script scripts\\setup-all.ps1 installs: the same list there and here ---------------------------------
+
+SETUP_HINT = "run scripts\\setup-all.ps1"
+
+
+def check_voice(platform: str | None = None, which: Callable[[str], str | None] | None = None) -> tuple:
+    """The laptop voice: Piper (best), else Windows voices (nothing to install)."""
+    import shutil
+    platform, which = platform or sys.platform, which or shutil.which
+    try:
+        piper = bool(which("piper")) or importlib.util.find_spec("piper") is not None
+    except (ImportError, ValueError):
+        piper = False
+    if piper:
+        return True, "laptop voice: Piper installed (download a voice in Settings > Voices)"
+    if platform == "win32":
+        return True, "laptop voice: Windows voices (SAPI) work; for a more natural voice " + SETUP_HINT + " (installs Piper)"
+    return None, "laptop voice: Piper missing and no Windows voices here: " + SETUP_HINT + " or pip install piper-tts"
+
+
+def check_playwright(platform: str | None = None, env: dict | None = None, home: Path | None = None) -> tuple:
+    """Playwright package AND its Chromium (form filling, chat channels)."""
+    import os
+    try:
+        have = importlib.util.find_spec("playwright") is not None
+    except (ImportError, ValueError):
+        have = False
+    if not have:
+        return None, "playwright not installed (form filling, chat): " + SETUP_HINT
+    platform, env, home = platform or sys.platform, env if env is not None else os.environ, home or Path.home()
+    custom = env.get("PLAYWRIGHT_BROWSERS_PATH")
+    if custom and custom != "0":
+        base = Path(custom)
+    elif platform == "win32":
+        base = Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local") / "ms-playwright"
+    elif platform == "darwin":
+        base = home / "Library" / "Caches" / "ms-playwright"
+    else:
+        base = home / ".cache" / "ms-playwright"
+    try:
+        found = any(base.glob("chromium*"))
+    except OSError:
+        found = False
+    return (True, "playwright and its Chromium browser installed") if found else (None, "playwright is installed but not its browser: python -m playwright install chromium (or " + SETUP_HINT + ")")
+
+
+def check_cli_tools(probe: Probe, which: Callable[[str], str | None] | None = None) -> list[tuple]:
+    """Node (the phone app build and some tools), agy (Antigravity CLI) and Ollama's program."""
+    import shutil
+    which = which or shutil.which
+    out: list[tuple] = []
+    out.append((True, "node found") if which("node") else (None, "node not found (only needed to build the phone app): winget install OpenJS.NodeJS.LTS"))
+    agy = which("agy")
+    if not agy:
+        out.append((None, "agy (Antigravity CLI) not found: optional AI provider. Install Antigravity, then run `agy` once to sign in"))
+    else:
+        rc, _o = probe.run([agy, "--help"], 15)
+        out.append((True, "agy works. If it asks you to sign in, run `agy` once in a terminal") if rc == 0
+                   else (None, "agy found but `agy --help` failed: reinstall Antigravity, then run `agy` once to sign in"))
+    out.append((True, "ollama program found") if which("ollama") else (None, "ollama program not found: winget install Ollama.Ollama (" + SETUP_HINT + ")"))
+    return out
 
 
 # ---- the rest -------------------------------------------------------------------------------------------------

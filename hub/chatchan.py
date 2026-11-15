@@ -655,7 +655,7 @@ class Chatch:
             raise ChatError("Save this space's Google Chat link in its channel entry first. Without it the draft could land in the wrong "
                             "conversation.", 400)
         if not (self.web_factory or self.web_playwright_ready()):
-            raise ChatError("Playwright is not installed. Run: pip install playwright, then python -m playwright install chromium", 503)
+            raise ChatError("Playwright is not installed. Run scripts\\setup-all.ps1 (or: pip install playwright, then python -m playwright install chromium)", 503)
         from . import formfill as ff
         reason = ff.url_problem(link)
         if reason:
