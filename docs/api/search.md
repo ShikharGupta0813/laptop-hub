@@ -52,3 +52,5 @@ The router prefix is `/api` because Home is `/api/home`. All routes need the log
   `/api/productivity/summary` (`habits_done_today`, `habits_total`, `overdue`, `best_streak`, `journal_streak`), `/api/journal/stats?days=1` (today's entry count),
   `/api/life/summary`, `/api/cards/summary` (`due_today`), `/api/jarvis/status`; notes come from the note store directly.
 - `suggestions` are rule-based, in this order, at most 4: a meeting starting within an hour; overdue tasks; flashcards due; habits not checked today; no journal entry today; unread notifications.
+
+- Results are tidied before ranking: raw ISO times in a title or snippet become friendly ones ("Today, 5:00 pm", "Wed 18 Nov, 5:00 pm"), and a note file's `--- key: value ---` header is removed from snippets. File-meaning results (`/api/kb/search`) must share a word (3+ letters) with the query or they are dropped, so a nonsense query returns no results; other sources are not filtered.

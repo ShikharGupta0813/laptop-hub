@@ -120,6 +120,7 @@ class NoteBody(BaseModel):
 
 class NotePatch(BaseModel):
     title: str | None = None
+    body: str | None = None
     tags: list[str] | str | None = None
 
 
@@ -185,7 +186,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     transcriber = deps.transcriber or Transcriber(config.whisper_model)
     router = Router(config)
     ollama_seen: dict[str, bool | None] = {"up": None}   # last Ollama answer from /api/status (None = not checked)
-    store = NoteStore(config.notes_dir)
+    store = NoteStore(config.notes_dir, trash_dir=config.data_path() / "trash" / "notes")
     limiter = auth.LoginLimiter()
     config_lock = threading.Lock()   # logout-all's read-change-write of hub.json
     pool = ThreadPoolExecutor(max_workers=16, thread_name_prefix="hub-term")
@@ -663,9 +664,21 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     @api.patch("/notes/{note_id}")
     def patch_note(note_id: str, body: NotePatch):
         try:
-            return store.edit(note_id, body.title, body.tags).full()
+            note = store.edit(note_id, body.title, body.tags, body.body)
         except NoteError as exc:
             raise fail(exc)
+        audit("note_edit", id=note_id, body_changed=body.body is not None,
+              title_changed=body.title is not None, tags_changed=body.tags is not None)
+        return note.full()
+
+    @api.delete("/notes/{note_id}")
+    def delete_note(note_id: str):
+        try:
+            trash_id = store.delete(note_id)
+        except NoteError as exc:
+            raise fail(exc)
+        audit("note_delete", id=note_id, trash_id=trash_id)
+        return {"ok": True, "trash_id": trash_id}
 
     # ---- quick buttons -----------------------------------------------------------------------
 

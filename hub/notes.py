@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +32,7 @@ _ID = re.compile(r"\A[0-9A-Za-z_\-]+\Z")
 _LEADING = re.compile(r"\A\s*(?:hey,?\s+)?(?:note (?:it|this)|take (?:a )?note)\b[\s,:.\-]*", re.I)
 _TRAILING = re.compile(r"[\s,.\-]*\b(?:note (?:it|this))[\s.!]*\Z", re.I)
 MAX_TAGS = 5
+MAX_BODY = 20000   # characters; a note is a thought, not a document
 
 
 class NoteError(Exception):
@@ -120,9 +123,10 @@ def _parse(note_id: str, text: str) -> Note:
 
 
 class NoteStore:
-    def __init__(self, directory: str | Path, now=datetime.now):
+    def __init__(self, directory: str | Path, now=datetime.now, trash_dir: str | Path | None = None):
         self.dir = Path(directory)
         self._now = now
+        self.trash_dir = Path(trash_dir) if trash_dir else None   # same layout the Files trash uses
 
     def _path(self, note_id: str) -> Path:
         if not _ID.match(note_id):
@@ -179,9 +183,21 @@ class NoteStore:
                 counts[tag] = counts.get(tag, 0) + 1
         return [{"tag": t, "count": c} for t, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
-    def edit(self, note_id: str, title: str | None = None, tags=None) -> Note:
+    def edit(self, note_id: str, title: str | None = None, tags=None, body: str | None = None) -> Note:
         """A change made by the user. It also stops the model from overwriting it later."""
         note = self.get(note_id)
+        if body is not None:
+            body = body.replace("\r\n", "\n").strip()
+            if not body:
+                raise NoteError(400, "The note is empty. Delete it instead.")
+            if len(body) > MAX_BODY:
+                raise NoteError(413, f"That note is too long (limit {MAX_BODY} characters).")
+            if "\x00" in body:
+                raise NoteError(400, "The note has characters that cannot be saved.")
+            note.body = body
+            if title is None and tags is None:
+                self._write(note)      # only the words changed; title, tags and the 'tagged' flag stay
+                return note
         if title is not None and title.strip():
             note.title = title.strip()
         if tags is not None:
@@ -201,3 +217,31 @@ class NoteStore:
         note.tagged = True
         self._write(note)
         return note
+
+    def delete(self, note_id: str) -> str:
+        """Move the note to the hub's trash (never a hard delete). Returns the trash id."""
+        path = self._path(note_id)
+        if self.trash_dir is None:
+            raise NoteError(500, "There is no trash folder set up, so nothing was deleted.")
+        if path.is_symlink() or not path.is_file():
+            raise NoteError(404, "No such note.")
+        self.get(note_id)   # must parse as a note
+        self.trash_dir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        entry = f"{stamp}-{path.name}"
+        n = 2
+        while os.path.lexists(self.trash_dir / entry):
+            entry = f"{stamp}~{n}-{path.name}"
+            n += 1
+        item_id = f"{self.trash_dir.name}/{entry}"
+        meta = {"id": item_id, "root": "notes", "path": path.name, "name": path.name, "is_dir": False,
+                "size": path.stat().st_size, "deleted_at": time.time()}
+        sidecar = self.trash_dir / ".meta" / f"{entry}.json"
+        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        sidecar.write_text(json.dumps(meta), encoding="utf-8")
+        try:
+            shutil.move(str(path), str(self.trash_dir / entry))
+        except BaseException:
+            sidecar.unlink(missing_ok=True)
+            raise
+        return item_id

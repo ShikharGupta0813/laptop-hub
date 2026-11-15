@@ -67,6 +67,16 @@ export function badge(text, tone) {
 export function eyebrow(n, label, { rule = false, tag = "p" } = {}) {
   return el(tag, { class: "ui-eyebrow" + (rule ? " ui-eyebrow--rule" : "") }, n != null && n !== "" ? el("b", {}, String(n)) : null, label);
 }
+// A screen whose sections can be empty or hidden calls this after drawing, so the visible sections read
+// 01, 02, 03... with no gaps. Only eyebrows whose number is plain digits are changed.
+export function renumberEyebrows(root) {
+  let n = 0;
+  root.querySelectorAll(".ui-eyebrow > b").forEach((b) => {
+    if (!/^\d{1,2}$/.test(b.textContent.trim())) return;
+    n += 1;
+    b.textContent = String(n).padStart(2, "0");
+  });
+}
 // kv([["status", "online"], ["uptime", "4d 2h", "good"]]) -> YAML-style key: value rows. A third item is a tone.
 export function kv(rows, { ruled = false } = {}) {
   return el("dl", { class: "ui-kv" + (ruled ? " ui-kv--ruled" : "") }, ...rows.filter(Boolean).map(([k, v, tone]) =>

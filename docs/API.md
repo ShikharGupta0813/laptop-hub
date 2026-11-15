@@ -67,7 +67,8 @@ sentence the UI can show as is.
 - `POST /api/notes` `{text, source?}` → full note. Title and tags are added a few seconds later by the local model: `tagged` turns `true` when that happened, so re-fetch to see them.
 - `POST /api/notes/voice` multipart `file` (audio) → `{note, transcript}` (same async tagging)
 - `GET /api/notes/{id}` → `{id,title,created,source,tags,tagged,preview,body}`
-- `PATCH /api/notes/{id}` `{title?, tags?}` (`tags` as a list or comma text) → full note. After an edit the model never overwrites it.
+- `PATCH /api/notes/{id}` `{title?, tags?, body?}` (`tags` as a list or comma text) → full note. After an edit the model never overwrites it.
+- `DELETE /api/notes/{id}` → `{ok, trash_id}`: moved to the trash, restorable from Files. Details: `docs/api/notes.md`.
 
 ## Quick buttons
 - `GET /api/scripts` → `[{name,label}]`

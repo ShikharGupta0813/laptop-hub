@@ -388,6 +388,13 @@ export function init(container, ctx) {
     const voice = summary.source === "voice";
     const saveBtn = ui.button({ label: "Save", icon: "check", variant: "primary", disabled: true });
     const copyBtn = ui.button({ label: "Copy text", icon: "copy", variant: "tonal", disabled: true });
+    const editBtn = ui.button({ label: "Edit text", icon: "edit", variant: "tonal", disabled: true });
+    const deleteBtn = ui.button({ label: "Delete", icon: "trash", variant: "danger", disabled: true });
+    const textArea = el("textarea", { class: "nt-textarea", rows: "8", maxlength: "20000", "aria-label": "Note text" });
+    const saveTextBtn = ui.button({ label: "Save text", icon: "check", variant: "primary" });
+    const cancelTextBtn = ui.button({ label: "Cancel", variant: "ghost" });
+    const editRow = el("div", { class: "nt-edit", hidden: true }, textArea, el("div", { class: "nt-actions" }, saveTextBtn, cancelTextBtn));
+    const actionRow = el("div", { class: "nt-actions nt-actions-wrap" }, saveBtn, copyBtn, editBtn, deleteBtn);
     let bodyText = "";
 
     const metaLine = el("div", { class: "nt-meta" }, ui.tile(voice ? "mic" : "note", voice ? "pink" : "orange", "sm"),
@@ -399,9 +406,9 @@ export function init(container, ctx) {
       el("article", { class: "ui-card nt-card" },
         metaLine, titleInput,
         summary.tagged === false ? ui.notice("The laptop is still adding a title and tags. If you edit them yourself, yours stay.", { tone: "warn", icon: "sparkles" }) : null,
-        body,
+        body, editRow,
         el("div", { class: "ui-field nt-tagfield" }, el("label", { class: "ui-label", for: "nt-tags" }, "Tags, separated by commas"), tagsInput)),
-      el("div", { class: "nt-actions" }, saveBtn, copyBtn));
+      actionRow);
     listPane.hidden = true;
     detailPane.hidden = false;
     container.scrollTop = 0;
@@ -417,6 +424,8 @@ export function init(container, ctx) {
       tagsInput.value = (note.tags || []).join(", ");
       saveBtn.disabled = false;
       copyBtn.disabled = false;
+      editBtn.disabled = false;
+      deleteBtn.disabled = false;
     }).catch((error) => {
       if (!detail || detail.id !== myId) return;
       body.replaceChildren(ui.notice(error.message, { tone: "bad" }),
@@ -425,6 +434,34 @@ export function init(container, ctx) {
 
     copyBtn.addEventListener("click", async () => {
       try { await copyText(bodyText); ctx.toast("Copied", { kind: "good" }); } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
+    });
+    function setEditing(on) {
+      body.hidden = on; editRow.hidden = !on; actionRow.hidden = on;
+      if (on) { textArea.value = bodyText; textArea.focus(); }
+    }
+    editBtn.addEventListener("click", () => setEditing(true));
+    cancelTextBtn.addEventListener("click", () => setEditing(false));
+    saveTextBtn.addEventListener("click", async () => {
+      const text = textArea.value.trim();
+      if (!text) { ctx.toast("The note can't be empty. Use Delete to remove it.", { kind: "warn" }); return; }
+      try {
+        const note = await ui.busy(saveTextBtn, api(`/api/notes/${encodeURIComponent(myId)}`, { method: "PATCH", json: { body: text } }));
+        if (!detail || detail.id !== myId) return;
+        bodyText = note.body || text;
+        body.innerHTML = renderMarkdown(bodyText);
+        setEditing(false);
+        ui.haptic("success");
+        ctx.toast("Text saved", { kind: "good" });
+      } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
+    });
+    deleteBtn.addEventListener("click", async () => {
+      if (!(await ui.confirm({ title: "Delete this note?", message: "It moves to the trash in the Files tab (Notes folder), where you can restore it.", confirmLabel: "Delete", danger: true, icon: "trash" }))) return;
+      try {
+        await ui.busy(deleteBtn, api(`/api/notes/${encodeURIComponent(myId)}`, { method: "DELETE" }));
+        ui.haptic("success");
+        ctx.toast("Moved to the trash", { kind: "good" });
+        closeDetail();
+      } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
     });
     saveBtn.addEventListener("click", async () => {
       try {
