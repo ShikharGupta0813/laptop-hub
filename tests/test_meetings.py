@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import os
 import stat
+import sys
 import threading
 import time
 import unittest
@@ -350,6 +351,7 @@ class Storage(Rig):
         stray = [p for p in self.root.rglob("*") if p.suffix in (".wav", ".mp3", ".ogg", ".flac")]
         self.assertEqual(stray, [])
 
+    @unittest.skipIf(sys.platform == "win32", "POSIX permission bits do not exist on Windows (NTFS ACLs)")
     def test_transcript_file_is_private(self):
         out = self.record(seconds=1.5)
         mode = stat.S_IMODE(os.stat(self.svc.store.base / out["id"] / "meeting.json").st_mode)
@@ -360,7 +362,8 @@ class Storage(Rig):
         out = self.record(seconds=1.5)
         self.assertEqual(self.files(out["id"]), ["audio-me.wav", "audio-others.wav", "meeting.json"])
         self.assertTrue(any("Audio files are being kept" in w for w in out["warnings"]))
-        self.assertEqual(stat.S_IMODE(os.stat(self.svc.store.base / out["id"] / "audio-me.wav").st_mode), 0o600)
+        if sys.platform != "win32":     # POSIX permission bits do not exist on Windows (NTFS ACLs)
+            self.assertEqual(stat.S_IMODE(os.stat(self.svc.store.base / out["id"] / "audio-me.wav").st_mode), 0o600)
         self.assertTrue(out["audio"])
 
     def test_delete_really_deletes(self):

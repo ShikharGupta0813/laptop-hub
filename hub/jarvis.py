@@ -99,9 +99,10 @@ def tail_lines(path: Path, count: int) -> list[str]:
 
 def _is_jarvis(proc: psutil.Process) -> bool:
     try:
-        if proc.status() == psutil.STATUS_ZOMBIE:
+        # cmdline first: status() costs ~10 ms per process on Windows, so asking every process takes seconds
+        if not any(os.path.basename(arg).lower() == SCRIPT for arg in proc.cmdline()):
             return False
-        return any(os.path.basename(arg).lower() == SCRIPT for arg in proc.cmdline())
+        return proc.status() != psutil.STATUS_ZOMBIE
     except (psutil.Error, OSError):
         return False
 
@@ -189,14 +190,20 @@ def make_router(ctx: Ctx, *, command: Command | None = None, launcher: Launcher 
                 pass
         # Not the one we remember: maybe the owner started Jarvis by hand from this folder.
         found: dict[int, psutil.Process] = {}
-        for proc in psutil.process_iter(["pid", "ppid"]):
+        for proc in psutil.process_iter():              # no ppid attr: on Windows asking every process for it takes seconds
             if _is_jarvis(proc):
                 try:
                     if _same_dir(proc.cwd(), folder):
                         found[proc.pid] = proc
                 except (psutil.Error, OSError):
                     continue
-        tops = [p for p in found.values() if p.info.get("ppid") not in found]
+        tops = []
+        for p in found.values():
+            try:
+                if p.ppid() not in found:
+                    tops.append(p)
+            except psutil.Error:
+                continue
         if tops:
             proc = tops[0]
             try:
