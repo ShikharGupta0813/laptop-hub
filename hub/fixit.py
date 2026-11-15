@@ -78,8 +78,8 @@ def jarvis_items(config) -> list[dict]:
     return items
 
 
-async def checklist(config, tts_engine: str, tts_enabled: bool) -> list[dict]:
-    up = await ollama_models(config)
+async def checklist(config, tts_engine: str, tts_enabled: bool, probe=None) -> list[dict]:
+    up = await (probe or ollama_models)(config)
     rows = provchain.diagnose(config, up is not None)
     ready = [r for r in rows if r["ready"] and (r["id"] != "local" or up is not None)]
     items = [{"id": "provider", "label": "At least one AI can answer", "ok": bool(ready),
@@ -155,7 +155,7 @@ def make_router(ctx: Ctx, *, probe=None) -> APIRouter:
     @router.get("/checklist")
     async def checklist_view():
         engine, enabled = tts_state()
-        items = await checklist(config, engine, enabled)
+        items = await checklist(config, engine, enabled, find_ollama)
         return {"items": items, "problems": sum(1 for i in items if i["ok"] is False)}
 
     def log_path(source: str) -> Path | None:
