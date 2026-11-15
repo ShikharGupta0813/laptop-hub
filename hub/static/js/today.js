@@ -15,10 +15,10 @@ export function init(container, ctx) {
   container.append(root);
   let data = readCache(), stale = !!data, loadError = "", evening = false, words = "";
 
-  async function load({ quiet = false } = {}) {
+  async function load({ quiet = false, refresh = false } = {}) {   // refresh: skip the hub's 15-minute memory of calendar, tasks and mail
     if (!data && !quiet) root.replaceChildren(ui.skeleton("card", 3));
     try {
-      data = await api("/api/today");
+      data = await api(refresh ? "/api/today?refresh=1" : "/api/today");
       stale = false; loadError = "";
       writeCache(data);
     } catch (error) {
@@ -175,12 +175,14 @@ export function init(container, ctx) {
   function paint() {
     if (loadError === "off" && !data) { root.replaceChildren(ui.emptyState({ icon: "clock", title: "Today is switched off", body: "Set today_enabled to true in Settings." })); return; }
     if (!data) { root.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load Today", body: loadError, action: { label: "Try again", icon: "refresh", onClick: () => load() } })); return; }
-    const refresh = ui.button({ label: "Refresh", icon: "refresh", variant: "ghost", onClick: () => ui.busy(refresh, () => load({ quiet: true })) });
+    const refresh = ui.button({ label: "Refresh", icon: "refresh", variant: "ghost", onClick: () => ui.busy(refresh, () => load({ quiet: true, refresh: true })) });
     const front = ui.button({ label: "Front page", icon: "file", variant: "tonal", onClick: () => window.open("/api/today/front-page", "_blank", "noopener") });
     root.replaceChildren(...[
       el("div", { class: "td-head" }, el("h2", { class: "ui-title" }, [data.weekday || "Today", data.date].filter(Boolean).join(" · ")),
         el("div", { class: "td-head__actions" }, front, refresh)),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
+      data.cache?.stale?.length ? ui.notice("Calendar, tasks or mail could not be reached, so older copies are shown.", { tone: "warn" }) : null,
+      data.cache?.age_min >= 1 ? el("p", { class: "ui-hint" }, `Calendar, tasks and mail are from ${data.cache.age_min} min ago. Tap Refresh for live.`) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
       (askNode ||= askBar()), now(), held(), followups(), applyqLine(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
@@ -188,6 +190,6 @@ export function init(container, ctx) {
 
   if (data) paint();
   load({ quiet: !!data });
-  ui.pullToRefresh?.(container, () => load({ quiet: true }));
-  return { show() { load({ quiet: true }); }, refresh() { load({ quiet: true }); } };
+  ui.pullToRefresh?.(container, () => load({ quiet: true, refresh: true }));
+  return { show() { load({ quiet: true }); }, refresh() { load({ quiet: true, refresh: true }); } };
 }

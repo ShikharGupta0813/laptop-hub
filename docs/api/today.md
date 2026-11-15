@@ -8,10 +8,13 @@ Errors are `{"detail": "one plain sentence"}`. `404` while `today_enabled` is fa
 | Key | Default | Meaning | Settings |
 |---|---|---|---|
 | `today_enabled` | `true` | the routes, the tool and the evening summary | yes |
+| `today_cache_min` | `15` | minutes Today reuses the answers of calendar, Asana and mail (a SQLite file, `today_cache.sqlite`, in the data folder); `0` = always live | yes (0 to 120) |
 | `today_evening_time` | `"19:30"` | weekday time of the evening push + card; `""` = off. Needs `autopilot_enabled` | yes (HH:MM or empty) |
 | `autopilot_research` | `true` | Autopilot reads thread / task / notes before drafting (see autopilot.md) | yes |
 
 ## Routes
+- **Memory of slow sources.** Calendar, Asana (list, per-task detail, status) and mail counts are other services, so their answers are kept for `today_cache_min` minutes in `<data>/today_cache.sqlite` (keyed by day, so yesterday's are dropped). Opening Today twice, the Friday brief (`/text`) and the front page share one fetch, and a hub restart keeps it. Local sources (Autopilot cards, spending, Council, memory) are always read live. Meeting `past` flags are recomputed from the clock on every call. When a service is down, the older copy is shown and named in `cache.stale`.
+- `GET /api/today?refresh=1` skips the read (the Refresh button and pull-to-refresh use it) and stores the new answer. The reply carries `cache: {minutes, oldest_at, age_min, stale[]}`.
 - `GET /api/today` -> one JSON timeline for the local day: `date, weekday, generated_at, meetings[{title,start,start_time,end_time,all_day,link,platform,past}],
   tasks{due_today,overdue,updated,commented,completed}, expenses{by_currency,items,count}, mail{configured,unread,replied[]}, done{commits,tasks,cards,council},
   pending{autopilot,cards,next_meeting}, timeline[{start,time,kind,title,sub}], numbers{...}, sources_failed[]`.

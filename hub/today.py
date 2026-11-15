@@ -20,6 +20,8 @@ import datetime as dt
 import json
 import logging
 import re
+import sqlite3
+import threading
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -40,6 +42,62 @@ STYLES = ("morning", "evening")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
 Caller = Callable[..., Awaitable[tuple[bool, Any]]]
+
+
+# ---- a short memory for the slow outside sources ----------------------------------------------------------------
+
+# Calendar, Asana and mail are other services: asking them again a second later gives the same answer and costs a round
+# trip (Asana alone is one call per open task). Their answers are kept in a small SQLite file for `today_cache_min`
+# minutes (default 15; 0 = off) so opening Today twice, the Friday brief and the front page share one fetch, and a hub
+# restart does not start from nothing. Everything LOCAL (approvals, spending, Council, memory) is always read live.
+CACHE_FILE = "today_cache.sqlite"
+CACHE_EXACT = frozenset({"/api/inbox/status", "/api/gmail/summary"})
+
+
+def cacheable(method: str, path: str) -> bool:
+    return method == "GET" and (path.startswith("/api/work/") or path in CACHE_EXACT)
+
+
+class TodayCache:
+    """key -> (JSON value, fetched-at epoch seconds). Tiny, thread-safe, never raises (a broken file just means no cache)."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._lock = threading.Lock()
+        self._db: sqlite3.Connection | None = None
+
+    def _conn(self) -> sqlite3.Connection:
+        if self._db is None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            db = sqlite3.connect(str(self.path), check_same_thread=False, timeout=10)
+            db.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, at REAL NOT NULL, value TEXT NOT NULL)")
+            db.commit()
+            self._db = db
+        return self._db
+
+    def get(self, key: str) -> tuple[Any, float] | None:
+        try:
+            with self._lock:
+                row = self._conn().execute("SELECT value, at FROM cache WHERE key = ?", (key,)).fetchone()
+            return (json.loads(row[0]), float(row[1])) if row else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def put(self, key: str, value: Any, at: float, keep_day: str) -> None:
+        try:
+            with self._lock:
+                db = self._conn()
+                db.execute("INSERT OR REPLACE INTO cache (key, at, value) VALUES (?, ?, ?)", (key, at, json.dumps(value)))
+                db.execute("DELETE FROM cache WHERE key NOT LIKE ?", (keep_day + "|%",))      # yesterday's answers are useless
+                db.commit()
+        except Exception:  # noqa: BLE001
+            log.warning("today cache could not be written", exc_info=True)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._db is not None:
+                self._db.close()
+                self._db = None
 
 
 # ---- small helpers --------------------------------------------------------------------------------------------
@@ -109,13 +167,40 @@ def audit_events(path: Any, day: dt.date) -> list[dict]:
 # ---- collecting -----------------------------------------------------------------------------------------------
 
 async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, git_runner=None,
-                  audit_reader: Callable[[dt.date], list[dict]] | None = None) -> dict:
-    """The whole day as JSON. `call(method, path, params=, body=)` returns (ok, data) like InProcessClient.call."""
+                  audit_reader: Callable[[dt.date], list[dict]] | None = None,
+                  cache: "TodayCache | None" = None, refresh: bool = False) -> dict:
+    """The whole day as JSON. `call(method, path, params=, body=)` returns (ok, data) like InProcessClient.call.
+    With a `cache`, answers from the slow outside sources are reused for `today_cache_min` minutes (`refresh` skips the read)."""
     now = clock()
     day = now.date()
     iso_day = day.isoformat()
     failed: list[str] = []
     config = ctx.config
+
+    ttl_s = max(0.0, float(getattr(config, "today_cache_min", 15) or 0)) * 60
+    now_ts = now.timestamp()
+    used_at: list[float] = []       # when each outside answer that went into this page was fetched
+    stale_paths: list[str] = []     # outside sources that failed, answered from an older copy
+
+    async def ccall(method: str, path: str, **kwargs):
+        """`call`, but a slow outside source is answered from the SQLite memory while its copy is fresh."""
+        if cache is None or ttl_s <= 0 or not cacheable(method, path):
+            return await call(method, path, **kwargs)
+        key = f"{iso_day}|{path}|{json.dumps(kwargs.get('params') or {}, sort_keys=True)}"
+        hit = await asyncio.to_thread(cache.get, key)
+        if hit and not refresh and 0 <= now_ts - hit[1] < ttl_s:
+            used_at.append(hit[1])
+            return True, hit[0]
+        ok, data = await call(method, path, **kwargs)
+        if ok:
+            await asyncio.to_thread(cache.put, key, data, now_ts, iso_day)
+            used_at.append(now_ts)
+            return ok, data
+        if hit:                                      # the service is down: an older answer beats an empty section
+            used_at.append(hit[1])
+            stale_paths.append(path)
+            return True, hit[0]
+        return ok, data
 
     async def guard(name: str, coro):
         try:
@@ -129,7 +214,7 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
 
     # -- calendar
     async def src_calendar() -> list[dict]:
-        ok, data = await call("GET", "/api/work/calendar", params={"day": iso_day})
+        ok, data = await ccall("GET", "/api/work/calendar", params={"day": iso_day})
         if not ok or not isinstance(data, dict):
             failed.append("calendar")
             return []
@@ -147,7 +232,7 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
 
     # -- Asana
     async def src_asana() -> dict:
-        ok, data = await call("GET", "/api/work/asana/tasks", params={"filter": "all"})
+        ok, data = await ccall("GET", "/api/work/asana/tasks", params={"filter": "all"})
         if not ok or not isinstance(data, dict):
             failed.append("asana")
             return {"due_today": [], "overdue": [], "updated": [], "commented": [], "completed": 0}
@@ -158,13 +243,13 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
                     "project": clean(t.get("project"), 80), "due_on": str(t.get("due_on") or "")[:10]}
         due = [pick(t) for t in rows if isinstance(t.get("due_on"), str) and t["due_on"][:10] == iso_day]
         late = [pick(t) for t in rows if isinstance(t.get("due_on"), str) and t["due_on"][:10] < iso_day]
-        ok, status = await call("GET", "/api/work/status")
+        ok, status = await ccall("GET", "/api/work/status")
         me = clean(((status.get("asana") or {}).get("user")) if ok and isinstance(status, dict) else "", 80).lower()
         updated, commented = [], []
         for t in (late + due)[:ASANA_DETAIL_LIMIT]:
             if not t["gid"].isdigit():
                 continue
-            ok, detail = await call("GET", f"/api/work/asana/tasks/{t['gid']}")
+            ok, detail = await ccall("GET", f"/api/work/asana/tasks/{t['gid']}")
             task = detail.get("task") if ok and isinstance(detail, dict) else None
             if not isinstance(task, dict):
                 continue
@@ -206,12 +291,12 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
 
     # -- mail (unread count here; replies come from Autopilot's cards below)
     async def src_mail() -> dict:
-        ok, data = await call("GET", "/api/inbox/status")
+        ok, data = await ccall("GET", "/api/inbox/status")
         if not ok or not isinstance(data, dict):
             return {"configured": False, "unread": None}
         unread = data.get("unread")
         accounts = []        # per Gmail account (personal / company), counts only; empty when Gmailx has only the one
-        ok2, g = await call("GET", "/api/gmail/summary")
+        ok2, g = await ccall("GET", "/api/gmail/summary")
         if ok2 and isinstance(g, dict) and len(g) > 1:
             accounts = [{"id": clean(str(k), 40), "label": clean(v.get("label"), 30), "unread": v.get("unread")
                          if isinstance(v.get("unread"), int) else None} for k, v in g.items() if isinstance(v, dict)]
@@ -245,7 +330,16 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
     # -- git (Autopilot's helper, in a thread)
     async def src_git() -> list[dict]:
         repos = getattr(config, "autopilot_repos", None) or []
-        found = await asyncio.to_thread(autopilot_mod.git_commits, repos, day, git_runner)
+        key = f"{iso_day}|git|" + "|".join(str(r) for r in repos)
+        hit = await asyncio.to_thread(cache.get, key) if cache is not None and ttl_s > 0 else None
+        if hit and not refresh and 0 <= now_ts - hit[1] < ttl_s:
+            found = hit[0]
+            used_at.append(hit[1])
+        else:
+            found = await asyncio.to_thread(autopilot_mod.git_commits, repos, day, git_runner)
+            if cache is not None and ttl_s > 0:
+                await asyncio.to_thread(cache.put, key, found, now_ts, iso_day)
+                used_at.append(now_ts)
         out = []
         for c in found:
             when = local(c["at"])
@@ -349,7 +443,10 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
             "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "owe": _owe_list(ctx),
-            "numbers": numbers, "sources_failed": sorted(set(failed))}
+            "numbers": numbers, "sources_failed": sorted(set(failed)),
+            "cache": {"minutes": round(ttl_s / 60, 1),
+                      "oldest_at": dt.datetime.fromtimestamp(min(used_at)).isoformat(timespec="seconds") if used_at else "",
+                      "age_min": int((now_ts - min(used_at)) // 60) if used_at else 0, "stale": sorted(set(stale_paths))}}
 
 
 def _owe_list(ctx: Ctx) -> list[dict]:
@@ -518,6 +615,15 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
     router = APIRouter(prefix="/api/today", dependencies=[Depends(ctx.need_auth)])
     holder: dict[str, Any] = {}
     now_fn = clock or dt.datetime.now
+    cache_holder: dict[str, TodayCache] = {}
+
+    def the_cache() -> TodayCache | None:
+        """One SQLite file in the hub data folder, created on first use. Off (None) when today_cache_min is 0."""
+        if not float(getattr(ctx.config, "today_cache_min", 15) or 0) > 0:
+            return None
+        if "c" not in cache_holder:
+            cache_holder["c"] = TodayCache(Path(ctx.config.data_path()) / CACHE_FILE)
+        return cache_holder["c"]
 
     async def call(method: str, path: str, **kwargs):
         if caller is not None:
@@ -530,14 +636,16 @@ def make_router(ctx: Ctx, *, caller: Caller | None = None, clock: Callable[[], d
         if not getattr(ctx.config, "today_enabled", True):
             raise HTTPException(404, "Today is switched off (today_enabled is false).")
 
-    async def build() -> dict:
-        return await collect(ctx, call, now_fn, git_runner=git_runner, audit_reader=audit_reader)
+    async def build(refresh: bool = False) -> dict:
+        return await collect(ctx, call, now_fn, git_runner=git_runner, audit_reader=audit_reader,
+                             cache=the_cache(), refresh=refresh)
 
     @router.get("")
     @router.get("/")
-    async def today():
+    async def today(refresh: bool = Query(False)):
+        """The day. `?refresh=1` (the Refresh button) skips the 15-minute memory of calendar, Asana and mail."""
         need_on()
-        return await build()
+        return await build(refresh)
 
     @router.get("/text")
     async def text(style: str = Query("morning", max_length=20)):

@@ -573,5 +573,117 @@ class Research(Base):
         self.assertIn("today_evening_time", settings_mod.ALLOWED_KEYS)
 
 
+class Cache(Base):
+    """Calendar, Asana and mail answers are kept in a SQLite file for today_cache_min minutes (default 15); local sources stay live."""
+
+    def calls_to(self, path):
+        return len([c for c in self.hub.calls if c[1] == path])
+
+    def get(self, query=""):
+        r = self.client.get("/api/today" + query)
+        self.assertEqual(r.status_code, 200)
+        return r.json()
+
+    def test_a_second_open_does_not_ask_the_outside_services_again(self):
+        self.hub.meetings = [{"title": "Standup", "start": iso(16), "end": iso(16, 30)}]
+        first = self.get()
+        self.clock.advance(seconds=5)
+        second = self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 1)
+        self.assertEqual(self.calls_to("/api/inbox/status"), 1)
+        self.assertEqual(first["meetings"], second["meetings"])
+        self.assertEqual(self.calls_to("/api/expenses"), 2)          # spending is local: always live
+
+    def test_local_sources_are_always_live(self):
+        self.get()
+        self.hub.expenses = [{"id": 1, "amount": 12.5, "currency": "INR", "category": "food", "note": "tea", "at": iso(14)}]
+        self.assertGreaterEqual(self.calls_to("/api/expenses"), 1)
+        self.get()
+        self.assertEqual(self.calls_to("/api/expenses"), 2)
+
+    def test_refresh_skips_the_memory_and_rewrites_it(self):
+        self.get()
+        self.hub.meetings = [{"title": "New invite", "start": iso(17), "end": iso(17, 30)}]
+        self.assertEqual(self.get()["meetings"], [])                      # still the remembered, empty calendar
+        fresh = self.get("?refresh=1")
+        self.assertEqual([m["title"] for m in fresh["meetings"]], ["New invite"])
+        self.assertEqual([m["title"] for m in self.get()["meetings"]], ["New invite"])   # the refresh was kept
+        self.assertEqual(self.calls_to("/api/work/calendar"), 2)
+
+    def test_it_expires_after_the_minutes_in_the_setting(self):
+        self.get()
+        self.clock.advance(minutes=14)
+        self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 1)
+        self.clock.advance(minutes=2)
+        self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 2)
+
+    def test_zero_means_always_live(self):
+        self.config.today_cache_min = 0
+        self.get()
+        self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 2)
+
+    def test_it_survives_a_hub_restart(self):
+        self.hub.meetings = [{"title": "Standup", "start": iso(16), "end": iso(16, 30)}]
+        self.get()
+        app2 = FastAPI()
+        app2.include_router(today.make_router(self.ctx, caller=self.bridge, clock=self.clock, git_runner=self.git,
+                                              audit_reader=lambda day: self.audit_rows))
+        client2 = TestClient(app2, cookies={"hub_session": "yes"})
+        self.addCleanup(client2.close)
+        r = client2.get("/api/today").json()
+        self.assertEqual([m["title"] for m in r["meetings"]], ["Standup"])
+        self.assertEqual(self.calls_to("/api/work/calendar"), 1)
+
+    def test_a_service_that_is_down_shows_the_older_copy_and_says_so(self):
+        self.hub.meetings = [{"title": "Standup", "start": iso(16), "end": iso(16, 30)}]
+        self.get()
+        self.hub.missing = {"/api/work/calendar"}
+        self.clock.advance(minutes=30)
+        data = self.get()
+        self.assertEqual([m["title"] for m in data["meetings"]], ["Standup"])
+        self.assertIn("/api/work/calendar", data["cache"]["stale"])
+        self.assertNotIn("calendar", data["sources_failed"])
+
+    def test_nothing_remembered_and_down_is_still_a_failed_source(self):
+        self.hub.missing = {"/api/work/calendar"}
+        self.assertIn("calendar", self.get()["sources_failed"])
+
+    def test_past_meetings_follow_the_clock_even_when_the_calendar_is_remembered(self):
+        self.config.today_cache_min = 60
+        self.hub.meetings = [{"title": "Sync", "start": iso(15, 10), "end": iso(15, 40)}]
+        self.assertFalse(self.get()["meetings"][0]["past"])
+        self.clock.advance(minutes=45)                                   # 15:45, still inside the 60 minutes
+        data = self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 1)
+        self.assertTrue(data["meetings"][0]["past"])
+
+    def test_yesterdays_answers_are_not_reused(self):
+        self.get()
+        self.clock.advance(days=1)
+        self.get()
+        self.assertEqual(self.calls_to("/api/work/calendar"), 2)
+
+    def test_the_page_says_how_old_the_outside_data_is(self):
+        self.get()
+        self.clock.advance(minutes=7)
+        data = self.get()
+        self.assertEqual(data["cache"]["age_min"], 7)
+        self.assertEqual(data["cache"]["minutes"], 15.0)
+
+    def test_the_text_and_front_page_share_the_same_memory(self):
+        self.get()
+        self.client.get("/api/today/text")
+        self.client.get("/api/today/front-page")
+        self.assertEqual(self.calls_to("/api/work/calendar"), 1)
+
+    def test_setting_is_editable_and_validated(self):
+        from hub import settings as settings_mod
+        self.assertIn("today_cache_min", settings_mod.ALLOWED_KEYS)
+        self.assertEqual(self.config.today_cache_min, 15)
+
+
 if __name__ == "__main__":
     unittest.main()
