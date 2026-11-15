@@ -89,7 +89,8 @@ class Requirements(unittest.TestCase):
 
     def test_in_app_hints_point_at_the_script(self):
         for rel in ("hub/formfill.py", "hub/computeruse.py", "hub/dictation.py", "hub/screen.py", "hub/laptop.py", "hub/tts.py"):
-            self.assertIn("setup-all.ps1", (ROOT / rel).read_text(encoding="utf-8"), rel)
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertTrue("setup-all.ps1" in text or "setup_all_hint" in text, rel)   # the shared helper builds the sentence
 
 
 class SetupScript(unittest.TestCase):
