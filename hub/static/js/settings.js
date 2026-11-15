@@ -85,6 +85,7 @@ export function init(container, ctx) {
   let usageEl = null;      // the "Usage today" card (js/privacy.js), kept across repaints
   let gmailEl = null;      // the "Gmail accounts" card (js/gmailx.js)
   let mcpEl = null;        // the "MCP servers" card (js/mcp.js)
+  let dictationEl = null;  // the Dictation row, kept across repaints
   let query = "";           // the Settings search box
   const searchInput = el("input", { type: "search", class: "st-search__input", placeholder: "Search settings", "aria-label": "Search settings", enterkeyhint: "search", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
   const searchNone = el("p", { class: "ui-hint st-search__none", hidden: true, role: "status" }, "No setting matches that. Try another word.");
@@ -195,7 +196,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "tag", tone: "info", title: "Memory kinds", sub: "What kinds of memory exist and who sees them", chevron: true, onClick: () => openSection("memorykinds") }),
       ui.listRow({ icon: "target", tone: "accent", title: "Job and gig sources", sub: "Company job boards, remote boards, freelance email alerts, company watch list", chevron: true, onClick: () => openSection("oppsources") }),
       ui.listRow({ icon: "users", tone: "good", title: "Work lanes", sub: "Where routine work goes first: free Council and local models before Gemini or Claude", chevron: true, onClick: () => openSection("lanes") })));
-    rows.push(group("Dictation", dictationRow()));
+    rows.push(group("Dictation", (dictationEl ||= dictationRow())));   // built once: a new row on every repaint fetched the status again (8 times per load)
     rows.push(group("Alerts",
       ui.listRow({ icon: "bell", tone: "bad", title: "Phone push", sub: notify ? (notify.ntfy_enabled ? "On. Alerts reach your phone." : "Off. Alerts stay in the app.") : "Alerts on your phone through ntfy", chevron: true, onClick: () => openSection("push") }),
       ui.listRow({ icon: "talk", tone: "accent", title: "Google Chat channels", sub: "Personal account: read Chat, a draft per space, copy and open Chat to reply", chevron: true, onClick: () => openSection("chatchannels") }),
