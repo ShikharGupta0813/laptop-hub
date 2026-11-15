@@ -59,6 +59,6 @@ Both results are marked untrusted (a model's answer is data). Group `lanes` in `
 
 ## UI
 `js/lanepicker.js`: `lanePicker()` chip row (Auto | Council | Local | Gemini ...), `runInLane`, `askLane`, `sendToCouncil`, `councilButton`, `savedTile`.
-Used by the Talk composer (a non-Auto lane hands the message to that lane instead of the chat), Brain task cards and Today task rows
+Used by the Talk tab through `js/aichat.js` ("AI for this chat": Council and Local deep thinking answer into the chat; "Send to lane" hands one message to a lane and posts the answer in the chat, the result sheet is only a Details view), Brain task cards and Today task rows
 ("Send to Council"), Build flow ("Run this step with"; Council keeps the old tick-the-box flow, another lane shows a one-off answer),
 the Applications draft editor ("Write draft with: Template / Council / AI"), the Council screen ("Saved calls this week") and Settings > Work lanes.

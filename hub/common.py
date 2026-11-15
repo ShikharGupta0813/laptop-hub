@@ -13,6 +13,14 @@ from fastapi import HTTPException
 from .llm import LLMError
 
 
+SETUP_ALL = "scripts\\setup-all.ps1"
+
+
+def setup_all_hint(what: str = "") -> str:
+    """The one sentence every "optional package missing" message uses (the JS twin is js/setuphint.js)."""
+    return (f"{what} needs extra packages. " if what else "") + f"Run {SETUP_ALL} (installs everything)."
+
+
 @dataclass
 class Ctx:
     """What a feature module gets from the server. Build routers with `make_router(ctx)`."""

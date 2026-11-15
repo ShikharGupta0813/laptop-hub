@@ -6,6 +6,7 @@ import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
 import { forgetAssistants, refreshAssistants } from "./assistants.js";
 import { forgetVoiceStatus } from "./hubtts.js";
+import { SETUP_ALL, setupHint } from "./setuphint.js";
 
 const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -60,7 +61,7 @@ export async function openVoices() {
   const put = async (path, json) => { try { st = await api(path, { method: "PUT", json }); forgetVoiceStatus(); return st; } catch (e) { fail(e); throw e; } };
 
   // ---- the hint card --------------------------------------------------------------------------------------
-  const hint = ui.notice("Voice quality: the default is this phone's own voice. For a more natural voice, install Piper on the laptop (pip install piper-tts) and download a small voice below. " +
+  const hint = ui.notice("Voice quality: the default is this phone's own voice. For a more natural voice, install Piper on the laptop (run " + SETUP_ALL + ") and download a small voice below. " +
     "Small Piper voices usually run faster than real time on a CPU-only laptop, so the first sentence starts quickly (not measured on your laptop). " +
     "Windows voices need nothing extra. Nothing is downloaded unless you press Download.", { tone: "info" });
 
@@ -175,7 +176,7 @@ export async function openVoices() {
       rowOf: (m) => ({ icon: "volume", tone: "accent", title: m.id, sub: `${(m.bytes / 1048576).toFixed(0)} MB` }),
       onDelete: async (m) => { piper = await api(`/api/tts/piper/${m.id}`, { method: "DELETE" }); Object.keys(voiceCache).forEach((k) => delete voiceCache[k]); paintPiper(); good("Deleted."); } });
     piperBox.replaceChildren(el("h2", { class: "ui-caps st-caps" }, "Piper voices"),
-      ui.notice(piper.warning + " " + piper.note + (piper.installed_exe ? "" : " Piper itself is not installed yet: pip install piper-tts."), { tone: "warn" }),
+      ui.notice(piper.warning + " " + piper.note + (piper.installed_exe ? "" : " Piper itself is not installed yet. " + setupHint()), { tone: "warn" }),
       models.el, el("div", { class: "ui-stack" }, sel, custom, dl), jobLine);
     const j = piper.job || {};
     jobLine.textContent = j.state === "running" ? `Downloading ${j.voice}… ${j.total ? Math.round((j.bytes / j.total) * 100) + "%" : (j.bytes / 1048576).toFixed(0) + " MB"}`

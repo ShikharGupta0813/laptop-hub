@@ -1,6 +1,7 @@
 // Hub tab: laptop status, setup check, quick buttons, file upload, install help, log out.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { SETUP_ALL } from "./setuphint.js";
 
 const REFRESH_MS = 15000;
 
@@ -146,7 +147,7 @@ export function init(container, ctx) {
         s.ollama && s.ollama.up ? (models.length ? `Models: ${models.join(", ")}` : "Running, but no models are installed yet.") : "Ollama did not answer.",
         "Start the Ollama app on the laptop."),
       check(!!s.voice_ready, "Voice notes ready", s.voice_ready ? "Speech to text is available." : "",
-        el("span", {}, "Run ", el("code", {}, "pip install -r requirements-voice.txt"), ".")),
+        el("span", {}, "Run ", el("code", {}, SETUP_ALL), " (installs everything).")),
       check(!!s.claude_ready, "Cloud AI ready", s.claude_ready ? "Ready: " + Object.values(s.providers || {}).filter((p) => p.ready && p.label !== "Local model").map((p) => p.label).join(", ") : "",
         el("span", {}, "Run ", el("code", {}, "python -m hub setup --only ai"), " to use Gemini or your Claude login, or use the Local model.")),
       check(shells.length > 0, "Terminal shells available", shells.length ? shells.join(", ") : "",

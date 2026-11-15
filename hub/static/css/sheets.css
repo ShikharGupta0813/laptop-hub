@@ -1,0 +1,8 @@
+/* Sheets and notices: long text reads in the reading face with real line height, and a sheet's action bar never covers the text above it. */
+.ui-sheet .ui-notice, .ui-sheet .ui-hint, .ui-sheet .ui-row__sub, .ui-sheet .ui-prose { font-family: var(--font-read); font-size: var(--fs-sm); line-height: 1.55; letter-spacing: 0; overflow-wrap: anywhere; }
+.ui-sheet .ui-notice > :not(.ui-icon) { min-width: 0; }
+.ui-sheet .ui-hint { color: var(--c-text-2); }
+.ui-sheet .ui-sheet__body { padding-bottom: calc(var(--sp-5) + env(safe-area-inset-bottom, 0px)); scroll-padding-bottom: var(--sp-6); }
+.ui-sheet .ui-sheet__foot { padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 18px -12px var(--c-bg, #000); }
+.ui-sheet--lane, .lp-answer { font-family: var(--font-read); line-height: 1.55; }
+.lp-answer { font-size: var(--fs-md); }

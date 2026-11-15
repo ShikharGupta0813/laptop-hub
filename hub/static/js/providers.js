@@ -14,7 +14,8 @@ let pending = null;
 
 const cliEntry = (id) => (typeof id === "string" && id.startsWith("cli:") ? (info?.cli || []).find((c) => `cli:${c.id}` === id) : null);
 export const isProvider = (v) => IDS.includes(v) || (typeof v === "string" && v.startsWith("cli:"));
-export const providerLabel = (id, long = false) => (long ? LONG : SHORT)[id] || cliEntry(id)?.label || SHORT.local;
+const LANE_LABEL = { "lane:council": "Council", "lane:local-reasoning": "Local deep thinking" };
+export const providerLabel = (id, long = false) => (long ? LONG : SHORT)[id] || cliEntry(id)?.label || (id === "auto" ? "Auto" : LANE_LABEL[id]) || SHORT.local;
 export const normalizeProvider = (v) => (isProvider(v) ? v : "local");
 
 export function loadProviders(force = false) {
@@ -48,6 +49,20 @@ export function providerOptions({ current, icons = false, localLabel } = {}) {
   const icon = { local: "laptop", claude: "sparkles", "claude-login": "sparkles", gemini: "sparkles", duo: "sparkles" };
   const logins = (info?.cli || []).filter((c) => c.ready || `cli:${c.id}` === current).map((c) => ({ value: `cli:${c.id}`, label: c.label, ...(icons ? { icon: "bot" } : {}) }));
   return [...["local", ...show].map((id) => ({ value: id, label: label(id), ...(icons ? { icon: icon[id] } : {}) })), ...logins];
+}
+
+// Every real provider with whether it can answer now and why not: [{id, label, ready, reason}]. Local first, then the
+// clouds, then the CLI logins (Antigravity...). Not-ready ones are returned too (the "AI for this chat" sheet greys them).
+const WHY = { claude: "No Anthropic API key is saved.", "claude-login": "Claude Code isn't installed or logged in.", gemini: "No Gemini key is saved.", duo: "Needs a Gemini key." };
+export function providerChoices() {
+  const p = info?.providers;
+  const row = (id) => {
+    const r = p?.[id.replace("-", "_")];
+    return { id, label: id === "local" ? "Local model" : id === "claude-login" ? "Claude (login)" : SHORT[id], ready: ready(id),
+      reason: (r?.reason || (id === "local" ? "Runs on this laptop." : WHY[id]) || "") };
+  };
+  const cli = (info?.cli || []).map((c) => ({ id: `cli:${c.id}`, label: c.label, ready: !!c.ready, reason: c.reason || "" }));
+  return [row("local"), ...["claude", "claude-login", "gemini", "duo"].map(row), ...cli];
 }
 
 // ui.segmented for the provider choice. It refreshes its options when the list arrives.
