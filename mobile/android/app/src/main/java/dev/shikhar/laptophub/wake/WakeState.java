@@ -30,6 +30,15 @@ final class WakeState {
         if (on) lastError = "";
     }
 
+    /** Answer by voice (phone speech) when the wake phrase is heard with the app closed. On unless the owner switched it off. */
+    static boolean backgroundReply(Context c) {
+        return prefs(c).getBoolean("bg_reply", true);
+    }
+
+    static void setBackgroundReply(Context c, boolean on) {
+        prefs(c).edit().putBoolean("bg_reply", on).apply();
+    }
+
     static String lastError() {
         return lastError;
     }

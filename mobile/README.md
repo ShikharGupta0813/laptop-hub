@@ -194,6 +194,29 @@ stored or sent anywhere. Only the text after the wake phrase reaches your hub, t
 **Battery.** Continuous listening costs battery (a wake lock keeps the CPU awake). It has not been measured; if it is too
 much, switch it off or use the browser wake word while the app is open.
 
+**Answer by voice (screen off, app closed).** When you say "Hey Friday, what is on my plate today" and the app is **not** in
+front, the phone no longer waits for you to open it: the service calls your hub (`POST /api/assistant/message`, the same
+login cookie the app already holds, provider `auto`, `auto_approve` false, session `wake-<assistant>`) and **speaks the answer
+with the phone's own voice** (Android text to speech). The microphone is off while it works and speaks, then listens again
+after the usual 10 s pause. Details:
+- "Hey Friday" alone: the phone says "Yes?" and listens again (say the full sentence next time). "Open RedLine" / "open the app"
+  does not go to the AI: it opens the app as before and says "Opening RedLine".
+- One reply at a time: a wake phrase said while a reply is being fetched or spoken is not heard (the simplest safe choice).
+- Anything that needs your approval (sending mail, writing files...) is **never done in the background**: the phone says "I need
+  your tap for that" and shows the "tap to talk" notification; the request then times out on the hub.
+- Hub not reachable: "I can't reach the laptop". Logged out: "Please open the app and log in". The sentence and the answer are
+  never logged; no token or password is stored by this feature.
+- With the app open on screen, nothing changes: the page answers (and speaks with the hub voice, if you set one).
+- **The switch:** Settings, "Answer by voice while the screen is off" (SharedPreferences `hub_wake`, key `bg_reply`, default on).
+  Off gives the old behaviour (open the app / tap the notification).
+- **Limits:** needs Tailscale and the hub reachable from the phone; the app must have been logged in at least once (the cookie
+  is shared with the WebView); the voice is the phone's, not the hub's; the whole call is capped at 120 s; spoken text is cut at
+  about 900 characters.
+- **Needs a NEW APK:** build it with the GitHub Actions workflow "Build Android APK", **uninstall the old APK first** (builds are
+  debug-signed, so they do not install over each other), then log in again and switch the wake word on.
+- Not run on a phone: only the pure parts (`WakeReply`: event parsing, speech cleanup, "open the app" detection) have JVM tests
+  (`WakeReplyTest`).
+
 **How it works** (`android/app/src/main/java/dev/shikhar/laptophub/wake/`): `WakeService` (foreground service, type
 `microphone`, `AudioRecord` 16 kHz) feeds a Vosk recognizer limited to a grammar built from the assistants' names ("hey X", "ok X", "okay X", "X", `[unk]`;
 `WakeGrammar`, `WakeMatcher`, `WakeAssistants`). On a match it
@@ -202,7 +225,7 @@ open the app and posts a high-priority "tap to talk" notification (with a full-s
 does not hear itself. The page (`hub/static/js/wakebridge.js`) asks the plugin `consumePending()` whenever it becomes
 visible and calls `voicemode.setPreload(text, assistantId)`; a `#/voice?assistant=atlas&text=...` link does the same (the launch
 extras are `wake_assistant`, `wake_text`, `wake_hash`).
-Plugin `HubWake`: `status / enable / disable / modelStatus / downloadModel / consumePending / setAssistants`.
+Plugin `HubWake`: `status / enable / disable / modelStatus / downloadModel / consumePending / setAssistants / setBackgroundReply`.
 Pure logic with JVM tests (`app/src/test/java/dev/shikhar/laptophub/wake/WakeLogicTest.java`): phrase matching for several assistants, grammar building, URL
 encoding (300 character cap), zip-slip-safe unzip, the model state machine. Dependency: `com.alphacephei:vosk-android:0.3.75`
 (Maven Central, no extra repository needed). The model is `vosk-model-small-en-us-0.15`.

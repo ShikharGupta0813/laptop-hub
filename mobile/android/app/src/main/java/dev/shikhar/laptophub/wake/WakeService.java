@@ -17,6 +17,9 @@ import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.webkit.CookieManager;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.ServiceCompat;
@@ -26,9 +29,26 @@ import org.vosk.Model;
 import org.vosk.Recognizer;
 
 import java.io.File;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.Reader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HttpsURLConnection;
+
+import org.json.JSONObject;
 
 import dev.shikhar.laptophub.MainActivity;
+import dev.shikhar.laptophub.capture.HubStore;
 
 /**
  * Foreground service (type microphone) that listens for "Hey <name>" (the names of the owner's enabled assistants;
@@ -53,6 +73,11 @@ public class WakeService extends Service {
     private volatile boolean stopped = false;
     private Thread worker;
     private PowerManager.WakeLock wakeLock;
+    private TextToSpeech tts;                       // the phone's own voice, used for answers while the app is closed
+    private final CountDownLatch ttsReady = new CountDownLatch(1);
+    private volatile boolean ttsOk = false;
+    private volatile CountDownLatch spoken;          // counted down when the current sentence has been spoken
+    private volatile HttpURLConnection activeConn;   // the hub call in progress, closed on destroy
 
     /** Must be called while the app is visible (a button tap). */
     static void start(Context c) {
@@ -87,6 +112,7 @@ public class WakeService extends Service {
         }
         if (worker == null) {
             running = true;
+            initTts();
             try {
                 PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "laptophub:wake");
@@ -105,6 +131,19 @@ public class WakeService extends Service {
     public void onDestroy() {
         stopped = true;
         running = false;
+        try {
+            HttpURLConnection c = activeConn;
+            if (c != null) c.disconnect();
+        } catch (Exception ignored) {
+        }
+        try {
+            if (tts != null) {
+                tts.stop();
+                tts.shutdown();
+            }
+        } catch (Exception ignored) {
+        }
+        tts = null;
         try {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         } catch (Exception ignored) {
@@ -243,12 +282,14 @@ public class WakeService extends Service {
                 WakeMatcher.Match m = WakeMatcher.match(table, fin ? rec.getResult() : rec.getPartialResult(), fin);
                 if (m == null) continue;
                 String rest = captureRest(model, ar, ring.snapshot(), table);
-                onWake(m.assistant, rest.isEmpty() ? m.rest : rest);
-                // Do not hear ourselves or the app: release the microphone for a while, then start fresh.
+                // Do not hear ourselves or the app: release the microphone first (the spoken answer comes next).
                 ar.stop();
                 rec.reset();
                 ring.clear();
-                sleepResponsive(PAUSE_AFTER_WAKE_MS);
+                // Runs to the end (hub call and speech) before listening again, so only one reply at a time:
+                // a wake phrase said meanwhile is simply not heard.
+                onWake(m.assistant, rest.isEmpty() ? m.rest : rest);
+                sleepResponsive(PAUSE_AFTER_WAKE_MS);   // at least this long after the end of the reply
                 if (!stopped) ar.startRecording();
             }
         } catch (Throwable t) {   // includes UnsatisfiedLinkError if the native Vosk library is missing
@@ -325,15 +366,36 @@ public class WakeService extends Service {
         vibrate();
         String p = WakeLaunch.assistant(assistantId);
         String text = WakeLaunch.clean(rest);
+        // App in front, or the owner switched the spoken answer off: today's behaviour, the page answers.
+        if (MainActivity.visible || !WakeState.backgroundReply(this)) {
+            openApp(p, text, true);
+            return;
+        }
+        if (WakeReply.isOpenApp(text)) {
+            openApp(p, "", true);   // just open the app, do not send "open redline" to the assistant
+            speak("Opening RedLine");
+            return;
+        }
+        if (text.isEmpty()) {
+            speak("Yes?");   // the microphone listens again after the usual pause
+            return;
+        }
+        replyByVoice(p, text);
+    }
+
+    /** Stores the sentence for the page, tries to open the app and posts the "tap to talk" notification (full-screen intent). */
+    private void openApp(String p, String text, boolean tryLaunch) {
         WakeState.putPending(p, text);   // the page picks this up as soon as it is visible
         Intent launch = new Intent(this, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra("wake_assistant", p)
             .putExtra("wake_text", text)
             .putExtra("wake_hash", WakeLaunch.hash(p, text));
-        try {
-            startActivity(launch);   // allowed only in some situations; the notification below is the fallback
-        } catch (Exception ignored) {
+        if (tryLaunch) {
+            try {
+                startActivity(launch);   // allowed only in some situations; the notification below is the fallback
+            } catch (Exception ignored) {
+            }
         }
         try {
             Notification n = new NotificationCompat.Builder(this, CH_ALERT)
@@ -353,6 +415,177 @@ public class WakeService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             nm.notify(ID_ALERT, n);
         } catch (Exception ignored) {
+        }
+    }
+
+    // ---- spoken answer while the app is closed -----------------------------------------------------------------
+    private static final int REPLY_CAP_MS = 120_000;
+    private static final long SPEAK_MAX_MS = 90_000L;
+
+    private void initTts() {
+        try {
+            tts = new TextToSpeech(getApplicationContext(), status -> {
+                TextToSpeech t = tts;
+                if (status == TextToSpeech.SUCCESS && t != null) {
+                    try {
+                        t.setLanguage(Locale.getDefault());
+                    } catch (Exception ignored) {
+                    }
+                    t.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override public void onStart(String id) {}
+                        @Override public void onDone(String id) { done(); }
+                        @Override public void onError(String id) { done(); }
+                        private void done() {
+                            CountDownLatch l = spoken;
+                            if (l != null) l.countDown();
+                        }
+                    });
+                    ttsOk = true;
+                }
+                ttsReady.countDown();
+            });
+        } catch (Exception e) {
+            ttsOk = false;
+            ttsReady.countDown();
+        }
+    }
+
+    /** Says the text with the phone's voice and waits until it is finished (the microphone is off meanwhile). */
+    private void speak(String text) {
+        if (text == null || text.isEmpty() || stopped) return;
+        try {
+            if (!ttsReady.await(5, TimeUnit.SECONDS) || !ttsOk || tts == null) return;
+            CountDownLatch l = new CountDownLatch(1);
+            spoken = l;
+            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "wake-reply") != TextToSpeech.SUCCESS) return;
+            long end = System.currentTimeMillis() + SPEAK_MAX_MS;
+            while (!stopped && System.currentTimeMillis() < end) {
+                if (l.await(200, TimeUnit.MILLISECONDS)) break;
+            }
+            if (l.getCount() > 0 && tts != null) tts.stop();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static final class HubReply {
+        String speech = "";          // what to say
+        boolean tap = false;         // also post the "tap to talk" notification
+    }
+
+    /** Asks the hub (blocking, on the listening thread) and speaks the answer. Never logs the sentence or the answer. */
+    private void replyByVoice(String p, String text) {
+        HubReply r = askHub(p, text);
+        if (r.tap) {
+            openApp(p, text, false);   // the sentence waits in the app; nothing is launched from the background
+        }
+        speak(r.speech);
+    }
+
+    private HubReply askHub(String p, String text) {
+        HubReply r = new HubReply();
+        String unreachable = "I can't reach the laptop";
+        HttpURLConnection conn = null;
+        Timer cap = null;
+        StringBuilder answer = new StringBuilder();
+        try {
+            String origin = HubStore.origin(this);
+            if (origin == null) {
+                r.speech = unreachable;
+                r.tap = true;
+                return r;
+            }
+            String cookie = CookieManager.getInstance().getCookie(origin + "/api/assistant/message");
+            if (cookie == null || cookie.isEmpty()) {
+                r.speech = "Please open the app and log in";
+                r.tap = true;
+                return r;
+            }
+            JSONObject body = new JSONObject();
+            body.put("session_id", "wake-" + p);
+            body.put("text", text);
+            body.put("provider", "auto");
+            body.put("auto_approve", false);
+            body.put("persona", p);
+            body.put("voice", false);
+            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            conn = (HttpsURLConnection) new URL(origin + "/api/assistant/message").openConnection();
+            final HttpURLConnection hc = conn;
+            activeConn = hc;
+            cap = new Timer("wake-cap", true);
+            cap.schedule(new TimerTask() {
+                @Override public void run() {
+                    hc.disconnect();   // 120 s overall cap, also frees a read that is stuck
+                }
+            }, REPLY_CAP_MS);
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(REPLY_CAP_MS);
+            conn.setInstanceFollowRedirects(false);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setRequestProperty("X-Hub", "1");
+            conn.setRequestProperty("Cookie", cookie);
+            conn.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream out = conn.getOutputStream()) {
+                out.write(bytes);
+            }
+            int code = conn.getResponseCode();
+            if (code == 401 || code == 403) {
+                r.speech = "Please open the app and log in";
+                r.tap = true;
+                return r;
+            }
+            if (code < 200 || code >= 300) {
+                r.speech = unreachable;
+                r.tap = true;
+                return r;
+            }
+            WakeReply.SseParser parser = WakeReply.parseSse();
+            char[] buf = new char[2048];
+            boolean finished = false;
+            try (Reader in = new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8)) {
+                int n;
+                while (!finished && !stopped && (n = in.read(buf)) > 0) {
+                    List<WakeReply.Event> events = parser.feed(new String(buf, 0, n));
+                    for (WakeReply.Event ev : events) {
+                        if ("text".equals(ev.type)) {
+                            answer.append(ev.text);
+                        } else if ("tool_start".equals(ev.type) && ev.needsApproval) {
+                            conn.disconnect();   // never approve in the background: close the stream and ask for a tap
+                            r.speech = "I need your tap for that";
+                            r.tap = true;
+                            return r;
+                        } else if ("error".equals(ev.type)) {
+                            String m = WakeReply.speakable(ev.message);
+                            r.speech = m.isEmpty() ? "Something went wrong" : "Something went wrong. " + m;
+                            return r;
+                        } else if ("done".equals(ev.type)) {
+                            finished = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            String said = WakeReply.speakable(answer.toString());
+            r.speech = said.isEmpty() ? "I have no answer for that" : said;
+            return r;
+        } catch (Exception e) {
+            // Network failure, timeout or the cap closing the stream: say what we already have, else the laptop is unreachable.
+            String said = WakeReply.speakable(answer.toString());
+            if (!said.isEmpty()) {
+                r.speech = said;
+            } else {
+                r.speech = unreachable;
+                r.tap = true;
+            }
+            return r;
+        } finally {
+            if (cap != null) cap.cancel();
+            activeConn = null;
+            if (conn != null) conn.disconnect();
         }
     }
 
