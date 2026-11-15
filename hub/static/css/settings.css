@@ -88,3 +88,12 @@
 .gx-card .ap-head > span:last-child { overflow-wrap: anywhere; min-width: 0; }
 .gx-card.ui-stack, .gx-card .ui-stack { grid-template-columns: minmax(0, 1fr); }
 .gx-card .ui-btn { white-space: normal; height: auto; min-height: 44px; max-width: 100%; text-align: left; }
+
+/* Settings search */
+.st-hide { display: none !important; }
+.st-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); min-height: 48px;
+  border: 1px solid var(--c-line-strong); border-radius: var(--r-md); background: var(--c-surface-1); color: var(--c-text-2); }
+.st-search:focus-within { border-color: var(--c-accent-line); box-shadow: 0 0 0 3px var(--c-accent-soft); }
+.st-search .ui-icon { width: 18px; height: 18px; flex: none; }
+.st-search__input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--c-text); font: inherit; min-height: 44px; }
+.st-search__none { padding: var(--sp-3); text-align: center; }
