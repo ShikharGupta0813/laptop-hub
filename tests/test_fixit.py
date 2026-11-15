@@ -55,7 +55,7 @@ class Base(unittest.TestCase):
             p = mock.patch(target, lambda *a, _v=value, **k: _v)
             p.start()
             self.addCleanup(p.stop)
-        self.installed = {"gemini": True}
+        self.installed = {"gemini": True, "agy": True}
         p = mock.patch("hub.cliprov.find_program", lambda word: f"/bin/{word}" if self.installed.get(word) else None)
         p.start()
         self.addCleanup(p.stop)
@@ -74,10 +74,10 @@ class Base(unittest.TestCase):
 
 class DefaultResolution(Base):
     def test_gemini_cli_login_is_the_default_without_any_key(self):
-        self.assertEqual(providers.resolve_default(self.config), "cli:gemini-cli")
+        self.assertEqual(providers.resolve_default(self.config), "cli:agy")
 
     def test_no_cli_and_no_key_falls_to_local(self):
-        self.installed["gemini"] = False
+        self.installed["gemini"] = False; self.installed["agy"] = False
         self.assertEqual(providers.resolve_default(self.config), "local")
 
     def test_api_key_still_wins_over_cli(self):
@@ -88,64 +88,64 @@ class DefaultResolution(Base):
 class Chain(Base):
     def test_uses_gemini_cli_when_gemini_key_missing(self):
         cli, local = Fake("cli"), Fake("local")
-        model = self.chain({"cli:gemini-cli": cli, "local": local})
+        model = self.chain({"cli:agy": cli, "local": local})
         self.assertEqual(run(model.complete("s", "u")), "hello there")
         self.assertEqual((cli.calls, local.calls), (1, 0))
-        self.assertTrue(any("answered with Gemini CLI" in s for s in self.said), self.said)
+        self.assertTrue(any("answered with Antigravity" in s for s in self.said), self.said)
 
     def test_stale_gemini_choice_falls_through_to_cli_not_unavailable(self):
         cli = Fake("cli")
-        model = self.chain({"cli:gemini-cli": cli}, choice="gemini")
+        model = self.chain({"cli:agy": cli}, choice="gemini")
         self.assertEqual(run(model.complete("s", "u")), "hello there")
         self.assertTrue(any("Gemini not used" in s for s in self.said), self.said)
 
     def test_failing_provider_is_skipped_and_next_answers(self):
         cli, local = Fake("cli", error="not logged in: run gemini"), Fake("local", answer="from local")
-        model = self.chain({"cli:gemini-cli": cli, "local": local})
+        model = self.chain({"cli:agy": cli, "local": local})
         self.assertEqual(run(model.complete("s", "u")), "from local")
         self.assertEqual(provchain.LAST["used"], "local")
-        self.assertIn("cli:gemini-cli", [s["id"] for s in provchain.LAST["skipped"]])
+        self.assertIn("cli:agy", [s["id"] for s in provchain.LAST["skipped"]])
 
     def test_stream_falls_back_before_first_word(self):
         cli, local = Fake("cli", error="down", chunks=[LLMError]), Fake("local", chunks=["a", "b"])
-        model = self.chain({"cli:gemini-cli": cli, "local": local})
+        model = self.chain({"cli:agy": cli, "local": local})
         self.assertEqual(run(collect(model)), "ab")
 
     def test_stream_never_swaps_a_half_answer(self):
         cli, local = Fake("cli", error="cut", chunks=["half", LLMError]), Fake("local")
-        model = self.chain({"cli:gemini-cli": cli, "local": local})
+        model = self.chain({"cli:agy": cli, "local": local})
         with self.assertRaises(LLMError):
             run(collect(model))
         self.assertEqual(local.calls, 0)
 
     def test_local_choice_never_leaves_the_laptop(self):
         cli, local = Fake("cli"), Fake("local", error="Ollama isn't running.")
-        model = self.chain({"cli:gemini-cli": cli, "local": local}, choice="local")
+        model = self.chain({"cli:agy": cli, "local": local}, choice="local")
         with self.assertRaises(LLMError):
             run(model.complete("s", "u"))
         self.assertEqual(cli.calls, 0)
 
     def test_everything_down_gives_an_actionable_message(self):
-        self.installed["gemini"] = False
+        self.installed["gemini"] = False; self.installed["agy"] = False
         model = self.chain({"local": Fake("local", error="Ollama isn't running. Start the Ollama app.")}, ollama_up=False)
         with self.assertRaises(LLMError) as ctx:
             run(model.complete("s", "u"))
         text = str(ctx.exception)
         self.assertNotEqual(text.strip().lower(), "gemini unavailable")
-        for needle in ("python -m hub setup --only gemini", "gemini", "Ollama", "Provider check", "npm install -g @google/gemini-cli"):
+        for needle in ("python -m hub setup --only gemini", "gemini", "Ollama", "Provider check", "Antigravity"):
             self.assertIn(needle, text)
         self.assertTrue(any(s.startswith("AI: nothing could answer") for s in self.said))
 
     def test_not_logged_in_cli_names_the_exact_command(self):
-        cliprov.note_result("gemini-cli", False, cliprov.GEMINI_HINT, {"login_hint": cliprov.GEMINI_HINT})
+        cliprov.note_result("agy", False, cliprov.GEMINI_HINT, {"login_hint": cliprov.GEMINI_HINT})
         self.addCleanup(cliprov.LAST.clear)
         rows = {r["id"]: r for r in provchain.diagnose(self.config, True)}
-        row = rows["cli:gemini-cli"]
+        row = rows["cli:agy"]
         self.assertFalse(row["ready"])
-        self.assertIn("Login with Google", row["fix"])
-        self.assertEqual(row["command"], "gemini")
+        self.assertIn("sign in", row["fix"])
+        self.assertEqual(row["command"], "agy")
         self.assertEqual(row["action"]["kind"], "test")
-        self.assertEqual(row["action"]["test_path"], "/api/cli-providers/gemini-cli/test")
+        self.assertEqual(row["action"]["test_path"], "/api/cli-providers/agy/test")
 
 
 def need_auth(request: Request):
@@ -178,13 +178,13 @@ class Routes(Base):
     def test_providers_panel_rows_and_summary(self):
         data = self.build().get("/api/fixit/providers").json()
         ids = [p["id"] for p in data["providers"]]
-        self.assertEqual(ids[0], "cli:gemini-cli")
+        self.assertEqual(ids[0], "cli:agy")
         self.assertIn("local", ids)
         self.assertTrue(data["providers"][0]["chosen"])
-        self.assertIn("Gemini CLI", data["summary"])
+        self.assertIn("Antigravity", data["summary"])
 
     def test_ollama_down_and_nothing_else_is_reported_with_fix(self):
-        self.installed["gemini"] = False
+        self.installed["gemini"] = False; self.installed["agy"] = False
         data = self.build(up=False).get("/api/fixit/providers").json()
         self.assertFalse(any(p["chosen"] for p in data["providers"]))
         local = next(p for p in data["providers"] if p["id"] == "local")
@@ -193,8 +193,8 @@ class Routes(Base):
 
     def test_provider_test_hits_only_that_provider(self):
         client = self.build()
-        self.raw["cli:gemini-cli"] = Fake("cli", answer="ok")
-        r = client.post("/api/fixit/providers/cli:gemini-cli/test").json()
+        self.raw["cli:agy"] = Fake("cli", answer="ok")
+        r = client.post("/api/fixit/providers/cli:agy/test").json()
         self.assertTrue(r["ok"], r)
         self.raw["local"] = Fake("local", error="Ollama isn't running.")
         r = client.post("/api/fixit/providers/local/test").json()
@@ -229,7 +229,7 @@ class Routes(Base):
         self.assertTrue(items["jarvis-inbox"]["ok"])
 
     def test_no_provider_checklist_item(self):
-        self.installed["gemini"] = False
+        self.installed["gemini"] = False; self.installed["agy"] = False
         items = {i["id"]: i for i in self.build(up=False).get("/api/fixit/checklist").json()["items"]}
         self.assertFalse(items["provider"]["ok"])
         self.assertIn("Ollama", items["provider"]["step"])
@@ -254,7 +254,7 @@ class Routes(Base):
         lines = self.build().get("/api/fixit/doctor").json()["lines"]
         text = "\n".join(l["text"] for l in lines)
         self.assertIn("Ollama running", text)
-        self.assertIn("Gemini CLI", text)
+        self.assertIn("Antigravity", text)
 
 
 class ServerFallback(Base):
@@ -270,7 +270,7 @@ class ServerFallback(Base):
                             base_url="http://testserver", headers={"X-Hub": "1"})
         self.addCleanup(client.close)
         self.assertEqual(client.post("/api/login", json={"token": TOKEN}).status_code, 200)
-        self.installed["gemini"] = False
+        self.installed["gemini"] = False; self.installed["agy"] = False
         r = client.post("/api/ask", json={"mode": "explain", "text": "hello world", "provider": provider})
         import json as _json
         pieces = [_json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: {")]

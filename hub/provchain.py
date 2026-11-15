@@ -54,7 +54,7 @@ FIXES = {
                "", {"kind": "settings", "label": "Open provider settings", "target": "settings"}),
     "claude-login": ("Install Claude Code, then run `claude` once in a terminal and sign in.", "claude",
                      {"kind": "test", "label": "Test Claude login"}),
-    "gemini": ("Save a free Gemini key from aistudio.google.com/apikey, or use the Gemini CLI login below instead.",
+    "gemini": ("Save a free Gemini key from aistudio.google.com/apikey, or use the Antigravity login below instead.",
                "python -m hub setup --only gemini", {"kind": "test", "label": "Test Gemini key"}),
     "duo": ("Needs a Gemini key (or the Gemini CLI login) and optionally Claude Code.",
             "python -m hub setup --only ai", {"kind": "test", "label": "Test Claude + Gemini"}),
@@ -72,10 +72,10 @@ def _cli_fix(config, ident: str, state: str) -> tuple[str, str, dict]:
     except Exception:  # noqa: BLE001
         pass
     if state == "not-found":
-        text = (f"`{program}` is not installed or not on the PATH. Install it (for the Gemini CLI: "
-                "npm install -g @google/gemini-cli), then press Test.")
+        text = (f"`{program}` is not installed or not on the PATH. Install it (for Antigravity: "
+                "see the Antigravity install page), then press Test.")
     elif state == "not-logged-in":
-        text = f"Run `{program}` once in a terminal on the laptop and choose Login with Google, then press Test."
+        text = f"Run `{program}` once in a terminal on the laptop and sign in when it asks, then press Test."
     else:
         text = "Press Test. If it fails, open Settings > Providers > CLI login and check the command."
     return text, program, {"kind": "test", "label": "Test " + _label(config, ident)}
@@ -184,7 +184,7 @@ def failure_message(config, tried: list[tuple[str, str]], ollama_up: bool | None
         lines.append(f"- {row['label']}: {why.rstrip('.')}. Fix: {fix}" + (f" (command: {command})" if command else ""))
     lines += [f"- {_label(config, i)}: {why}" for i, why in said.items()]
     head = "No AI could answer right now. Here is what each one said:"
-    tail = ("Quickest fix: start the Ollama app (local, free, no login), or log in to the Gemini CLI. "
+    tail = ("Quickest fix: start the Ollama app (local, free, no login), or log in to Antigravity (agy). "
             "Then open Friday or Jarvis > Provider check and press Test.")
     return "\n".join([head, *lines, tail])
 

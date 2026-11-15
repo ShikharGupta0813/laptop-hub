@@ -67,18 +67,21 @@ GEMINI_NOTE = ("Uses your Google login (Google AI Pro limits apply), never an AP
                "terminal and choose Login with Google. The prompt is sent on stdin; `-p` carries only a fixed instruction. "
                "Unverified default: if your version differs, run `gemini --help`, edit the argv here and press Test. "
                "For JSON add `--output-format json` to argv and set output to json with path `response`.")
-AGY_NOTE = ("Placeholder, switched off. Run `agy --help` in a terminal, then edit the argv template here so the program "
-            "answers a prompt read from stdin, and switch it on.")
+AGY_ARGV = ["agy", "-p", "Reply to the message supplied on standard input. Reply with plain text only."]
+AGY_NOTE = ("Antigravity CLI (Google AI Pro login, no API key). Log in once: run `agy` in a terminal and sign in. "
+            "Print mode (`agy -p`) answers one prompt non-interactively; the prompt is sent on stdin and `-p` carries only a "
+            "fixed instruction. Unverified default: press Test; if your version wants the prompt as an argument instead, edit "
+            "the command here. Gemini CLI personal sign-in was ended by Google, so this replaces it.")
 
 
 def seed() -> list[dict]:
     return [
-        {"id": "gemini-cli", "kind": "cli-login", "label": "Gemini CLI (Google login)", "enabled": True,
+        {"id": "gemini-cli", "kind": "cli-login", "label": "Gemini CLI (Google login)", "enabled": False,
          "settings": {"argv": list(GEMINI_ARGV), "env_strip": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"],
                       "timeout": DEFAULT_TIMEOUT, "output": "text", "json_path": "", "cwd": "",
                       "login_hint": GEMINI_HINT, "note": GEMINI_NOTE}},
-        {"id": "agy", "kind": "cli-login", "label": "Antigravity (agy)", "enabled": False,
-         "settings": {"argv": ["agy"], "env_strip": ["GEMINI_API_KEY", "GOOGLE_API_KEY"], "timeout": DEFAULT_TIMEOUT,
+        {"id": "agy", "kind": "cli-login", "label": "Antigravity (agy)", "enabled": True,
+         "settings": {"argv": list(AGY_ARGV), "env_strip": ["GEMINI_API_KEY", "GOOGLE_API_KEY"], "timeout": DEFAULT_TIMEOUT,
                       "output": "text", "json_path": "", "cwd": "",
                       "login_hint": "not logged in: open `agy` once in a terminal and sign in", "note": AGY_NOTE}},
     ]

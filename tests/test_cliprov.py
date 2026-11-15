@@ -225,9 +225,9 @@ class Settings(Base):
 
     def test_seed_entries(self):
         rows = {e["id"]: e for e in cliprov.seed()}
-        self.assertTrue(rows["gemini-cli"]["enabled"])
-        self.assertFalse(rows["agy"]["enabled"])
-        self.assertIn("agy --help", rows["agy"]["settings"]["note"])
+        self.assertFalse(rows["gemini-cli"]["enabled"])
+        self.assertTrue(rows["agy"]["enabled"])
+        self.assertIn("agy", rows["agy"]["settings"]["argv"])
         self.assertIn("GEMINI_API_KEY", rows["gemini-cli"]["settings"]["env_strip"])
         self.assertIn("Login with Google", rows["gemini-cli"]["settings"]["login_hint"])
         self.assertEqual(len(cliprov.list_for(self.config).load()), 2)
@@ -298,7 +298,7 @@ class Wiring(Base):
         self.assertTrue(out.startswith("ANSWER:"))
 
     def test_switched_off_entry_has_no_client_and_default_provider_resolves(self):
-        self.assertIsNone(cliprov.build_guarded(self.config, None, "agy"))          # agy is off by default
+        self.assertIsNone(cliprov.build_guarded(self.config, None, "gemini-cli"))   # gemini-cli is off by default
         self.assertIsNone(cliprov.client_for(self.config, "nope"))
         self.assertEqual(self.client_.put("/api/cli-providers/agy", json={"enabled": True}).status_code, 200)
         self.config.default_provider = "cli:agy"
