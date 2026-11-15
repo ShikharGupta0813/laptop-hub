@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import sys
 import tempfile
 import threading
 import unittest
@@ -210,7 +211,7 @@ class SymlinkTest(Base):
 
 class ReadWriteTest(Base):
     def test_read_returns_content_etag_mtime_and_size(self):
-        (self.notes / "a.txt").write_text("héllo\n", encoding="utf-8")
+        (self.notes / "a.txt").write_bytes("héllo\n".encode("utf-8"))   # write_text would turn \n into \r\n on Windows
         data = self.get("/read", root="notes", path="a.txt").json()
         raw = "héllo\n".encode()
         self.assertEqual(data["content"], "héllo\n")
@@ -273,7 +274,9 @@ class ReadWriteTest(Base):
     def test_new_file_names_are_checked(self):
         for name in ["CON", "nul.txt", "bad.", "bad ", "a:b.txt", "a\x00b.txt"]:
             with self.subTest(name=name):
-                self.assertEqual(self.post("/write", root="notes", path=name, content="x").status_code, 400)
+                status = self.post("/write", root="notes", path=name, content="x").status_code
+                # On Windows pathlib reads "a:b.txt" as a drive-relative path, so the folder jail refuses it (403)
+                self.assertIn(status, (400, 403) if (sys.platform == "win32" and ":" in name) else (400,))
         self.assertEqual(sorted(p.name for p in self.notes.iterdir()), [])
 
     def test_no_temp_files_are_left_behind(self):

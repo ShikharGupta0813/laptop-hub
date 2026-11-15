@@ -22,7 +22,7 @@ class JsSyntax(unittest.TestCase):
     def test_changed_modules_parse(self):
         for name in ("hubtts.js", "voicekit.js", "voices.js", "voicemode.js", "friday.js", "wake.js", "wakebridge.js", "settings.js"):
             src = (STATIC / "js" / name).read_text(encoding="utf-8")
-            r = subprocess.run([NODE, "--input-type=module", "--check"], input=src, capture_output=True, text=True, timeout=30)
+            r = subprocess.run([NODE, "--input-type=module", "--check"], input=src, capture_output=True, text=True, encoding="utf-8", timeout=30)
             self.assertEqual(r.returncode, 0, f"{name}: {r.stderr}")
 
 
@@ -83,7 +83,9 @@ class Requirements(unittest.TestCase):
 
     def test_doctor_voice_check_prefers_something_that_works(self):
         from hub import doctor_checks as dc
-        ok, text = dc.check_voice("win32", which=lambda n: None)
+        from unittest import mock
+        with mock.patch.object(dc.importlib.util, "find_spec", return_value=None):   # whatever is really installed here
+            ok, text = dc.check_voice("win32", which=lambda n: None)
         self.assertTrue(ok)
         self.assertIn("setup-all", text)               # tells the owner how to get Piper too
 

@@ -309,7 +309,8 @@ class TestAppLaunch(AppBase):
         # also as a saved workspace step
         r = self.client.post("/api/workspaces", json={"name": "X", "steps": [{"type": "app", "id": "deadbeefdead"}]})
         self.assertEqual(r.status_code, 400)
-        self.assertEqual(self.client.post("/api/workspaces", json={"name": "X", "steps": [{"type": "app", "id": real}]}).status_code, 400)
+        # a long Windows temp path trips the 80-char id limit first (422); either way it is refused
+        self.assertIn(self.client.post("/api/workspaces", json={"name": "X", "steps": [{"type": "app", "id": real}]}).status_code, (400, 422))
 
     def test_launch_needs_confirm(self):
         r = self.quick(type="app", id=self.app_id("Microsoft Edge"))

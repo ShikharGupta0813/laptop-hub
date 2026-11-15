@@ -337,6 +337,8 @@ def make_router(ctx: Ctx) -> APIRouter:
                 if target.is_dir():
                     return {"ok": True, "path": rel_of(body.root, target), "created": False}
                 if os.path.lexists(target):
+                    if target.name.split(".")[0].rstrip().upper() in RESERVED:   # Windows device such as NUL
+                        raise HTTPException(400, BAD_NAME)
                     raise HTTPException(409, "A file with that name is already there.")
                 # every folder that will be created needs a clean name
                 missing = []

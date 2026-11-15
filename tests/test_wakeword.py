@@ -228,13 +228,11 @@ class NoMic(unittest.TestCase):
         self.assertEqual(r.lis.status()["state"], "no_mic")
 
     def test_real_source_without_package_is_graceful(self):
-        try:
-            import sounddevice  # noqa: F401
-            self.skipTest("sounddevice is installed")
-        except Exception:
-            pass
-        with self.assertRaises(wakeword.NoMicrophone):
-            wakeword.SoundDeviceSource("")
+        import sys
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"sounddevice": None}):   # as if the package were not installed
+            with self.assertRaises(wakeword.NoMicrophone):
+                wakeword.SoundDeviceSource("")
 
     def test_thread_reads_and_handles_frames(self):
         r = Rig("hey jarvis ping", reply="pong")

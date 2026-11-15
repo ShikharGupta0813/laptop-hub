@@ -32,6 +32,17 @@ def argv(*flags):
 
 
 def alive(pid):
+    if sys.platform == "win32":                     # os.kill(pid, 0) would TERMINATE the process on Windows
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = ctypes.c_void_p
+        h = k32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(ctypes.c_void_p(h), ctypes.byref(code))
+        k32.CloseHandle(ctypes.c_void_p(h))
+        return bool(ok) and code.value == 259       # STILL_ACTIVE
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -335,7 +346,8 @@ class ManagerTest(Base):
         results = await asyncio.gather(*[self.mgr.call(sid, "echo", {"text": str(i)}) for i in range(5)])
         self.assertTrue(all(ok for ok, _t in results))
         pid = int(pidfile.read_text())
-        self.assertEqual(self.mgr.status(sid)["pid"], pid)
+        if POSIX:                       # a Windows venv python.exe is a launcher: the server is its child, so pids differ
+            self.assertEqual(self.mgr.status(sid)["pid"], pid)
         self.assertTrue(alive(pid))
         self.assertTrue(await self.mgr.stop(sid))
         self.assertTrue(await until(lambda: not alive(pid)))
