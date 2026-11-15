@@ -133,3 +133,6 @@ mentioned:"true|false|unknown", mention:true (only when true), key, ts}`. The li
 and refreshed on app start and every ~15 minutes; a 404 or offline hub keeps the cache, and with none a built-in default
 set is used. `HubCapture.refreshAlertConfig()` -> `{updated, mode}` forces a refresh. Unsent events wait in a file queue
 (200, oldest dropped first); `alertsQueued` in `status()` is its size. See `mobile/README.md`.
+
+## Reply via Chat (`HubCapture.openChat`)
+`openChat({ text, url, share })` copies `text` to the clipboard and opens Google Chat (the `url` if it is `https://chat.google.com/...` or `https://mail.google.com/chat/...`, with the Chat package first and the browser as fallback; the Chat share picker when `share` is true; else the Chat app). Resolves `{copied, opened: "app"|"browser"|"launcher"|"none"}`. The owner pastes and sends: nothing is typed, pasted or sent for them. Rules in `ChatLink.java`, mirrored by `node scripts/test-chat-link.js`. See `docs/api/chatchan.md`. Not built here (no Android SDK); `ChatLink.java` was compiled and checked on a JVM.

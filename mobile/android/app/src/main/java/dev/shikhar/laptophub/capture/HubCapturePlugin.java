@@ -1,10 +1,14 @@
 package dev.shikhar.laptophub.capture;
 
 import android.Manifest;
+import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 
@@ -159,6 +163,68 @@ public class HubCapturePlugin extends Plugin {
             Delivery.Result r = Delivery.flush(c);
             call.resolve(resultObject(r));
         });
+    }
+
+    /**
+     * openChat({ text, url, share }): "Reply via Chat" for a personal Google account, which has no API to post with.
+     * Copies the owner's draft to the clipboard, then opens Google Chat: the conversation address when `url` is an allowed
+     * Chat address (ChatLink), Chat's share picker when `share` is true, else the Chat app itself. The owner pastes and
+     * presses Send. Nothing is typed or sent for them. Falls back to the browser, then to the Chat app launcher.
+     * Resolves { copied, opened: "app" | "browser" | "launcher" | "none" }.
+     */
+    @PluginMethod
+    public void openChat(PluginCall call) {
+        final Context c = getContext();
+        String text = ChatLink.clip(call.getString("text", ""));
+        String url = call.getString("url", "");
+        boolean share = Boolean.TRUE.equals(call.getBoolean("share", false));
+        boolean copied = false;
+        try {
+            ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && !text.isEmpty()) {
+                cm.setPrimaryClip(ClipData.newPlainText("Chat reply", text));
+                copied = true;
+            }
+        } catch (Throwable ignored) {
+        }
+        String opened = "none";
+        try {
+            if (share && !text.isEmpty()) {
+                Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text).setPackage(ChatLink.PKG_CHAT);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(i);
+                opened = "app";
+            } else if (ChatLink.isAllowed(url)) {
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(ChatLink.PKG_CHAT);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    c.startActivity(i);
+                    opened = "app";
+                } catch (ActivityNotFoundException e) {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    c.startActivity(i);
+                    opened = "browser";
+                }
+            }
+        } catch (Throwable ignored) {
+            opened = "none";
+        }
+        if ("none".equals(opened)) {
+            try {
+                Intent i = c.getPackageManager().getLaunchIntentForPackage(ChatLink.PKG_CHAT);
+                if (i != null) {
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    c.startActivity(i);
+                    opened = "launcher";
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        JSObject r = new JSObject();
+        r.put("copied", copied);
+        r.put("opened", opened);
+        call.resolve(r);
     }
 
     /** Fakes one local payment so the whole path (phone, cookie, hub) can be verified. */

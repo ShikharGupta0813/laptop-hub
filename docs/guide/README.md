@@ -43,6 +43,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 24. [33 · Playbooks](34-playbooks.md): "when this happens, do that" rules, with the same approvals as everything else.
 25. [35 · Job preferences and daily batches](35-job-preferences-and-batches.md): what work you want, and a batch of ready applications at the times you choose, sent with one tap.
 25. [37 · Job and gig sources](37-job-sources.md): company job boards, remote boards, freelance email alerts, a company watch list; nothing is submitted without your tap.
+26. [38 · Google Chat with a personal account](38-google-chat-personal.md): read Chat from notifications and emails, a draft per space, copy and open Chat to reply; it never sends.
 25. [36 · Tailor and answers](36-tailor-and-answers.md): a resume and cover note for each job from your own facts, an honesty check, and your saved answers to form questions.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 

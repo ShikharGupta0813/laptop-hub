@@ -599,7 +599,8 @@ class Alerts:
         ev = {"source": tidy(raw.get("source"), 40).lower(), "app": tidy(raw.get("app"), 100), "title": title, "text": text,
               "sender": tidy(raw.get("sender"), 120), "due_on": tidy(raw.get("due_on"), 10), "link": tidy(raw.get("link"), 300),
               "gid": tidy(raw.get("gid"), 40), "kind_hint": tidy(raw.get("kind_hint"), 20), "test": raw.get("test") is True,
-              "mail_id": tidy(raw.get("mail_id"), 120), "mention": raw.get("mention") is True}
+              "mail_id": tidy(raw.get("mail_id"), 120), "mention": raw.get("mention") is True,
+              "conversation": tidy(raw.get("conversation"), 200), "group": raw.get("group") if isinstance(raw.get("group"), bool) else None}
         ev["source"] = normalize_source(ev)
         return ev
 
@@ -640,6 +641,10 @@ class Alerts:
         ev = self.clean_event(raw)
         if not self.enabled:
             return None
+        from . import chatchan                          # Google Chat: sender/space/thread, mute and mention-only, 6 h de-dupe (hub/chatchan.py)
+        ev = chatchan.pre_ingest(self.ctx, ev)
+        if ev is None:
+            return None
         now = self.clock()
         has_both = bool(ev["title"] and ev["text"] and (ev["sender"] or ev["source"] in TASK_SOURCES))
         message = (ev["title"] + ". " + ev["text"]) if has_both else (ev["text"] or ev["title"])
@@ -674,6 +679,9 @@ class Alerts:
                      "task_id": "", "due": "", "delivery": "", "speech": "", "speak_phone": False, "phone_spoken": False,
                      "link": ev["link"], "gid": ev["gid"], "test": ev["test"], "title": ev["title"]}
             self._enrich(alert, ev)
+            if ev.get("chat"):
+                alert["chat"] = {k: ev["chat"].get(k) for k in ("space", "sender", "dm", "topic", "mention", "via", "space_key")}
+                alert["chat_pending"] = chatchan.register(self.ctx, alert, ev)       # its own draft slot, per conversation
             d["alerts"].append(alert)
             self._save(d)
         self._deliver(alert, (ev["source"], sender, ev["text"] or ev["title"]))

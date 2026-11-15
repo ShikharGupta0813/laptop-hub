@@ -236,6 +236,9 @@ class Config:
     answerbank_enabled: bool = True
     answerbank_min_confidence: int = 75     # an approved answer at or above this (0-100) may be pre-filled; below it is only suggested
     answerbank_embeddings: bool = False     # True: blend local-model embeddings into question matching (words only otherwise)
+    # Google Chat channels for a PERSONAL Google account (hub/chatchan.py): read through notifications and Chat emails, reply = clipboard + open Chat.
+    chatch_enabled: bool = True             # False: Chat messages are not parsed into spaces/threads and the pending list stays empty
+    chatch_email_parse: bool = True         # read Google Chat notification emails (through the mail modules) as Chat messages
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -377,6 +380,7 @@ def save(config: Config, path: Path) -> None:
         "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
         "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": int(config.answerbank_min_confidence or 75),
         "answerbank_embeddings": config.answerbank_embeddings is True,
+        "chatch_enabled": config.chatch_enabled is not False, "chatch_email_parse": config.chatch_email_parse is not False,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

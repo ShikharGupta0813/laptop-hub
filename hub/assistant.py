@@ -227,6 +227,9 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                re.compile(r"\burgent\b|\bwhat(?:'s| is) (?:urgent|important)\b|\bdraft (?:a |the )?(?:reply|response)\b|\bsnooze\b|"
                           r"\bmark (?:it |that |this )?(?:as )?(?:handled|seen|done)\b|\bmy manager\b|\bmy boss\b|\bneed(?:s)? (?:a )?repl(?:y|ies)\b|"
                           r"\bwho (?:messaged|pinged|needs) me\b", re.I)),
+    "chatchan": ({"chat_list_pending", "chat_draft_reply"},
+                 re.compile(r"\bgoogle chat\b|\bgchat\b|\bchat (?:space|message|reply|replies|draft)s?\b|\b(?:reply|respond|answer) (?:to|in) (?:the |my )?(?:chat|space)\b|"
+                            r"\bwho(?:'s| is| has)? (?:messaged|pinged|mentioned) me (?:in|on) chat\b|\bmentioned me in\b", re.I)),
     "buildflow": ({"build_start", "build_answer", "build_spec", "build_plan", "build_next", "build_status", "build_list"},
                   re.compile(r"\bbuild me\b|\bbuild a\b|\bnew project\b|\bspec\b|\bplan the\b|\bnext step\b", re.I)),
     # MCP servers the owner added (hub/mcpclient.py): the tool names and the pattern are refreshed by set_mcp_group() whenever

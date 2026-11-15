@@ -85,3 +85,6 @@ task-source list; its routes and behaviour are unchanged. The mail poll (`poll_e
 dict) and skips accounts whose `alerts` flag is off.
 
 Duplicate pushes: when Watch already pushed the same message (`hub/notifydedupe.py`, 10 minute window) the alert is stored with `delivery: "listed"` and `deduped: "watch"` and no second NOW push is sent. See `docs/api/watch.md`.
+
+## Google Chat (personal account)
+Chat notifications and Chat notification emails are parsed into sender, space or DM, topic and mention, de-duplicated across both ways for 6 hours, and each gets a pending reply with its own draft. A Chat alert carries `chat` and `chat_pending`. The owner's list (mute, mention-only, space links) and the reply hand-over are in `docs/api/chatchan.md`.

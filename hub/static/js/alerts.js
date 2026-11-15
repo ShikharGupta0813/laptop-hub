@@ -89,6 +89,7 @@ export function init(container, ctx) {
     if (link && SAFE_LINK.test(link.url)) {
       buttons.push(el("a", { class: "ui-btn ui-btn--secondary", href: link.url, target: "_blank", rel: "noopener noreferrer" }, ui.icon("share"), link.label));
     }
+    if (a.source === "gchat") buttons.push(ui.button({ label: "Reply in Google Chat", icon: "talk", variant: "primary", onClick: () => import("./chatch.js").then((m) => m.replyToAlert(a)) }));
     if (a.actions?.save_note) buttons.push(ui.button({ label: "Save as note", icon: "note", onClick: () => act(`/api/alerts/${a.id}/save-note`, undefined, "Saved in Memory. Fill in the answer there.") }));
     if (a.task_id) buttons.push(ui.button({ label: "Open in Memory", icon: "book-open", variant: "ghost", onClick: () => ctx?.open?.("brain") }));
     if (a.kind !== "other") buttons.push(ui.button({ label: "New draft", icon: "refresh", variant: "ghost", onClick: () => act(`/api/alerts/${a.id}/draft`, undefined, "Draft refreshed.") }));
