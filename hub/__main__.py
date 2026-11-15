@@ -109,8 +109,8 @@ def cmd_serve(args) -> int:
             consolelog.say(f"{record.levelname} {record.name}: {record.getMessage()}")
     logging.getLogger("hub").addHandler(_ToConsole(level=logging.WARNING))
     try:
-        from .tts import TTSService
-        engine = TTSService(config).settings()["engine"]
+        from .tts import TTS
+        engine = TTS(config).settings()["engine"]
     except Exception:  # noqa: BLE001 - the banner must never stop the hub
         engine = "browser"
     try:

@@ -314,3 +314,27 @@ class Banner(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceEngineReported(Base):
+    """Regression: the checklist and the console banner imported a class that does not exist (TTSService), the error was
+    swallowed, and both always claimed the phone speaks ("browser") even when the laptop voice was in use."""
+
+    def test_checklist_reports_the_stored_engine_not_browser(self):
+        import json as _json
+        folder = Path(self.config.data_path()) / "tts"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "tts.json").write_text(_json.dumps({"engine": "sapi", "enabled": True}))
+        ctx = Ctx(config=self.config, model_for=None, transcriber=None, notes=None, need_auth=need_auth,
+                  audit=lambda *a, **k: None)
+        app = FastAPI()
+        app.include_router(fixit.make_router(ctx, probe=lambda config: _async_none()))
+        client = TestClient(app)
+        client.cookies.set("hub_session", "yes")
+        self.addCleanup(client.close)
+        items = {i["id"]: i for i in client.get("/api/fixit/checklist").json()["items"]}
+        self.assertTrue(items["voice-engine"]["detail"].startswith("sapi:"), items["voice-engine"]["detail"])
+
+
+async def _async_none():
+    return None

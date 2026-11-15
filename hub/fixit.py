@@ -107,8 +107,8 @@ def make_router(ctx: Ctx, *, probe=None) -> APIRouter:
 
     def tts_state() -> tuple[str, bool]:
         try:
-            from .tts import TTSService
-            st = TTSService(config).settings()
+            from .tts import TTS
+            st = TTS(config).settings()
             return st["engine"], bool(st["enabled"])
         except Exception:  # noqa: BLE001
             return getattr(config, "tts_engine", "browser") or "browser", True
