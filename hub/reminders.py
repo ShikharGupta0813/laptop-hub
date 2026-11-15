@@ -39,6 +39,8 @@ MISSED_CAP = 10             # most missed items announced one by one in a single
 MAX_REMINDERS = 500
 MAX_TIMERS = 50
 MAX_TEXT = 300
+MAX_CALL_TEXT = 500         # a "call" reminder is read out in full, so it may be longer
+MAX_CALL_INPUT = 800        # the whole spoken phrase for a call reminder (words about the time included)
 MAX_TIMER_SECONDS = 7 * 86400
 KEEP_DONE_DAYS = 30
 KEEP_TIMER_HOURS = 24
@@ -202,15 +204,23 @@ def describe_seconds(seconds: int) -> str:
     return " ".join(parts[:2]) or "0 seconds"
 
 
-def clean_text(value: Any, what: str = "reminder") -> str:
+def clean_text(value: Any, what: str = "reminder", limit: int = MAX_TEXT) -> str:
     if not isinstance(value, str):
         raise HTTPException(400, f"Write what the {what} is about.")
     text = " ".join(CONTROL_RE.sub(" ", value).split())
     if not text:
         raise HTTPException(400, f"Write what the {what} is about.")
-    if len(text) > MAX_TEXT:
-        raise HTTPException(400, f"That is too long. Keep it under {MAX_TEXT} characters.")
+    if len(text) > limit:
+        raise HTTPException(400, f"That is too long. Keep it under {limit} characters.")
     return text
+
+
+def clean_call(value: Any) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise HTTPException(400, "call must be true or false.")
+    return value
 
 
 # ---- the quick parser --------------------------------------------------------------------------------
@@ -228,6 +238,7 @@ class Parsed:
     repeat: str = "none"
     n: int | None = None
     seconds: int = 0               # timers
+    call: bool = False             # ring the phone and read the full text out (see hub/alerts.py push_phone)
 
 
 WHEN_HELP = ("I could not tell when. Try something like 'tomorrow at 9am', 'in 10 minutes', "
@@ -293,6 +304,9 @@ REPEAT_RULES: list[tuple[str, re.Pattern]] = [
     ("yearly_date", _rx(rf"\bevery\s+(?=(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:{MON})\b|(?:{MON})\.?\s+\d{{1,2}}\b))")),
     ("yearly", _rx(r"\b(?:every\s+year|each\s+year|yearly|annually)\b")),
 ]
+# "call me at 5 ...", "ring me ...", "... by call": the reminder rings the phone. "remind me to call mom" is NOT one.
+CALL_RX = _rx(r"\b(?:(?:by|via|through|with|using)\s+(?:a\s+|an\s+)?(?:phone\s+)?(?:call|ring)|give\s+me\s+a\s+(?:call|ring)"
+              r"|(?:call|ring|phone)\s+me)\b[ ,.]*")
 STRAY_EVERY_RX = _rx(r"\b(?:every|each)\b")
 
 REL_RX = _rx(rf"(?:\b(?:in|after)\s+(?P<d1>{DURLIST})|(?P<d2>{DURLIST})\s+from\s+now)")
@@ -566,15 +580,20 @@ def _resolve_date(rec: dict, hm: tuple[int, int], now: datetime) -> date:
     raise ParseError("I could not work out that date.")
 
 
-def parse_quick(text: str, now: datetime, tz: tzinfo) -> Parsed:
+def parse_quick(text: str, now: datetime, tz: tzinfo, call: bool = False) -> Parsed:
     """Turn a phrase like 'remind me to call mom tomorrow at 9am' into a reminder (or a timer)."""
     now = now.astimezone(tz).replace(microsecond=0)
     s = _normalize(text)
     if not s:
         raise ParseError("Type what you want to be reminded of, for example: remind me to call mom tomorrow at 9am.")
-    if len(s) > 500:
+    call = call is True or bool(CALL_RX.search(s))
+    if call:
+        s = _normalize(CALL_RX.sub(" ", s))
+        if not s:
+            raise ParseError("What should I call you about? Try 'call me at 5pm to join the release check'.")
+    if len(s) > (MAX_CALL_INPUT if call else 500):
         raise ParseError("That is too long for a reminder. Keep it to a sentence or two.")
-    timer = _try_timer(s)
+    timer = None if call else _try_timer(s)
     if timer:
         return timer
     is_alarm = bool(re.search(r"\b(?:alarm|wake\s+me\s+up)\b", s, re.I))
@@ -665,13 +684,15 @@ def parse_quick(text: str, now: datetime, tz: tzinfo) -> Parsed:
             task = "Alarm"
         else:
             raise ParseError("What should I remind you about? Try 'remind me to call mom tomorrow at 9am'.")
-    if len(task) > MAX_TEXT:
-        raise ParseError(f"That is too long for a reminder. Keep it under {MAX_TEXT} characters.")
+    limit = MAX_CALL_TEXT if call else MAX_TEXT
+    if len(task) > limit:
+        raise ParseError(f"That is too long for a reminder. Keep it under {limit} characters.")
 
     due = _resolve(repeat, n, rel, date_rec, time_rec, pod, now, tz, w.s, is_alarm)
     anchor = due.astimezone(tz).replace(tzinfo=None)
     where = _echo_when(due, repeat, n, anchor, now, tz)
-    return Parsed("reminder", task, f"{where} — {task}", due=due, repeat=repeat, n=n)
+    return Parsed("reminder", task, f"{where} — {task}" + (" (by call)" if call else ""), due=due, repeat=repeat, n=n,
+                  call=call)
 
 
 def _echo_when(due: datetime, repeat: str, n: int | None, anchor: datetime, now: datetime, tz: tzinfo) -> str:
@@ -837,6 +858,7 @@ class RemindersService:
         trig = self.trigger(r)
         due = self._dt(r.get("due"))
         out = {k: r.get(k) for k in ("id", "text", "due", "repeat", "n", "done", "snoozed_until", "created", "source")}
+        out["call"] = r.get("call") is True
         out.update(done_at=r.get("done_at"), last_fired=r.get("last_fired"), status=self.status(r, now),
                    next_fire=iso(trig, self.tz) if trig else None,
                    when=describe_when(trig or due, now, self.tz) if (trig or due) else "")
@@ -880,8 +902,10 @@ class RemindersService:
         r.update(due=iso(due, self.tz), repeat=repeat, n=n, anchor=anchor.isoformat(timespec="minutes"),
                  snoozed_until=None, notified=None, fired_pending=False)
 
-    def create(self, text: Any, due: Any, repeat: str = "none", n: Any = None, source: str = "app") -> dict:
-        text = clean_text(text)
+    def create(self, text: Any, due: Any, repeat: str = "none", n: Any = None, source: str = "app",
+               call: Any = False) -> dict:
+        call = clean_call(call)
+        text = clean_text(text, limit=MAX_CALL_TEXT if call else MAX_TEXT)
         now = self.now()
         if isinstance(due, datetime):
             due_dt = due.astimezone(self.tz)
@@ -893,7 +917,7 @@ class RemindersService:
         if len(self.data["reminders"]) >= MAX_REMINDERS:
             raise HTTPException(400, "You have too many reminders. Delete some old ones first.")
         r = {"id": _new_id(), "text": text, "done": False, "done_at": None, "created": iso(now, self.tz),
-             "source": " ".join(str(source or "app").split())[:40] or "app"}
+             "source": " ".join(str(source or "app").split())[:40] or "app", "call": call}
         self._schedule(r, due_dt, repeat, n, now, check_past=True)
         self.data["reminders"].append(r)
         self.save()
@@ -903,8 +927,10 @@ class RemindersService:
     def update(self, rid: str, body: dict) -> dict:
         r = self._find(rid)
         now = self.now()
+        if "call" in body:
+            r["call"] = clean_call(body["call"])
         if "text" in body:
-            r["text"] = clean_text(body["text"])
+            r["text"] = clean_text(body["text"], limit=MAX_CALL_TEXT if r.get("call") else MAX_TEXT)
         if any(k in body for k in ("due", "repeat", "n")):
             if "due" in body:
                 try:
@@ -1078,6 +1104,11 @@ class RemindersService:
             text = item["text"]
             title = f"{'Missed reminder' if late else 'Reminder'}: {text}"[:200]
             self._notify(title, f"It was due {when}." if late else f"Due {when}.")
+            if item.get("call") is True:
+                from . import alerts as alerts_mod      # rings the phone: urgency 3, full text, not held by quiet hours
+                alerts_mod.push_phone(self.ctx, f"rem:{item['id']}:{item.get('notified') or trig.isoformat()}",
+                                      "Reminder: " + text, title="Call reminder", kind="reminder", source="reminder",
+                                      urgency=3, preview=text, call=True)
         else:
             label = item["label"]
             length = describe_seconds(item["seconds"])
@@ -1168,7 +1199,7 @@ def make_router(ctx: Ctx, *, clock: Callable[[], datetime] | None = None, tz: tz
     @router.post("/")
     async def create(body: dict = Body(default_factory=dict)):
         r = service.create(body.get("text"), body.get("due"), body.get("repeat") or "none", body.get("n"),
-                           body.get("source") or "app")
+                           body.get("source") or "app", body.get("call"))
         return service.public(r)
 
     @router.post("/quick")
@@ -1176,7 +1207,7 @@ def make_router(ctx: Ctx, *, clock: Callable[[], datetime] | None = None, tz: tz
         """Parse a phrase and (unless preview is true) save it. Returns the item plus a one-line echo."""
         preview = body.get("preview") is True
         try:
-            parsed = parse_quick(body.get("text"), service.now(), service.tz)
+            parsed = parse_quick(body.get("text"), service.now(), service.tz, clean_call(body.get("call")))
         except ParseError as exc:
             raise HTTPException(400, str(exc)) from None
         if parsed.kind == "timer":
@@ -1188,8 +1219,8 @@ def make_router(ctx: Ctx, *, clock: Callable[[], datetime] | None = None, tz: tz
         if preview:
             return {"kind": "reminder", "saved": False, "echo": parsed.echo,
                     "reminder": {"text": parsed.text, "due": iso(parsed.due, service.tz), "repeat": parsed.repeat,
-                                 "n": parsed.n}}
-        r = service.create(parsed.text, parsed.due, parsed.repeat, parsed.n, "quick")
+                                 "n": parsed.n, "call": parsed.call}}
+        r = service.create(parsed.text, parsed.due, parsed.repeat, parsed.n, "quick", parsed.call)
         return {"kind": "reminder", "saved": True, "echo": parsed.echo, "reminder": service.public(r)}
 
     @router.get("/search")

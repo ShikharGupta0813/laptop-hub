@@ -62,3 +62,7 @@ while the hub was off are announced as "Missed reminder: ..." / "Missed timer: .
 are named; the rest become one "More missed reminders" notification. Repeating reminders missed several times fire once.
 Done reminders are deleted after 30 days. Data: `<data dir>/reminders.json`. With `HUB_DEMO` set, three sample reminders
 are added once.
+
+## Call reminders (`call`)
+A reminder can carry `call: true` (default `false`, returned on every reminder object, accepted by `POST /`, `PATCH /{id}` and `POST /quick`; anything that is not a boolean is a `400`). Phrases such as "call me at 5 to ...", "ring me ...", "... by call" or "via a phone call" in `POST /quick` set it (the words are removed from the text; "remind me to call mom" does not). The assistant tool `reminder_add` also takes `call`. A call reminder keeps its full text up to 500 characters (normal reminders stay at 300; a quick phrase may be up to 800 characters for a call).
+When it is due it still sends the normal notification, and also queues an urgency 3 item for the phone (`kind: "reminder"`, `source: "reminder"`, `call: true`, `preview` = the full text) in `GET /api/alerts/pending`, see `docs/api/alerts.md`. It rings once per firing (a repeating reminder rings each time), clears on ack, and quiet hours do not hold it.

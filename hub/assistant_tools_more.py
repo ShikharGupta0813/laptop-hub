@@ -135,8 +135,12 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         return ok, fmt_reminders(d) if ok else d
 
     async def reminder_add(a):
-        ok, d = await hub.call("POST", "/api/reminders/quick", body={"text": str(a["text"])[:300]})
-        return ok, ("Saved: " + _short(d.get("echo"), 200)) if ok else d
+        call = a.get("call") is True
+        body = {"text": str(a["text"])[:(800 if call else 300)]}
+        if call:
+            body["call"] = True
+        ok, d = await hub.call("POST", "/api/reminders/quick", body=body)
+        return ok, ("Saved: " + _short(d.get("echo"), 500 if call else 200)) if ok else d
 
     # ---- to-dos --------------------------------------------------------------------------------------
     async def todos_list(a):
@@ -239,7 +243,11 @@ def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:
         tool("reminders_list", "The owner's open reminders. Read-only.", {}, [], reminders_list),
         tool("reminder_add", "Create a reminder, alarm or timer from plain words, like 'tomorrow 9am call mom', "
                              "'in 10 minutes check the oven' or 'every weekday 8:30 standup'. The owner is asked first.",
-             {"text": _s("The reminder in plain words, including when.")}, ["text"], reminder_add, needs_approval=True),
+             {"text": _s("The reminder in plain words, including when. When the owner gave details, keep ALL of them "
+                         "here (up to 500 characters) because a call reminder reads them out in full."),
+              "call": {"type": "boolean", "description": "true when the owner asks to be called or rung ('call me at 5', "
+                       "'ring me', 'by call'): the phone rings and reads the full text out. Default false."}},
+             ["text"], reminder_add, needs_approval=True),
         tool("todos_list", "The owner's open to-dos. due: today, overdue, week or none. list: a list name. Read-only.",
              {"due": {"type": "string", "enum": ["today", "overdue", "week", "none"]}, "list": _s()}, [], todos_list),
         tool("todo_add", "Add a to-do from plain words like 'buy milk tomorrow !2 #errands'. The owner is asked first.",

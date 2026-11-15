@@ -52,6 +52,7 @@ MAX_FOLLOWED_TASKS = 6           # followed (not assigned) task details read per
 SECTION_CAP = 8
 FILE_SCAN_VISITS = 3000
 MEETING_SOON = dt.timedelta(hours=2)
+PHONE_MEETING_MINUTES = 5            # the phone speaks a meeting this close (urgency 2)
 MEETING_ALERT = dt.timedelta(minutes=10)   # matches proactive.MEETING_MINUTES; the loop runs every 3 minutes
 BODY_SNIPPET = 120
 
@@ -1268,6 +1269,11 @@ class Engine:
                 sent(self.raise_alert(mkey, "meeting",
                                       f"{Address}, {m['title'][:60]} starts in {mins} minutes", body, "info", now,
                                       event={"type": "meeting", "minutes": mins, "dedupe": mkey, "link": "friday"}))
+                if mins <= PHONE_MEETING_MINUTES and not in_quiet(self.settings["quiet_hours"], now):
+                    from . import alerts as alerts_mod       # the phone speaks it (GET /api/alerts/pending), once per meeting
+                    alerts_mod.push_phone(self.ctx, mkey, f"{Address}, {m['title'][:80]} starts in {mins} "
+                                          f"minute{'s' if mins != 1 else ''}.", title="Meeting starting",
+                                          kind="meeting", source="calendar", urgency=2, preview=body)
 
         if held and not in_quiet(self.settings["quiet_hours"], now):
             try:

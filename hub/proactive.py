@@ -364,6 +364,13 @@ class Proactive:
                     decision = routed
             if decision == "now" and routed is None:
                 self._push(title or "Friday", body, level, link)
+            if decision == "now" and kind == "backup_failed":    # the hub reporting a problem: the phone speaks it too
+                try:
+                    from . import alerts as alerts_mod
+                    alerts_mod.push_phone(self.ctx, f"hub:{kind}:{at[:13]}", f"{title or 'Backup failed'}. {body}".strip(),
+                                          title="Hub problem", kind="other", source="hub", urgency=2)
+                except Exception:  # noqa: BLE001
+                    pass
             elif decision == "batch":
                 d["pending"].append({"type": str(event.get("type")), "title": title,
                                      "count": event.get("count") or 1, "at": at})

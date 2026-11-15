@@ -88,3 +88,12 @@ Duplicate pushes: when Watch already pushed the same message (`hub/notifydedupe.
 
 ## Google Chat (personal account)
 Chat notifications and Chat notification emails are parsed into sender, space or DM, topic and mention, de-duplicated across both ways for 6 hours, and each gets a pending reply with its own draft. A Chat alert carries `chat` and `chat_pending`. The owner's list (mute, mention-only, space links) and the reply hand-over are in `docs/api/chatchan.md`.
+
+## Urgent defaults and the phone queue (voice and "call")
+With nothing saved in Settings > Alerts, these count as urgency 2 or more (a NOW alert the phone speaks): an Asana (or other task source) task due today or overdue, a task with urgent wording, a payment or debit SMS (`debited`, `debit alert`, `payment failed`, `transaction failed`), and the new urgent words `prod issue`, `production issue`, `payment failed`, `server down`, `deployment failed`, `hotfix`, `p1`, `data loss`, `security incident`. Whole words only (`server downtime` does not match). OTP messages stay ignored. Any list the owner saves in `alerts_rules` replaces the default list for that key, so the owner can remove or change them; the "task due today is NOW" floor only applies to task sources and not to messages with an ignore word.
+
+Besides alerts, hub modules can queue items for the phone with `hub.alerts.push_phone(ctx, key, speech, title, kind, source, urgency, preview, call)` (one item per `key`, never raises). Used for: a meeting starting in 5 minutes or less (Friday's calendar check, `kind: "meeting"`, `source: "calendar"`, urgency 2, not in Friday's quiet hours), the backup failing (`source: "hub"`, urgency 2), and a due reminder with `call: true` (urgency 3). The doctor, watchdog and fixit scripts run in other processes and were not hooked.
+
+`GET /api/alerts/pending` -> `{alerts: [{id, urgency, speech, title, kind, source, preview, call}]}`. Normal alerts have `call: false` and are listed for 10 minutes. A call item looks like:
+`{"id": "c3f9a1b2c4d5e", "urgency": 3, "speech": "Reminder: <full text>", "title": "Call reminder", "kind": "reminder", "source": "reminder", "preview": "<full text, up to 500 chars>", "call": true}`.
+Call items wait up to 12 hours for the phone. `POST /api/alerts/pending/ack {ids}` clears any of them and they never come back. Urgency 3 is not held by quiet hours.
