@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v43-urgent-voice-2026.11";
+const VERSION = "v44-jobs-wave2-3-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css", "/js/dictation.js", "/css/dictation.css", "/js/provlists.js",
@@ -36,6 +36,8 @@ const SHELL = [
   "/js/tailor.js", "/css/tailor.css", "/js/studylib.js",
   "/js/chatch.js", "/js/aichat.js", "/css/aichat.css", "/css/sheets.css", "/js/setuphint.js",
   "/js/tailor.js", "/css/tailor.css", "/css/perf.css", "/js/poller.js", "/js/navstack.js",
+  "/js/networking.js", "/css/networking.css",
+  "/js/interviews.js", "/css/interviews.css",
   "/js/jobtrack.js", "/css/jobtrack.css",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.

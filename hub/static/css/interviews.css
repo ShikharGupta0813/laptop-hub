@@ -1,0 +1,28 @@
+/* Interview coach. Scoped under the view id; tokens only. Fits 390 px: one column, wrapping text, 40 px+ tap targets. */
+#view-interviews .iv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-interviews .iv > * { min-width: 0; }
+.iv-note { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.iv-h { margin: 0; font-size: var(--fs-md, 1rem); }
+.iv-switchrow { padding: 0; }
+.iv-area { resize: vertical; min-height: 3.5rem; font: inherit; }
+.iv-badges, .iv-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.iv-q { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0; border-top: 1px solid var(--c-line); min-width: 0; }
+.iv-q:first-of-type { border-top: 0; }
+.iv-qtext { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.iv-answer, .iv-star, .iv-script { margin: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.iv-script { white-space: pre-wrap; padding: var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); user-select: text; }
+.iv-summary { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.iv-checks, .iv-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.iv-checks { list-style: none; padding-left: 0; }
+.iv-checks li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.iv-mark { flex: none; min-width: 2.4em; padding: 1px 6px; border-radius: 999px; font-size: 11px; text-align: center; border: 1px solid var(--c-line); }
+.iv-checks .is-ok .iv-mark { color: var(--c-good, #2f9e5f); border-color: var(--c-good, #2f9e5f); }
+.iv-checks .is-no .iv-mark { color: var(--c-warn, #d99a1d); border-color: var(--c-warn, #d99a1d); }
+.iv-critique { padding: var(--sp-3); border-radius: var(--r-md, 12px); background: var(--c-accent-soft); color: var(--c-accent-text); overflow-wrap: anywhere; }
+.iv-critique p { margin: var(--sp-1) 0 0; }
+.iv-check { display: flex; gap: var(--sp-3); align-items: flex-start; min-height: 40px; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.iv-check input { width: 24px; height: 24px; flex: none; }
+.iv-pay { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); }
+@media (min-width: 560px) { .iv-pay { grid-template-columns: repeat(3, 1fr); } }
+.is-live { outline: 2px solid var(--c-accent-line); }
+#view-interviews .ui-input { width: 100%; box-sizing: border-box; }

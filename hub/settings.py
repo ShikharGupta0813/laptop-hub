@@ -56,6 +56,7 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "tailor_enabled", "tailor_ai", "answerbank_enable
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batches_outreach_cap")   # hub/batches.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "chatch_enabled", "chatch_email_parse")   # hub/chatchan.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "networking_enabled", "networking_nudge_days", "networking_ai", "interviews_enabled", "interviews_ai")   # hub/networking.py, hub/interviews.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "jobtrack_enabled", "jobtrack_followup_days", "jobtrack_ghost_days")   # hub/jobtrack.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
@@ -297,6 +298,13 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
                 raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
             changes[key] = {k: v for k, v in value.items() if v}
+        elif key in ("networking_enabled", "networking_ai", "interviews_enabled", "interviews_ai"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "networking_nudge_days":
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 365:
+                raise HTTPException(400, "networking_nudge_days must be a whole number from 1 to 365.")
         elif key == "jobtrack_followup_days":
             if (not isinstance(value, list) or len(value) > 4
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 120 for v in value)):
@@ -628,6 +636,9 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": config.batches_catchup_min,
             "batches_outreach_cap": config.batches_outreach_cap,
             "chatch_enabled": config.chatch_enabled is not False, "chatch_email_parse": config.chatch_email_parse is not False,
+            "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": config.networking_nudge_days,
+            "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
+            "interviews_ai": config.interviews_ai is True,
             "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
             "jobtrack_ghost_days": config.jobtrack_ghost_days,
             "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,

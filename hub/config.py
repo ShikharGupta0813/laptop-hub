@@ -243,6 +243,12 @@ class Config:
     # Google Chat channels for a PERSONAL Google account (hub/chatchan.py): read through notifications and Chat emails, reply = clipboard + open Chat.
     chatch_enabled: bool = True             # False: Chat messages are not parsed into spaces/threads and the pending list stays empty
     chatch_email_parse: bool = True         # read Google Chat notification emails (through the mail modules) as Chat messages
+    # Networking drafts and interview coach (hub/networking.py, hub/interviews.py): drafts and practice only, nothing is ever sent.
+    networking_enabled: bool = True
+    networking_nudge_days: int = 14         # a contact not written to for this many days (1 to 365) shows as a "nudge due" suggestion
+    networking_ai: bool = False             # True: drafts are reworded by the owner's chosen AI (still checked against the facts; falls back to the plain draft)
+    interviews_enabled: bool = True
+    interviews_ai: bool = False             # True: extra questions and a short critique from the owner's chosen AI (text only; falls back to rules)
     # Job tracker (hub/jobtrack.py): applications, follow-up reminders, the learning loop. Nothing is ever sent or applied by it.
     jobtrack_enabled: bool = True
     jobtrack_followup_days: list | None = None   # days after applying to remind you; None = [5, 10]; [] = no follow-up reminders
@@ -391,6 +397,9 @@ def save(config: Config, path: Path) -> None:
         "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": int(config.answerbank_min_confidence or 75),
         "answerbank_embeddings": config.answerbank_embeddings is True,
         "chatch_enabled": config.chatch_enabled is not False, "chatch_email_parse": config.chatch_email_parse is not False,
+        "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": int(config.networking_nudge_days or 14),
+        "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
+        "interviews_ai": config.interviews_ai is True,
         "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
         "jobtrack_ghost_days": int(config.jobtrack_ghost_days or 14),
     }
