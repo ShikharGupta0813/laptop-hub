@@ -52,5 +52,31 @@ flags/severity (opps_vet), signals [{code repost|ghost|multi|early,label}], earl
 - Assistant tools: `sources_list`, `sources_add` (needs approval; preset, or `watch` with a careers url, or an adapter), `sources_test` (read-only; listing text is data).
 
 ## Verification of presets
-Only Lever is marked `verified 2026-11-14` (endpoint and field names read from github.com/lever/postings-api). The build sandbox could reach only github.com, so Greenhouse, Ashby, Workable, SmartRecruiters, Recruitee, Teamtailor and every remote board are
-`unverified`: use Test on a source to see what the live service answers.
+Checked against the live public endpoints on 2026-11-15: read-only, one request per source (a few extra single requests only to save small samples), a normal polite User-Agent, no logins, no cookies, robots.txt read for the
+feed hosts that were added (no Disallow for the feed paths). Only presets that answered with the expected shape say `verified 2026-11-15`; the rest say `unverified` in `verification` and in their `note`. A 401/403/429, a login
+redirect or a robots refusal is never worked around: the source goes to "needs manual check". Freelance and AI-task platforms are never fetched, so they stay `unverified` by design.
+
+| Source | Date | Result |
+|---|---|---|
+| Greenhouse (`boards-api.greenhouse.io`, public company board) | 2026-11-15 | verified, shape matches (`jobs[].absolute_url, title, content, first_published, location.name, id`) |
+| Lever (`api.lever.co`) | 2026-11-15 | verified (answers 200 with a postings list; fields as in the Lever docs) |
+| Ashby (`api.ashbyhq.com/posting-api`) | 2026-11-15 | verified, shape matches (`jobs[]` with `isListed, jobUrl, descriptionPlain, compensation`) |
+| Workable (`apply.workable.com/api/v1/widget`) | 2026-11-15 | **unverified**: HTTP 200 with the expected top level (`name`, `jobs`) but an empty job list for every account tried (some accounts 404), so the job fields were not checked; the widget API may be retired |
+| SmartRecruiters (`api.smartrecruiters.com/v1/companies/<c>/postings`) | 2026-11-15 | verified; the list has no description text (only the per-posting call has it), so descriptions stay empty |
+| Recruitee (`<company>.recruitee.com/api/offers/`) | 2026-11-15 | verified, shape matches (`offers[]` with `careers_url, remote, salary, company_name`); unknown companies answer 404 |
+| Teamtailor (`<company>.teamtailor.com/jobs.rss`) | 2026-11-15 | verified; **fixed**: locations are nested (`tt:locations/tt:location/tt:city,tt:country`) and were dropped before |
+| RemoteOK (`remoteok.com/api`) | 2026-11-15 | verified; first array element is a legal notice (skipped); `epoch`, `position`, `apply_url` as mapped |
+| Remotive (`remotive.com/api/remote-jobs`) | 2026-11-15 | verified with ONE call as they ask (shape matches). Their response says the main domain moved: keep the interval long |
+| Himalayas (`himalayas.app/jobs/api`) | 2026-11-15 | verified; **fixed**: pay period now read from `salaryPeriod` (was hard-coded to year); `pubDate` is an epoch number (handled) |
+| Hacker News "Who is hiring" (Algolia) | 2026-11-15 | verified; **fixed**: the comment search also returns replies (about half the hits); only top-level comments are postings now |
+| Jobicy (`jobicy.com/api/v2/remote-jobs`) | 2026-11-15 | verified, shape matches (`jobs[]`: `jobTitle, companyName, jobGeo, salaryPeriod ...`) |
+| Arbeitnow (`arbeitnow.com/api/job-board-api`) | 2026-11-15 | verified, shape matches (`data[]`, `created_at` is an epoch number) |
+| We Work Remotely (RSS, all jobs; and programming category) | 2026-11-15 | verified; titles are "Company: Role" (split) |
+| Working Nomads (`workingnomads.com/api/exposed_jobs/`) | 2026-11-15 | **new**, verified (top-level list, `tags` is a comma string) |
+| Jobspresso (RSS) | 2026-11-15 | **new**, verified |
+| NoDesk (RSS) | 2026-11-15 | **new**, verified; **fixed**: the feed puts an HTML entity (`&copy;`) in plain XML, which a strict parser refused. Named HTML entities are now turned into characters on a second try (entity declarations are still refused); titles are "Role at Company" (split) |
+| Python.org Jobs (RSS) | 2026-11-15 | **new**, verified |
+| Upwork, Fiverr, Freelancer, Toptal, Contra, PeoplePerHour, DataAnnotation, Outlier, Alignerr, Mercor | n/a | never fetched (email alert or open link only), `unverified` by design |
+
+Not added on purpose: LinkedIn, Indeed, Naukri, Instahyre, Wellfound, Glassdoor (they forbid bots). Remote.co was too slow to answer (timeout) and was skipped. Every preset `note` states the terms to respect (link back, call frequency).
+Use Test on a source to see what the live service answers today.

@@ -158,12 +158,17 @@ class Sources(Base):
 class Presets(Base):
     def test_verification_is_honest(self):
         by = {p["id"]: p for p in self.client.get("/api/oppsources/presets").json()["presets"]}
-        self.assertTrue(by["lever"]["verification"].startswith("verified 2026-11-14"))
+        # checked live on 2026-11-15 (see docs/api/oppsources.md); workable stayed unverified (empty job lists) and platforms are never fetched
         for pid, p in by.items():
-            if pid != "lever":
+            if pid == "workable" or p["adapter"] == "email":
                 self.assertEqual(p["verification"], "unverified", pid)
+                self.assertIn("UNVERIFIED", p["note"]) if pid == "workable" else None
+            else:
+                self.assertEqual(p["verification"], "verified 2026-11-15", pid)
+            self.assertTrue(p["note"], pid)
         for want in ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "teamtailor", "remoteok", "wwr", "remotive",
-                     "himalayas", "jobicy", "arbeitnow", "hn-hiring", "upwork", "fiverr", "freelancer", "toptal", "contra", "data-annotation"):
+                     "himalayas", "jobicy", "arbeitnow", "workingnomads", "wwr-programming", "jobspresso", "nodesk", "python-jobs",
+                     "hn-hiring", "upwork", "fiverr", "freelancer", "toptal", "contra", "data-annotation"):
             self.assertIn(want, by)
 
     def test_platforms_are_email_or_link_only_and_never_auto_submit(self):
