@@ -40,7 +40,7 @@ export function mountPresence(ctx) {
   window.addEventListener("pagehide", () => { try { navigator.sendBeacon?.("/api/presence/phone", new Blob([JSON.stringify({ visible: false, screen_on: false })], { type: "application/json" })); } catch (_) { /* ignore */ } });
   subscribe((t) => { speakPending(t); });                       // spoken items ride the shared poll
   subscribe(() => { beat(false); });                            // so does the once-a-minute heartbeat (no timer of its own)
-  setTimeout(() => beat(true), 1500);
+  setTimeout(() => beat(false), 1500);                          // the first poll reply may have sent the first beat already
 }
 
 // A row for Home: where the hub thinks you are, and a tap to start or end focus.

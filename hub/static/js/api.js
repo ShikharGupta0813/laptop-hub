@@ -29,7 +29,8 @@ function problem(status, body) {
 
 // Identical GETs made at the same moment (a screen asking for /api/cards/decks three times while it opens) share one
 // request, and an answer is reused for 2 s. Any write clears the lot, so nothing shown is older than the last action.
-// Not shared: requests with an abort signal, live endpoints (frames, status of a running thing, streams).
+// Not shared: requests with an abort signal, live endpoints (frames, status of a running thing, streams) unless the caller
+// passes share: true (two screens reading the same status while one page opens may share one answer for 2 s).
 const LIVE = /\/(frame|stream|status|session|ticker|logs?|events?)(\?|\/|$)|^\/api\/(screen|terminal|assistant)\b/;
 const RECENT_MS = 2000;
 const inflight = new Map();
@@ -38,9 +39,9 @@ const copy = (v) => (v && typeof v === "object" ? structuredClone(v) : v);
 
 // api("/api/notes") -> parsed JSON. Options: method, json (object body), form (FormData), signal.
 export async function api(path, opts = {}) {
-  const { method = "GET", signal } = opts;
+  const { method = "GET", signal, share } = opts;
   if (method !== "GET") { inflight.clear(); recent.clear(); return rawApi(path, opts); }
-  if (signal || LIVE.test(path)) return rawApi(path, opts);
+  if (signal || (LIVE.test(path) && !share)) return rawApi(path, opts);
   const hit = recent.get(path);
   if (hit && Date.now() - hit.at < RECENT_MS) return copy(hit.body);
   let p = inflight.get(path);

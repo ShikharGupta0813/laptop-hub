@@ -8,10 +8,9 @@ const CSS = "/css/setup.css";
 const TIMEOUT = 4000;
 
 // ---- probing ---------------------------------------------------------------------------------------
+// No abort signal and share: true, so a probe and the screen that reads the same endpoint at the same moment share one request.
 function probe(path) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), TIMEOUT);
-  return api(path, { signal: ac.signal }).finally(() => clearTimeout(timer));
+  return withTimeout(api(path, { share: true }));
 }
 const cache = new Map();
 function get(path) { if (!cache.has(path)) cache.set(path, probe(path)); return cache.get(path); }

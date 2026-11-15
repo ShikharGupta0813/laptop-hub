@@ -30,7 +30,7 @@ export function init(container, ctx) {
   const statusHost = el("div", { class: "kb-status" });
   async function loadStatus() {
     try {
-      status = await api("/api/kb/status");
+      status = await api("/api/kb/status", { share: true });
       paintStatus();
       if (status.indexing) schedulePoll(); else stopPoll();
     } catch (error) {

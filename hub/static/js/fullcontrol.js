@@ -45,7 +45,7 @@ export function apply(on) {
 
 // Ask the hub; keeps the chip right on every screen. Never throws.
 export async function refresh() {
-  try { const info = await api("/api/assistant/info"); apply(info && info.full_control === true); return info; }
+  try { const info = await api("/api/assistant/info", { share: true }); apply(info && info.full_control === true); return info; }
   catch (_) { return null; }
 }
 
