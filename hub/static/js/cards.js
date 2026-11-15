@@ -114,6 +114,7 @@ export function init(container, ctx) {
         onClick: () => startReview(null) }));
     const head = el("div", { class: "ui-section-head" }, el("h3", { class: "ui-section-title" }, "Decks"),
       el("div", { class: "cd-actions" },
+        ui.button({ label: "From PDF", icon: "file", variant: "ghost", size: "sm", onClick: () => generateSheet(null) }),
         ui.button({ label: "Import", icon: "upload", variant: "ghost", size: "sm", onClick: () => importSheet(null) }),
         ui.button({ label: "New deck", icon: "plus", variant: "tonal", size: "sm", onClick: () => deckSheet(null) })));
     let list;
@@ -366,7 +367,9 @@ export function init(container, ctx) {
   }
 
   // ---------------------------------------------------------------- AI generate sheet
-  function generateSheet(deck) {
+  function generateSheet(deckIn) {
+    let deck = deckIn;                     // null = "make a new deck from a PDF/document": created on the first Generate
+    const deckName = el("input", { type: "text", maxlength: "80", placeholder: "Deck name, e.g. Chapter 3", "aria-label": "New deck name" });
     const picker = createSourcePicker(null, ctx, { type: "library" });
     const providerHost = el("div", {});
     const provider = createProviderSwitch(providerHost, "Model for generating cards");
@@ -374,7 +377,9 @@ export function init(container, ctx) {
     let style = "qa";
     const countSeg = ui.segmented({ options: [5, 10, 20, 30].map((n) => ({ value: n, label: String(n) })), value: count, label: "How many cards", block: true, onChange(v) { count = Number(v); } });
     const styleSeg = ui.segmented({ options: [{ value: "qa", label: "Q and A" }, { value: "cloze", label: "Cloze" }, { value: "definition", label: "Definitions" }], value: style, label: "Card style", block: true, onChange(v) { style = v; } });
-    const setup = el("div", { class: "ui-stack" }, el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Make cards from"), picker.root),
+    const setup = el("div", { class: "ui-stack" },
+      deckIn ? null : el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "New deck name"), deckName),
+      el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Make cards from (a PDF or document from this phone or the laptop)"), picker.root),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "How many"), countSeg),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Style"), styleSeg),
       el("div", { class: "ui-field" }, el("div", { class: "ui-label" }, "Model"), providerHost));
@@ -390,6 +395,11 @@ export function init(container, ctx) {
     async function run() {
       const source = picker.getSource();
       if (!source) { ctx.toast("Pick a source first.", { kind: "warn" }); return; }
+      if (!deck && !deckName.value.trim()) { ctx.toast("Name the new deck first.", { kind: "warn" }); return; }
+      if (!deck) {
+        try { deck = await api("/api/cards/decks", { method: "POST", json: { name: deckName.value.trim(), description: "", color: COLORS[0] } }); }
+        catch (error) { showSetup(error.message); return; }
+      }
       controller = new AbortController();
       const mineCtl = controller;
       s.setTitle("Writing cards…");
@@ -434,7 +444,7 @@ export function init(container, ctx) {
               const res = await api(`/api/cards/decks/${encodeURIComponent(deck.id)}/cards/bulk`, { method: "POST",
                 json: { cards: [...picked].sort((a, b) => a - b).map((i) => ({ front: cards[i].front, back: cards[i].back, tags: cards[i].tags || [] })) } });
               ctx.toast(`Added ${plural(res.added, "card")}${res.skipped_duplicates ? `, ${res.skipped_duplicates} duplicates skipped` : ""}`, { kind: "good" });
-              paint();
+              if (deckIn) paint(); else go("deck", deck.id);
             } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
           } },
         ]);
@@ -466,7 +476,9 @@ export function init(container, ctx) {
       return true;
     };
     const s = guardedSheet(ui, { title: "Import cards", content: el("div", { class: "ui-stack" },
-      el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Cards"), text,
+      ui.notice("Have a PDF or document (phone or laptop)? Let the AI turn it into cards.", { tone: "info" }),
+      ui.button({ label: "Make cards from a PDF or document", icon: "sparkles", variant: "primary", block: true, onClick: () => { s.close(); generateSheet(deck || null); } }),
+      el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Or paste ready-made cards"), text,
         el("p", { class: "ui-hint" }, "One per line: front, a tab, back, and optional tags. CSV works too.")),
       ui.button({ label: "Choose a file", icon: "file", variant: "tonal", size: "sm", onClick: () => pick.click() }), pick,
       el("div", { class: "ui-field" }, el("label", { class: "ui-label" }, "Into deck"), select, newName), result),

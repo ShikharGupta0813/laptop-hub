@@ -469,6 +469,9 @@ export function segmented({ options = [], value, onChange, label = "Options", bl
   function build() {
     buttons.forEach((b) => b.remove());
     node.style.setProperty("--n", String(Math.max(1, options.length)));
+    // Many or long labels cannot share equal columns on a phone (they overlapped): scroll sideways instead.
+    const chars = options.reduce((n, o) => n + String(o.label ?? "").length, 0);
+    node.classList.toggle("ui-seg--scroll", options.length > 4 && chars > 30);
     buttons = options.map((opt, i) => {
       const b = el("button", { type: "button", role: "radio", "data-value": String(opt.value) },
         opt.icon ? icon(opt.icon) : null, opt.label);
@@ -490,6 +493,8 @@ export function segmented({ options = [], value, onChange, label = "Options", bl
     current = options[i]?.value;
     buttons.forEach((b, j) => { b.setAttribute("aria-checked", String(j === i)); b.tabIndex = j === i ? 0 : -1; });
     node.style.setProperty("--i", String(i));
+    const chosen = buttons[i];
+    if (chosen && node.classList.contains("ui-seg--scroll")) node.scrollLeft = Math.max(0, chosen.offsetLeft - (node.clientWidth - chosen.offsetWidth) / 2);
     if (user) { haptic("select"); onChange?.(current); }
   }
   build();

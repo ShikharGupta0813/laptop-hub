@@ -16,7 +16,7 @@ NODE = shutil.which("node")
 def _node_env():
     env = dict(os.environ)
     if NODE:
-        g = subprocess.run(["npm", "root", "-g"], capture_output=True, text=True) if shutil.which("npm") else None
+        g = subprocess.run([shutil.which("npm"), "root", "-g"], capture_output=True, text=True) if shutil.which("npm") else None
         if g and g.returncode == 0 and g.stdout.strip():
             env["NODE_PATH"] = g.stdout.strip() + os.pathsep + env.get("NODE_PATH", "")
     return env

@@ -178,7 +178,8 @@ export function init(container, ctx) {
     const refresh = ui.button({ label: "Refresh", icon: "refresh", variant: "ghost", onClick: () => ui.busy(refresh, () => load({ quiet: true })) });
     const front = ui.button({ label: "Front page", icon: "file", variant: "tonal", onClick: () => window.open("/api/today/front-page", "_blank", "noopener") });
     root.replaceChildren(...[
-      el("div", { class: "ui-row" }, el("h2", { class: "ui-title" }, `${data.weekday || "Today"} · ${data.date || ""}`), front, refresh),
+      el("div", { class: "td-head" }, el("h2", { class: "ui-title" }, [data.weekday || "Today", data.date].filter(Boolean).join(" · ")),
+        el("div", { class: "td-head__actions" }, front, refresh)),
       stale || loadError ? ui.notice(loadError ? `Showing the last saved copy (${loadError}).` : "Showing the last saved copy while it refreshes.", { tone: "warn" }) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
       (askNode ||= askBar()), now(), held(), followups(), applyqLine(), timeline(), doneToday(), numbers(), tasks(), summary(),
