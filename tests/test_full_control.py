@@ -412,7 +412,7 @@ class FullControlSettingsTest(SettingsBase):
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
 class VoiceTextHelpersTest(unittest.TestCase):
     def run_js(self, expr):
-        code = f'import {{splitName, splitStream, speakable}} from "{JS / "speechchunk.js"}"; console.log(JSON.stringify({expr}));'
+        code = f'import {{splitName, splitStream, speakable}} from "{(JS / "speechchunk.js").resolve().as_uri()}"; console.log(JSON.stringify({expr}));'
         out = subprocess.run(["node", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
         return json.loads(out.stdout)
@@ -439,7 +439,7 @@ class VoiceTextHelpersTest(unittest.TestCase):
         for name in ("voicemode.js", "assistant.js", "fullcontrol.js", "settings.js", "speechchunk.js", "home.js"):
             with self.subTest(name=name):
                 src = (JS / name).read_text(encoding="utf-8")
-                out = subprocess.run(["node", "--input-type=module", "--check"], input=src, capture_output=True, text=True)
+                out = subprocess.run(["node", "--input-type=module", "--check"], input=src, capture_output=True, text=True, encoding="utf-8")
                 self.assertEqual(out.returncode, 0, out.stderr)
 
 

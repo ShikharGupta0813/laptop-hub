@@ -18,6 +18,14 @@ from hub import config as cfg
 from hub.common import Ctx
 from tests.helpers import make_config
 
+
+def symlink_or_skip(test, target, link):
+    """Windows without Developer Mode or admin rights cannot make symlinks: skip, as test_fileops does."""
+    try:
+        os.symlink(target, link)
+    except (OSError, NotImplementedError):
+        test.skipTest("symlinks not available")
+
 FAKE_KEY = "sk-ant-THIS-MUST-NEVER-LEAK-123"
 TOPIC = "abcdefgh12345678"
 
@@ -519,7 +527,7 @@ class BackupTest(Base):
         (data / "sneaky-secret.bin").write_bytes(self.config.session_secret.hex().encode())
         shutil_target = self.root / "outside.txt"
         shutil_target.write_text("outside the data folder " + self.config.token_hash)
-        os.symlink(shutil_target, data / "link.txt")
+        symlink_or_skip(self, shutil_target, data / "link.txt")
         body = self.make().json()
         names = self.names(body["name"])
         for bad in ("data/hub.json", "data/sneaky-copy.txt", "data/sneaky-secret.bin", "data/link.txt"):
@@ -581,7 +589,7 @@ class BackupTest(Base):
         out.mkdir(exist_ok=True)
         secret = self.root / "secret.txt"
         secret.write_text("TOP SECRET")
-        os.symlink(secret, out / "hub-backup-20200101-000000.zip")
+        symlink_or_skip(self, secret, out / "hub-backup-20200101-000000.zip")
         self.assertEqual(self.client.get("/api/settings/backups/hub-backup-20200101-000000.zip").status_code, 404)
         self.assertEqual(self.client.get("/api/settings/backups").json()["backups"], [])
 

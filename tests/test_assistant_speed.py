@@ -33,7 +33,9 @@ class SpeedTest(Base):
         self.assertNotIn("tools", body)
         self.assertEqual(body["options"]["num_ctx"], 4096)
         self.assertIn("DATA", body["messages"][0]["content"])
-        self.assertLess(len(body["messages"][0]["content"]), 900)
+        # the prompt names the temp home and shared folders; their length depends on the OS, not on the prompt
+        paths = len(str(self.home)) + sum(len(v) for v in self.config.roots.values())
+        self.assertLess(len(body["messages"][0]["content"]) - paths, 900)
 
     async def test_reminder_request_includes_reminder_tools(self):
         svc = self.service(local=self.local([ollama_text("ok")]), extra_tools=self.extra)
