@@ -322,7 +322,29 @@ class CliLoginClient:
 LAST: dict[str, dict] = {}     # id -> {"ok": bool, "problem": str, "at": float}; in memory only
 
 
+def migrate_agy(path: Path) -> bool:
+    """Older hubs saved a placeholder `agy` entry (argv just ["agy"], switched off). Swap it for the real default
+    (print mode, on) and put it first. An entry the owner edited or enabled is left alone."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        rows = data["entries"]
+        idx = next(i for i, r in enumerate(rows) if r.get("id") == "agy")
+        old = rows[idx]
+        if old.get("enabled") is not False or old.get("settings", {}).get("argv") != ["agy"]:
+            return False
+    except (OSError, ValueError, KeyError, StopIteration, AttributeError, TypeError):
+        return False
+    new = next(e for e in seed() if e["id"] == "agy")
+    rows[idx:idx + 1] = []
+    rows.insert(0, new)
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps({"entries": rows}, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return True
+
+
 def list_for(config, secrets: Any = None) -> provlist.ProviderList:
+    migrate_agy(config.data_path() / "cli_providers.json")
     return provlist.ProviderList("cli", config.data_path() / "cli_providers.json", KINDS, seed, check_settings, secrets)
 
 

@@ -308,5 +308,41 @@ class Wiring(Base):
         self.assertIn("cli", usage.PROVIDERS)
 
 
+class MigrateAgy(unittest.TestCase):
+    def write(self, rows):
+        path = Path(tempfile.mkdtemp(prefix="agy-")) / "cli_providers.json"
+        path.write_text(json.dumps({"entries": rows}), encoding="utf-8")
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        return path
+
+    def gemini(self):
+        return next(e for e in cliprov.seed() if e["id"] == "gemini-cli")
+
+    def test_untouched_placeholder_becomes_the_real_default_and_goes_first(self):
+        old = {"id": "agy", "kind": "cli-login", "label": "Antigravity (agy)", "enabled": False,
+               "settings": {"argv": ["agy"]}}
+        path = self.write([self.gemini(), old])
+        self.assertTrue(cliprov.migrate_agy(path))
+        rows = json.loads(path.read_text(encoding="utf-8"))["entries"]
+        self.assertEqual([r["id"] for r in rows], ["agy", "gemini-cli"])
+        self.assertTrue(rows[0]["enabled"])
+        self.assertEqual(rows[0]["settings"]["argv"], cliprov.AGY_ARGV)
+
+    def test_an_edited_or_enabled_entry_is_left_alone(self):
+        mine = {"id": "agy", "kind": "cli-login", "label": "x", "enabled": False,
+                "settings": {"argv": ["agy", "--mine"]}}
+        path = self.write([self.gemini(), mine])
+        self.assertFalse(cliprov.migrate_agy(path))
+        mine["enabled"], mine["settings"]["argv"] = True, ["agy"]
+        path = self.write([self.gemini(), mine])
+        self.assertFalse(cliprov.migrate_agy(path))
+
+    def test_missing_or_damaged_file_is_ignored(self):
+        self.assertFalse(cliprov.migrate_agy(Path(tempfile.gettempdir()) / "no-such-cli-file.json"))
+        path = self.write([])
+        path.write_text("{oops", encoding="utf-8")
+        self.assertFalse(cliprov.migrate_agy(path))
+
+
 if __name__ == "__main__":
     unittest.main()
