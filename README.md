@@ -4,16 +4,18 @@
 
 Most "Jarvis" projects are cloud wrappers that run wild. REDLINE is built the other way round: local-first, with a safety model you can read.
 
-- **Local first.** Local models (Ollama) and Whisper work with no internet. Claude and Gemini are optional, and a work-lane router sends routine jobs to local models first so paid tokens aren't wasted.
+- **Local first.** Local models (Ollama) and Whisper work with no internet. Gemini, Antigravity (`agy`), Claude and a Claude + Gemini pair are optional, and a work-lane router sends routine jobs to local models first so paid tokens aren't wasted.
 - **Never acts behind your back.** Sending mail, applying to jobs, publishing posts and submitting forms always wait for your tap. Voice can't approve a dangerous step. Full Control needs a typed `I UNDERSTAND`.
-- **Graded safety.** Actions are ranked N1 to N3. N3 needs a typed CONFIRM and a 10-second cancel window. Untrusted text (web pages, mail) can't trigger tools on its own.
+- **Graded safety.** Actions are ranked N1 to N3. N3 needs a typed CONFIRM and a 10-second cancel window. Untrusted text (web pages, mail, Asana comments) can't trigger tools on its own.
 - **Panic button and audit trail.** One tap stops every background job. Every action is logged and searchable. A trust ladder only ever suggests loosening, never does it silently.
-- **Jarvis behaviours.** Wake word (phone, laptop, Android background), natural streaming voice with barge-in, presence-aware delivery (at the desk, away, in a meeting), a consent-first meeting assistant, playbooks ("when X happens, do Y"), and computer control that sees the screen and asks before it clicks.
-- **Real work, not demos.** An opportunities finder with a scam check, a ready-to-send application queue, general alerts from any app, mail, calendar and task sources, form pre-fill that stops before Submit, and publishing to dev.to, Hashnode, WordPress or Ghost.
-- **Everything is a list you edit.** Assistants, providers, sources, wake phrases and destinations are all editable, with nothing hard-coded.
-- **Phone-first.** An installable PWA plus an optional native Android shell, reached over Tailscale so nothing is exposed to the internet.
+- **Two assistants with different jobs.** **Jarvis** runs the laptop and helps with technical work (files, terminal, apps, code). **Friday** runs your day (morning brief, mail, calendar, Asana tasks and comments, reminders, follow-ups, job applications and urgent alerts). Start a message with a name to pick one.
+- **Voice that works with the screen off.** Say "Hey Friday" or "Hey Jarvis" and the phone answers out loud, even with the app closed. Urgent alerts are spoken, and the most urgent ones, and reminders you ask to be called about, ring like an alarm on the lock screen.
+- **A full job-search pipeline.** Preferences, many job sources, daily batches, tailored resumes from your own facts, an application tracker with follow-ups, a learning loop, networking drafts and an interview coach. Nothing is sent or applied without your tap, and LinkedIn and Indeed stay manual.
+- **Memory that lasts.** Chats survive a hub restart, Memory keeps notes, decisions and facts, and Today remembers slow sources for 15 minutes so it opens fast.
+- **Everything is a list you edit.** Assistants, providers, sources, wake phrases, apps and destinations are all editable, with nothing hard-coded.
+- **Phone-first.** An installable PWA plus a native Android app, reached over Tailscale so nothing is exposed to the internet.
 
-> Status: a young, fast-moving personal project with a large automated test suite (about 3,000 tests, mostly fakes). Real-device paths such as Windows idle APIs and the Android wake service are still being proven. Issues and stars help.
+> Status: a personal project with a large automated test suite (one process per module, run with `scripts/run-tests.py`). Issues and stars help.
 
 ## Quick start
 
@@ -29,16 +31,20 @@ Full steps are in [docs/SETUP-WINDOWS.md](docs/SETUP-WINDOWS.md) and the guide i
 
 | Area | Highlights |
 |---|---|
-| **Talk** | Voice or text assistant with tools, hands-free mode, multiple named assistants. |
-| **Work** | Asana, mail, calendar, chat, daily briefing, drafts you approve. |
-| **Autopilot and alerts** | Triage across sources, drafts only, delivery timed to where you are. |
-| **Opportunities** | Finder, scam check, application queue, "applied today" counter. |
-| **Learn** | Chat with docs, quizzes, flashcards, roadmaps, English coach. |
+| **Talk** | Voice or text assistant with tools, hands-free mode, Jarvis and Friday (and any assistants you add), "AI for this chat" switch, chat history that survives restarts. |
+| **Today and Friday** | Morning and evening brief, calendar, Asana (tasks, details and comments), mail counts, follow-ups due. Slow sources are remembered for 15 minutes; Refresh gets live data. |
+| **Work** | Asana, mail, calendar, chat, drafts you approve. |
+| **Autopilot and alerts** | Triage across sources, drafts only, delivery timed to where you are. Urgent items are spoken on the phone; the most urgent ring like an alarm. |
+| **Reminders** | Normal reminders, timers, and "call me" reminders that ring and read the full details on the phone. |
+| **Job search** | Preferences and search profiles, about 30 ready-made source presets, daily batches, tailored resume and cover note, answers bank, application tracker, follow-ups, learning loop, networking drafts, interview coach. |
+| **Learn** | Chat with docs, quizzes, flashcards (including from a PDF), roadmaps, English coach. |
 | **Council** | Optional local multi-model team as a background job. |
-| **Laptop** | Files, terminal, remote screen, routines, playbooks, computer control. |
+| **Memory** | Notes, decisions and facts that the assistants can use; searchable. |
+| **Laptop** | Files, terminal, remote screen, apps (such as Chrome and its profiles), routines, playbooks, computer control. |
+| **Voice** | Engines: browser, Windows (SAPI), Piper, or your own command. Wake word on the phone, laptop and Android in the background. |
 | **Safety** | Levels, panic, trust ladder, audit search, redaction, usage caps. |
 
-Everything else (notes, to-dos, habits, spending, focus, search) lives in the Apps directory.
+Everything else (notes, to-dos, habits, spending, focus, search) lives in the Apps directory. Settings has a search box to find any setting fast.
 
 ## How it is connected
 
@@ -47,6 +53,49 @@ phone app  ──HTTPS──►  Tailscale (private link)  ──►  Laptop Hub
 ```
 
 The hub only listens on the laptop itself. [Tailscale](https://tailscale.com) (free) is the only way in, so nothing is exposed to the internet. Tailscale also gives the hub the HTTPS address that Android requires for the **microphone** and for **installing the app**.
+
+## Jarvis and Friday
+
+| | Jarvis | Friday |
+|---|---|---|
+| **For** | The laptop and technical work | Your day and your work life |
+| **Does** | Files, terminal, opening apps, screen, code, system checks | Brief, calendar, mail, Asana tasks and comments, reminders, follow-ups, applications, alerts |
+| **Voice** | Own name, wake word and voice settings | Own name, wake word and voice settings |
+
+Start a message with a name ("Friday, what is due today?") to choose. Every assistant is a row you can edit in Settings, Assistants, and you can add more.
+
+**Choosing the AI.** Settings, Providers: Gemini (key in the Windows keyring), Antigravity (`agy -p`, uses your Google AI Pro login, no key), Claude (your login), Claude + Gemini together, or the local Ollama model. In auto mode, tool and code requests go to the strong provider and ordinary chat goes to your default provider. Short chit-chat goes to the local model only if you turn on `router_local_chat` in `hub.json` (leave it off on a laptop without a fast GPU).
+
+## Voice, wake word and alerts
+
+- **Wake word, app open or closed.** The Android app can keep listening in the background (offline, on the phone). Say "Hey Friday" or "Hey Jarvis" plus your sentence.
+- **Answers with the screen off.** With the app closed, the phone sends your sentence to the hub and speaks the answer with the phone's own voice. "Open RedLine" opens the app. Anything that needs an approval (sending, changing, running) is not done in the background: it says so and posts a notification.
+- **Urgent alerts spoken.** While the screen is off, the phone checks the hub about every 30 seconds for urgent items and speaks them.
+- **Alarm-style ring.** The most urgent alerts and reminders marked "call" ring like an alarm on the lock screen and read the whole message. It is not a real phone call and uses no outside service. Android 14 and newer may ask you to allow full-screen notifications for the app.
+- **Call reminders.** Say "remind me at 5 to check the deploy, with these details: ..., call me". The reminder keeps the full details and rings at the time.
+- **What counts as urgent** is a list you edit (Settings, Alerts): urgent words (defaults include prod issue, payment failed, server down, deployment failed, hotfix, p1, data loss, security incident), VIP senders, a meeting starting in 5 minutes, Asana tasks assigned to you that are due, payment alerts, and hub problems.
+- **Voice engines** (Settings, Voice): browser, Windows (SAPI), Piper, or a command you provide. The laptop can play audio on the phone. Panic stops everything.
+
+These features need the hub reachable from the phone (Tailscale on) and a new APK from the GitHub "Build Android APK" workflow. Uninstall the old app first. Details: `mobile/README.md`.
+
+## Job search
+
+Everything is a draft or a suggestion. **Nothing is sent or applied without your tap, and LinkedIn and Indeed are never automated.**
+
+1. **Preferences** (Apps, Job preferences): several search profiles, a remote-only filter, hard filters and soft points.
+2. **Sources** (Apps, Opportunities): ATS boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, Teamtailor), remote boards (RemoteOK, Remotive, Himalayas, We Work Remotely, Working Nomads, Jobicy, Arbeitnow, Jobspresso, NoDesk, Python.org Jobs), Hacker News "Who is hiring", a company watch list, email alerts and open-link mode for platforms that forbid bots. Each source was checked against its live public endpoint (table in `docs/api/oppsources.md`; Workable is marked unverified).
+3. **Batches** (Apps, Batches): a daily set of ready applications, sent only with one confirming tap.
+4. **Tailor** (Apps, Tailor): a resume and cover note built only from facts you confirmed, with an honesty check, plus a saved answers bank.
+5. **Job tracker** (Apps, Job tracker): every application with a status history, duplicate warning, follow-ups at day 5 and 10 (they can ring), a draft nudge, and a "what works" view showing replies per source, role and resume. Suggestions change your profiles only when you accept them.
+6. **Networking** (Apps, Networking): referral, recruiter, thank-you and follow-up drafts (up to 120 words, facts only, copy and send yourself) and a contacts list with nudges.
+7. **Interview coach** (Apps, Interview coach): likely questions from a posting, practice with feedback, a STAR story bank, "tell me about yourself", a pre-interview brief and a pay cheat sheet built from your own numbers. AI critique is off by default and, if you switch it on for an answer, sends only that answer to your chosen AI.
+
+## Memory and history
+
+- **Chat history** is stored in `chat_history.sqlite` in the data folder (last 40 turns per conversation, 30 days by default: `chat_history_days`; switch off with `chat_history_enabled`). It keeps your text and the assistant's final answer, never raw tool output.
+- **Memory** (`brain.sqlite`) keeps notes, decisions and facts the assistants can use, with search.
+- **Today** keeps calendar, Asana and mail answers for `today_cache_min` minutes (default 15, 0 = always live) in `today_cache.sqlite`. The Refresh button or pull-to-refresh fetches live data.
+- Everything stays in SQLite or JSON files in the hub's data folder on your laptop. Nothing needs a database server.
 
 ## Set up (Windows, PowerShell)
 
@@ -106,7 +155,7 @@ Run the hub on Windows itself, not inside WSL: it then uses all your RAM, reache
    python -m hub doctor
    ```
 
-6. **Optional: a cloud AI, no API key needed.** Skip this to use only the local model. Otherwise: install Claude Code, run `claude` once and log in (the hub then offers **Claude (my login)**, which uses your Claude subscription quota, not API billing), and/or save a free Gemini key from aistudio.google.com/apikey:
+6. **Optional: a cloud AI, no API key needed.** Skip this to use only the local model. Otherwise: install Claude Code, run `claude` once and log in (the hub then offers **Claude (my login)**, which uses your Claude subscription quota, not API billing), run `agy` once and sign in (the hub then offers **Antigravity**, which uses your Google AI Pro login), and/or save a free Gemini key from aistudio.google.com/apikey:
    Best of both: choose **Claude + Gemini** (`default_provider: "duo"`, offered in the wizard when both are ready). Claude plans each non-trivial assistant request and checks the work after tools ran (a few short calls, capped by `duo_max_claude_per_hour`, default 20, and paused automatically on a usage limit); Gemini does all the work. Set `gemini_model` to your Gemini Pro model name if you have one.
 
    ```powershell
@@ -229,7 +278,7 @@ This registers a second on-demand scheduled task, `LaptopHubUpdate`, and adds an
 | "Can't reach your laptop" | Is `python -m hub serve` running, and is the laptop awake and online? |
 | Explain/Quiz says Ollama isn't running | Open the Ollama app; `ollama pull qwen3:4b` |
 | Voice note: "needs faster-whisper" | `pip install -r requirements-voice.txt` |
-| Terminal won't open on Windows | `pip install pywinpty`; the Windows terminal path has not been tested on a real machine yet |
+| Terminal won't open on Windows | `pip install pywinpty` |
 | Terminal closes after the origin check | Add the address to `allowed_origins` in `hub.json` |
 | Ask my files says "keywords only" | `ollama pull nomic-embed-text`, then rescan |
 | Remote screen says something is missing | `pip install -r requirements-screen.txt`, restart the hub |
@@ -238,11 +287,15 @@ This registers a second on-demand scheduled task, `LaptopHubUpdate`, and adds an
 | Inbox: Gmail not set up | Jarvis' Gmail address and app password must be in the keyring; set `--jarvis-dir` |
 | No Chat or payment alerts | Notification access for Laptop Hub is off, or "Allow restricted settings" was not done (Android 13+); then turn on monitoring in Watch / Spending |
 | No push when the app is closed | Subscribe the ntfy app to the same topic; check quiet hours |
+| "Open Chrome" says the app is not on your list | Add it under `apps` in `hub.json`, for example `"Chrome Personal": {"target": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "args": ["--profile-directory=Default"]}`, then restart |
+| Replies to short messages are very slow | The local model is too slow on CPU: keep `router_local_chat` off (the default) |
+| Friday says it can't see Asana tasks | Ask for overdue or all tasks; make sure `ASANA_TOKEN` is set |
+| Phone does not answer with the screen off | Needs the always-on wake word switched on, microphone and notification access, the hub reachable over Tailscale and a current APK |
 | Notes have no tags | The local model adds them a few seconds after saving; check `python -m hub doctor` |
 
 ## Android app
 
-`mobile/` builds a real Android app (APK) around the hub. See `mobile/README.md`. It needs Android Studio and Node 22 on the laptop that builds it.
+`mobile/` builds a real Android app (APK) around the hub. See `mobile/README.md`. The easiest way to get it is the GitHub Actions workflow **Build Android APK**: run it with your hub's https address and install the result (uninstall an older copy first). It adds the background wake word, spoken replies and alerts, the alarm-style ring, notification and SMS capture, and the Back button handling. Building locally needs Android Studio and Node 22.
 
 ## Hand-off notes
 
@@ -270,7 +323,3 @@ python -m hub.devserver --port 8799            # fake models, sample files, toke
 ```
 
 API contract: [docs/API.md](docs/API.md). Front-end libraries are vendored in `hub/static/vendor` (marked, DOMPurify, xterm.js), with their licences.
-
-## Built on ideas from
-
-[CloudSH](https://github.com/JongoDB/cloudsh), [Katulong](https://awesome.ecosyste.ms/projects/github.com%2Fdorky-robot%2Fkatulong) and [webterm](https://github.com/unn-Known1/webterm) (terminal and files in the browser), [WhisPad](https://hub.docker.com/r/drakonis96/whispad) and [LocalWhisper](https://pypi.org/project/localwhisper/) (offline voice notes), [Khoj](https://dev.to/jovan_chan_9500711396d4e6/khoj-review-2026-your-self-hosted-ai-second-brain-28mi) (local AI over your notes).
