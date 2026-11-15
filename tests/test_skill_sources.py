@@ -175,7 +175,10 @@ class LocalFolder(Base):
 
     def test_symlinks_and_size_caps(self):
         folder = self.make({"SKILL.md": GOOD})
-        os.symlink("/etc/hostname", folder / "link.txt")
+        try:
+            os.symlink("/etc/hostname", folder / "link.txt")
+        except OSError:
+            self.skipTest("symlinks not available (no privilege on Windows)")
         ident = self.add("folder", {"path": str(folder)}).json()["entry"]["id"]
         self.assertEqual(self.client.post(f"/api/skills/sources/{ident}/preview", json={}).status_code, 400)
         os.remove(folder / "link.txt")
@@ -191,7 +194,10 @@ class LocalFolder(Base):
         ident = self.add("folder", {"path": str(self.tmp / "nope")}).json()["entry"]["id"]
         self.assertEqual(self.client.post(f"/api/skills/sources/{ident}/preview", json={}).status_code, 400)
         real = self.make({"SKILL.md": GOOD})
-        os.symlink(real, self.tmp / "alias")
+        try:
+            os.symlink(real, self.tmp / "alias")
+        except OSError:
+            self.skipTest("symlinks not available (no privilege on Windows)")
         ident2 = self.add("folder", {"path": str(self.tmp / "alias")}).json()["entry"]["id"]
         self.assertEqual(self.client.post(f"/api/skills/sources/{ident2}/preview", json={}).status_code, 400)
 

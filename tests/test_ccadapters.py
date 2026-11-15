@@ -163,8 +163,11 @@ class GenericLog(Base):
         self.touch(folder / "a.log", "a\n", 100)
         self.touch(folder / "sub" / "b.log", "b\n", 50)
         self.touch(folder / "c.dat", "no\n", 10)
-        os.symlink("/etc/hostname", folder / "link.log")
-        os.symlink(self.tmp, folder / "dirlink")
+        try:
+            os.symlink("/etc/hostname", folder / "link.log")
+            os.symlink(self.tmp, folder / "dirlink")
+        except OSError:
+            self.skipTest("symlinks not available (no privilege on Windows)")
         self.store.add({"kind": "generic-log", "settings": {"path": str(folder), "patterns": ["*.log"]}})
         names = sorted(r["project_name"] for r in cc.discover(self.config) if r["adapter"] != "claude-code")
         self.assertEqual(names, ["a.log", "b.log"])

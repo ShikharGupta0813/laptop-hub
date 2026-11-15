@@ -10,6 +10,7 @@ import datetime as dt
 import io
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -170,7 +171,8 @@ class FactBaseTests(Base):
         with self.assertRaises(ValueError):
             F.set_prefs(self.ctx, {"timezone_offset": 99})
         mode = (Path(self.config.data_path()) / "factbase.json").stat().st_mode & 0o777
-        self.assertEqual(mode & 0o077, 0)
+        if sys.platform != "win32":      # Windows has no POSIX permission bits
+            self.assertEqual(mode & 0o077, 0)
 
     def test_string_experience_links_list_and_empty_profile(self):
         fb = F.FactBase.build({"experience": ["Ran a shop"], "links": ["https://example.test/me"], "skills": "Go, Rust"}, None, this_year=2026)

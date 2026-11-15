@@ -359,7 +359,10 @@ class RefusalTest(Base):
         outside = self.root / "outside"
         outside.mkdir()
         (outside / "stolen.txt").write_text("outsideword", encoding="utf-8")
-        (self.docs / "link.txt").symlink_to(outside / "stolen.txt")
+        try:
+            (self.docs / "link.txt").symlink_to(outside / "stolen.txt")
+        except OSError:
+            self.skipTest("symlinks not available (no privilege on Windows)")
         (self.docs / "linkdir").symlink_to(outside, target_is_directory=True)
         self.write("inside.txt", "insideword")
         (self.docs / "inlink.txt").symlink_to(self.docs / "inside.txt")

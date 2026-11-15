@@ -38,7 +38,11 @@ class FakeGit:
             path = dest / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             if isinstance(content, tuple):
-                os.symlink(content[1], path)
+                try:
+                    os.symlink(content[1], path)
+                except OSError:
+                    import unittest
+                    raise unittest.SkipTest("symlinks not available (no privilege on Windows)")
             else:
                 path.write_text(content, encoding="utf-8")
         return 0, ""
