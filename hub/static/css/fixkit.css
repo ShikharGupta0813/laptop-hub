@@ -1,0 +1,22 @@
+/* Fix-it kit (js/fixpanel.js, js/voicekit.js): voice switch, checklist, provider check, live log. */
+.fk { display: flex; flex-direction: column; gap: var(--s-3, 12px); margin-top: var(--s-4, 16px); min-width: 0; }
+.fk-card, .fk-voice { min-width: 0; }
+.fk-row, .fk-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.fk-switch { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+.fk-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.fk-item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.fk-item .ui-dot { margin-top: 7px; flex: none; }
+.fk-item__txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fk-item__txt p { margin: 2px 0; }
+.fk-item > .ui-btn { flex: none; }
+.fk-step { color: var(--warn, #d9a441); }
+.fk-step b { font-weight: 600; }
+.fk-cmd { font-family: var(--mono, ui-monospace, monospace); max-width: 100%; }
+.fk-chip { margin-left: 8px; }
+.fk-note { margin: 6px 0 0; }
+.fk-note.bad, .fk-result.bad, .fk-summary.bad { color: var(--bad, #e5484d); }
+.fk-result.good, .fk-summary.good { color: var(--good, #3fb68b); }
+.fk-summary { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-line; }
+.fk-log { max-height: 260px; overflow: auto; margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fk-select { min-height: 44px; max-width: 100%; }
+@media (max-width: 480px) { .fk-item > .ui-btn { align-self: flex-start; } }

@@ -45,6 +45,7 @@ from . import redact as redact_mod
 from . import mcpclient
 from . import endpoints as endpoints_mod
 from . import cliprov as cliprov_mod
+from . import consolelog, provchain
 from .duo import DuoClient, Supervisor
 from .llm import (ClaudeClient, ClaudeCliClient, GeminiClient, LLMError, OllamaClient, build_prompt,
                   label_note)
@@ -72,6 +73,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("tts",)   # local text to speech, per-assis
 FEATURE_MODULES = FEATURE_MODULES + ("computeruse",)   # computer control: Jarvis clicks and types in approved apps, step by step (docs/api/computeruse.md)
 FEATURE_MODULES = FEATURE_MODULES + ("playbooks",)   # playbooks: when X happens, do Y, same approvals as everything else (docs/api/playbooks.md)
 FEATURE_MODULES = FEATURE_MODULES + ("jobprefs", "batches")   # job search profiles (hard filters) and scheduled one-tap batches (docs/api/jobprefs.md, batches.md)
+FEATURE_MODULES = FEATURE_MODULES + ("fixit",)   # Friday/Jarvis provider check, fix-it checklist, live logs (docs/api/fixit.md)
 FEATURE_MODULES = FEATURE_MODULES + ("meetings",)   # meeting assistant: consent-first recording, local transcript, notes, action items (docs/api/meetings.md)
 FEATURE_MODULES = FEATURE_MODULES + ("ticker",)   # one combined poll for the app shell (hub/ticker.py)
 FEATURE_MODULES = FEATURE_MODULES + ("oppsources",)   # job/freelance source connectors: ATS boards, remote boards, company watch list (docs/api/oppsources.md)
@@ -787,7 +789,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     # Feature modules (work, study, english). Each exposes make_router(ctx); one that isn't
     # written yet is skipped, but a real error inside a module is never hidden.
-    def model_for(provider: str):
+    def base_model(provider: str):
         if isinstance(provider, str) and provider.startswith("endpoint:"):
             # the owner's own OpenAI-compatible endpoint (hub/endpoints.py), behind the same redaction/usage wrapper
             return endpoints_mod.build_guarded(config, _audit_late, provider[len("endpoint:"):]) or llm
@@ -795,6 +797,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             # a logged-in command line AI (hub/cliprov.py, docs/api/cliprov.md): redaction + usage count, never an API key
             return cliprov_mod.build_guarded(config, _audit_late, provider[len("cli:"):]) or llm
         choice = providers_mod.resolve(config, provider)
+        if choice.startswith(("cli:", "endpoint:")):
+            return base_model(choice)
         if choice == "claude":
             return claude
         if choice == "claude-login":
@@ -805,6 +809,28 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
             return duo
         return llm
 
+    # A provider that tests replaced with a fake counts as ready (the real key / login checks do not apply to a fake).
+    injected = {k for k, v in (("claude", deps.claude), ("claude-login", deps.claude_login), ("gemini", deps.gemini),
+                               ("duo", deps.duo)) if v is not None}
+    if "gemini" in injected:
+        injected.add("duo")                 # the duo client is built from that same gemini
+
+    def model_for(provider: str):
+        """The client for a provider name. A cloud provider (or auto) falls back through the chain
+        (hub/provchain.py) when it is not ready or fails before its first word: the next ready login, endpoint or the
+        local model. Local and the owner's own endpoint are never swapped."""
+        wanted = (provider or "").strip().lower()
+        if wanted == "local" or wanted.startswith("endpoint:"):
+            return base_model(provider)
+        target = providers_mod.resolve(config, wanted)
+        if target == "local" or target.startswith("endpoint:") or target in injected:
+            return base_model(provider)
+        if target == "duo" and providers_mod.availability(config, ollama_seen["up"])["duo"]["ready"]:
+            return base_model(provider)     # the assistant reads duo.gemini / duo.supervisor itself
+        return provchain.ChainModel(config, wanted or "auto",
+                                    lambda ident: base_model("gemini" if ident == "duo" else ident),
+                                    say=consolelog.say, ollama_up=lambda: ollama_seen["up"])
+
     if hasattr(assistant, "model_for"):
         assistant.model_for = model_for
 
@@ -812,6 +838,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
               need_auth=need_auth, audit=audit, get_app=lambda: app, audit_path=audit_file,
               config_path=config_path)
     ctx.mcp = mcp_manager
+    ctx.raw_model_for = base_model          # Provider check tests ONE provider, never the fallback chain
     ctx.assistant = assistant
     for name in FEATURE_MODULES:
         try:
