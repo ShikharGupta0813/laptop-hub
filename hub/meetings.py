@@ -90,7 +90,7 @@ class MicSource:
         try:
             import sounddevice as sd
         except Exception:
-            raise AudioUnavailable("The microphone needs the optional sounddevice package. Run: pip install sounddevice") from None
+            raise AudioUnavailable("The microphone needs the optional sounddevice package. Run scripts\\setup-all.ps1 (or: pip install sounddevice)") from None
         try:
             name = str(device or "").strip()
             dev: Any = (int(name) if name.isdigit() else name) or None
@@ -164,7 +164,7 @@ def default_probe() -> dict:
     return {"me": {"ok": mic, "why": "" if mic else "Needs the optional sounddevice package (pip install sounddevice)."},
             "others": {"ok": others, "why": "" if others else
                        ("Windows only." if sys.platform != "win32" else "Needs the optional soundcard package (pip install soundcard).")},
-            "whisper": {"ok": has("faster_whisper"), "why": "" if has("faster_whisper") else "Needs faster-whisper (pip install -r requirements-voice.txt)."}}
+            "whisper": {"ok": has("faster_whisper"), "why": "" if has("faster_whisper") else "Needs faster-whisper (run scripts\\setup-all.ps1)."}}
 
 
 # ---- chunking ----------------------------------------------------------------------------------------------------
@@ -438,7 +438,7 @@ class Meetings:
             if self.current is not None:
                 raise MeetingError("A meeting is already being recorded. Stop it first.", 409)
             if self._transcriber is None and not self.source_check().get("whisper", {}).get("ok", True):
-                raise MeetingError("Meetings need faster-whisper for the local transcription. Run: pip install -r requirements-voice.txt", 503)
+                raise MeetingError("Meetings need faster-whisper for the local transcription. Run scripts\\setup-all.ps1 (or: pip install -r requirements-voice.txt)", 503)
             sources, warnings = {}, []
             for track in want:
                 try:

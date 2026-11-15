@@ -10,6 +10,7 @@
 const native = () => { try { return window.Capacitor?.Plugins?.HubWake || null; } catch (_) { return null; } };
 
 import { api } from "./api.js";
+import { setNativeWakeRunning } from "./wake.js";
 
 const REFRESH_MS = 15 * 60 * 1000;
 const MB = (n) => Math.round((Number(n) || 0) / 1048576);
@@ -84,9 +85,10 @@ export function mountWakeBridge(ctx) {
     if (Array.isArray(list)) { lastTry = Date.now(); pushAssistants(list); }
   });
 
-  setTimeout(() => { fromHash(); consume(); syncAssistants(true); }, 500);   // after the first screen is up
+  const nativeState = () => { hw.status().then((s) => setNativeWakeRunning(!!(s && s.enabled && s.running))).catch(() => {}); };
+  setTimeout(() => { fromHash(); consume(); syncAssistants(true); nativeState(); }, 500);   // after the first screen is up
   window.addEventListener("hashchange", fromHash);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { consume(); syncAssistants(false); } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { consume(); syncAssistants(false); nativeState(); } });
   window.addEventListener("focus", consume);
   window.addEventListener("pageshow", consume);
   setInterval(() => { if (document.visibilityState === "visible") syncAssistants(false); }, REFRESH_MS);
@@ -123,6 +125,7 @@ export function mountWakeBridge(ctx) {
 
   function paint(s) {
     last = s;
+    setNativeWakeRunning(!!(s && s.enabled && s.running));   // the in-page recogniser (and its beep) stays off while the native one runs
     if (!parts) return;
     const m = s.model || {};
     const st = m.state || "absent";

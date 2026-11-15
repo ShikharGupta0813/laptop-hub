@@ -527,7 +527,7 @@ def builtin_actions(system: System) -> list[Action]:
     # ---- screen and power ---------------------------------------------------------------------
     def screenshot_available():
         if not system.has_pillow():
-            return False, "Screenshots need Pillow. Run: pip install -r requirements-laptop.txt"
+            return False, "Screenshots need Pillow. Run scripts\\setup-all.ps1 (or: pip install -r requirements-laptop.txt)"
         if not system.has_display():
             return False, "This computer has no screen the hub can capture."
         return True, ""

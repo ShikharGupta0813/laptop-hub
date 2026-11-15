@@ -5,7 +5,7 @@ import { el, ApiError } from "./api.js";
 import { providerLabel } from "./providers.js";
 import { speakable, splitStream, splitName, createSpeechPlanner } from "./speechchunk.js";
 import { createSpeechQueue } from "./speechqueue.js";
-import { loadVoiceStatus, profileFor, hubSynth, createAudioPlayer } from "./hubtts.js";
+import { loadVoiceStatus, profileFor, hubSynth, createAudioPlayer, explainProblem } from "./hubtts.js";
 import { assistantById, loadedAssistants, refreshAssistants } from "./assistants.js";
 
 const SILENCE_MS_DEFAULT = 1200;   // quiet this long after speech ends the recording
@@ -350,6 +350,7 @@ export function openVoiceMode(host) {
   const planner = createSpeechPlanner({ cap: SPEAK_CAP });
   const player = createAudioPlayer({ onPulse: () => { bump = 1; } });
   const queue = createSpeechQueue({
+    timeoutMs: 8000,                    // Windows voices start PowerShell for each sentence: 3 s was too short and left a phone without a voice silent
     synth: (text, meta, signal) => {
       const p = profileFor(voiceStatus, meta.persona);
       return p && p.hub ? hubSynth(text, { assistant: meta.persona, signal }) : { kind: "browser" };
@@ -359,6 +360,7 @@ export function openVoiceMode(host) {
     stop: () => { player.stop(); stopBrowser(); },
     onItem: (_item, r) => {
       if (state === "thinking") setState("speaking");
+      if (r.kind === "silent" && !tts.toldWhy) { tts.toldWhy = true; explainProblem(r); }   // the real reason, with Resume when it is Panic
       speakWhat.textContent = r.kind === "audio" ? "Speaking · laptop voice" : "Speaking · phone voice";
     },
     onActive: (on) => {
@@ -372,7 +374,7 @@ export function openVoiceMode(host) {
     planner.reset();
     queue.cancel();
   }
-  function ttsReset() { tts.cancelled = false; tts.any = false; planner.reset(); }
+  function ttsReset() { tts.cancelled = false; tts.any = false; tts.toldWhy = false; planner.reset(); }
   function ttsFeed(chunk, final = false) {
     if (!ttsOn || tts.cancelled) return;
     for (const sentence of planner.feed(chunk, final)) { tts.any = true; queue.push(sentence, { persona: root.dataset.persona }); }

@@ -3,6 +3,14 @@
 Copy and paste each block into **PowerShell**. Replace `YOU` with your Windows user name. Run the hub on Windows itself, not in WSL.
 Nothing here has been run on a real Windows machine yet; if a step fails, run `python -m hub doctor` and read what it says.
 
+## One-shot installer (easiest)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
+```
+
+It finds or installs Python 3.11+, makes `.venv`, installs every requirements file (Piper, pynput, sounddevice, pywinpty, pyautogui, `av==16.1.0`), Playwright's Chromium, checks Ollama (offers a small chat model and a small vision model), Tailscale, Node and `agy`, runs `python -m hub setup --all`, downloads one Piper voice (or uses the Windows voice), adds a "Start REDLINE hub" Desktop shortcut that always uses the venv python, and ends with a green/red checklist with the next step for every red item. Safe to re-run. Run `agy` once yourself to sign in. Not run on a real Windows machine yet.
+
 ## One-command setup
 
 After step 2 below (code and packages installed), one command does the rest and asks before each part. Press Enter to skip any step; run it again any time.

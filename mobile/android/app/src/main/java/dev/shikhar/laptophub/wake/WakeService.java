@@ -40,8 +40,8 @@ import dev.shikhar.laptophub.MainActivity;
 public class WakeService extends Service {
     static final String ACTION_STOP = "dev.shikhar.laptophub.wake.STOP";
 
-    private static final String CH_LISTEN = "wake_listen";
-    private static final String CH_ALERT = "wake_alert";
+    private static final String CH_LISTEN = NotifyPolicy.CH_LISTEN;
+    private static final String CH_ALERT = NotifyPolicy.CH_ALERT;
     private static final int ID_LISTEN = 4101;
     private static final int ID_ALERT = 4102;
     private static final int SAMPLE_RATE = 16000;
@@ -116,12 +116,25 @@ public class WakeService extends Service {
     private void createChannels() {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        for (String old : NotifyPolicy.LEGACY_CHANNELS) {
+            try {
+                nm.deleteNotificationChannel(old);      // an earlier build made it loud (high importance with a sound)
+            } catch (Exception ignored) {
+            }
+        }
         NotificationChannel listen = new NotificationChannel(CH_LISTEN, "Listening for the wake word",
-            NotificationManager.IMPORTANCE_LOW);
+            NotifyPolicy.listenImportance());
         listen.setShowBadge(false);
+        listen.setSound(null, null);
+        listen.enableVibration(false);
+        listen.enableLights(false);
         nm.createNotificationChannel(listen);
-        NotificationChannel alert = new NotificationChannel(CH_ALERT, "Wake word heard",
-            NotificationManager.IMPORTANCE_HIGH);
+        NotificationChannel alert = new NotificationChannel(CH_ALERT, "Wake word heard (silent)",
+            NotifyPolicy.alertImportance());
+        alert.setShowBadge(false);
+        alert.setSound(null, null);
+        alert.enableVibration(false);
+        alert.enableLights(false);
         nm.createNotificationChannel(alert);
     }
 
@@ -140,6 +153,9 @@ public class WakeService extends Service {
             .setContentTitle("Listening for your wake word")
             .setContentText("Audio stays on this phone. Tap Stop to turn it off.")
             .setOngoing(true)
+            .setOnlyAlertOnce(NotifyPolicy.listenOnlyAlertOnce())
+            .setSound(null)
+            .setVibrate(new long[0])
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(openAppIntent(open, 0))
@@ -327,6 +343,9 @@ public class WakeService extends Service {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setSound(null)
+                .setVibrate(new long[0])
                 .setTimeoutAfter(15_000L)
                 .setContentIntent(openAppIntent(launch, 2))
                 .setFullScreenIntent(openAppIntent(launch, 3), true)

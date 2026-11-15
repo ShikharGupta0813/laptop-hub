@@ -9,17 +9,40 @@ import { matchWake } from "./wakephrase.js";
 import { loadedAssistants, refreshAssistants } from "./assistants.js";
 
 const KEY = "hub.wake";
+const INPAGE_KEY = "hub.wake.inpage";       // inside the Android app: the in-page recogniser is a separate, explicit opt-in
 const KEEP_KEY = "hub.wake.keepawake";      // "0" = off; anything else (or unset) = on while wake is on
 const CHIP_TEXT = "Listening for Hey Jarvis or Hey Friday";
 const SETTLE_MS = 1100;            // after a match, wait this long for the rest of the sentence (a final result skips the wait)
-const BACKOFF_BASE_MS = 500;
+const BACKOFF_BASE_MS = 2000;
 const BACKOFF_MAX_MS = 30000;
+const MIN_RESTART_MS = 4000;       // every webkitSpeechRecognition start plays Android's "listening" beep in a WebView: never faster than this
+const STORM_WINDOW_MS = 60000, STORM_STARTS = 5;   // more than this many starts in a minute is a storm: wait the maximum
 const HEALTHY_MS = 8000;           // a session that lasted this long was fine: reset the backoff
 
 export function wakeSupported() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
-export function wakeEnabled() { try { return localStorage.getItem(KEY) === "1"; } catch (_) { return false; } }
+// The installed Android app has its own background wake word (native service, no beeps). There the in-page one is OFF unless
+// the owner explicitly turns on "Use in-page wake word", and it is always off while the native service is running.
+export function nativeShell() { try { return !!(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.Plugins?.HubWake); } catch (_) { return false; } }
+let nativeRunning = false;
+export function setNativeWakeRunning(on) {
+  if (nativeRunning === !!on) return;
+  nativeRunning = !!on;
+  window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: wakeEnabled() } }));
+}
+export function nativeWakeRunning() { return nativeRunning; }
+export function wakeEnabled() {
+  try {
+    if (nativeShell()) return localStorage.getItem(INPAGE_KEY) === "1" && !nativeRunning;
+    return localStorage.getItem(KEY) === "1";
+  } catch (_) { return false; }
+}
+// What the Settings switch shows: the owner's own choice, even while the native service has the in-page one paused.
+export function wakeChoice() {
+  try { return localStorage.getItem(nativeShell() ? INPAGE_KEY : KEY) === "1"; } catch (_) { return false; }
+}
 export function setWakeEnabled(on) {
-  try { if (on) localStorage.setItem(KEY, "1"); else localStorage.removeItem(KEY); } catch (_) { /* not remembered */ }
+  const key = nativeShell() ? INPAGE_KEY : KEY;
+  try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch (_) { /* not remembered */ }
   window.dispatchEvent(new CustomEvent("hub:wake", { detail: { on: !!on } }));
 }
 
@@ -67,6 +90,7 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
   const text = chip.querySelector(".wk-text");
 
   let rec = null, running = false, fails = 0, startedAt = 0, restartTimer = null, settleTimer = null;
+  const starts = [];                                  // timestamps of recent unexpected ends (the storm guard)
   let pending = null, problem = "", jarvisName = "Jarvis", dictating = 0, nameLoaded = false;
 
   const voiceOpen = () => document.documentElement.classList.contains("vm-open");
@@ -145,6 +169,7 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
       r.onend = () => {
         if (rec !== r) return;
         rec = null; running = false;
+        starts.push(Date.now());                        // an unexpected end: counts towards the storm guard
         if (Date.now() - startedAt > HEALTHY_MS) fails = 0; else fails += 1;
         paint();
         schedule();
@@ -162,7 +187,10 @@ export function mountWake(ctx, { bar = document.getElementById("appbar") } = {})
   function schedule() {
     clearTimeout(restartTimer);
     if (!wanted()) return;
-    const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(fails, 8)) + (fails ? 0 : 150);
+    const now = Date.now();
+    while (starts.length && now - starts[0] > STORM_WINDOW_MS) starts.shift();
+    let delay = Math.max(MIN_RESTART_MS, Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(fails, 8)));
+    if (starts.length >= STORM_STARTS) delay = BACKOFF_MAX_MS;
     restartTimer = setTimeout(begin, delay);
   }
 

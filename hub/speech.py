@@ -24,7 +24,7 @@ class Transcriber:
                 from faster_whisper import WhisperModel
             except ImportError:
                 raise SpeechError("Voice notes need faster-whisper. Run: "
-                                  "pip install -r requirements-voice.txt") from None
+                                  "run scripts\\setup-all.ps1 (or: pip install -r requirements-voice.txt)") from None
             self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
         return self._model
 

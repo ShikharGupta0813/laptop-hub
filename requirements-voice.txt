@@ -1,5 +1,11 @@
+# Voice: notes, hands-free wake word, laptop voices. Installed by scripts\setup-all.ps1 (python -m hub fix-deps does the same).
 faster-whisper>=1.0
-av>=14.0,<17
-# Optional: the hub listens on the laptop microphone for "Hey Jarvis" (Settings > Listen on the laptop microphone).
-# Needs the PortAudio library on Linux/macOS; Windows wheels include it.
-# sounddevice>=0.4
+# PyAV 17+ breaks faster-whisper (voice returns 500), so it is pinned.
+av==16.1.0
+numpy>=1.24
+# Microphone for the laptop wake word, dictation and meetings (Windows wheels include PortAudio; Linux/macOS need the PortAudio library).
+sounddevice>=0.4
+# Piper: natural local voices (Settings > Voices). Without it the laptop speaks with the Windows voices (SAPI), which need nothing extra.
+piper-tts>=1.2
+# Capturing the other participants of a meeting (Windows only).
+soundcard>=0.4.3; sys_platform == "win32"

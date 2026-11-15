@@ -9,6 +9,7 @@ import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } 
 import { guardedSheet } from "./sourcepicker.js";
 import { createFixKit } from "./fixpanel.js";
 import { voiceOn, hubProfile, speak as vkSpeak, stop as vkStop } from "./voicekit.js";
+import { loadVoiceStatus, explainProblem, useWindowsVoice } from "./hubtts.js";
 
 // ------------------------------------------------------------------------------------------------ css
 const CSS = "/css/friday.css";
@@ -372,8 +373,11 @@ export function init(container, ctx) {
   const replayBtn = ui.button({ variant: "ghost", iconOnly: true, icon: "refresh", "aria-label": "Read it again", onClick: () => speaker.replay() });
   const bar = ui.progressBar(0);
   const playerNote = el("span", { class: "fr-player__note" });
+  const fixVoice = ui.button({ variant: "tonal", size: "sm", label: "Use Windows voice", hidden: true, onClick: () => useWindowsVoice()
+    .then(() => { ui.toast("Now using the Windows voice on the laptop. Tap replay.", { kind: "good" }); fixVoice.hidden = true; })
+    .catch((e) => ui.toast(e?.message || "That did not work.", { kind: "bad" })) });
   const player = el("div", { class: "fr-player ui-card ui-card--glass", hidden: true, role: "group", "aria-label": "Spoken brief" },
-    el("div", { class: "fr-player__row" }, playBtn, el("div", { class: "fr-player__mid" }, playerNote, bar), stopBtn, replayBtn));
+    el("div", { class: "fr-player__row" }, playBtn, el("div", { class: "fr-player__mid" }, playerNote, fixVoice, bar), stopBtn, replayBtn));
   function paintPlayer() {
     const live = spk.state === "playing" || spk.state === "paused";
     player.hidden = !(live || (spk.state === "idle" && speaker.text && (spk.ended || spk.progress > 0 || spk.unavailable)));
@@ -382,7 +386,8 @@ export function init(container, ctx) {
     playBtn.replaceChildren(ui.icon(spk.state === "paused" ? "play" : "pause"));
     playBtn.setAttribute("aria-label", spk.state === "paused" ? "Keep going" : "Pause");
     bar.set(live ? spk.progress : spk.ended ? 1 : spk.progress);
-    playerNote.textContent = spk.unavailable ? "This phone has no voice to read with. It is all written below."
+    fixVoice.hidden = !spk.unavailable;
+    playerNote.textContent = spk.unavailable ? "This phone has no voice to read with. The laptop can speak for it: tap Use Windows voice. It is all written below."
       : spk.state === "playing" ? "Reading to you…" : spk.state === "paused" ? "Paused" : "Finished. Tap replay to hear it again.";
   }
   paintPlayer();
@@ -400,6 +405,8 @@ export function init(container, ctx) {
       if (!toldOff) { toldOff = true; ui.toast("Voice is off. Switch on Voice (below) to hear me."); }
       return;
     }
+    const st = await loadVoiceStatus();
+    if (st && st.silenced) { speaker.stop(true); explainProblem({ reason: "panic", detail: st.silent_reason || "Voice is paused because Panic is on. Tap Resume." }); return; }
     if (await hubProfile("friday")) { speaker.stop(true); vkSpeak(text, { assistant: "friday" }); return; }
     vkStop(); speaker.play(text);
   }

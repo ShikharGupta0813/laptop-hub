@@ -806,7 +806,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
         except OSError:
             pass
         check("Voice notes (faster-whisper)", importlib.util.find_spec("faster_whisper") is not None,
-              "faster-whisper installed.", "pip install -r requirements-voice.txt", required=False)
+              "faster-whisper installed.", "Run scripts\\setup-all.ps1 (or: pip install -r requirements-voice.txt)", required=False)
         avail = providers.availability(config)
         cloud = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
         check("AI providers", bool(cloud),
@@ -818,7 +818,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
                   "Install it or fix shells in hub.json.", required=False)
         if sys.platform == "win32":
             has_pty = importlib.util.find_spec("winpty") is not None
-            check("Windows terminal (pywinpty)", has_pty, "pywinpty installed.", "pip install pywinpty")
+            check("Windows terminal (pywinpty)", has_pty, "pywinpty installed.", "Run scripts\\setup-all.ps1 (or: pip install pywinpty)")
         has_ts = shutil.which("tailscale") is not None
         check("Tailscale", has_ts, "tailscale found." if has_ts else "tailscale not found.",
               "Install Tailscale (tailscale.com/download) for HTTPS and remote access.", required=False)

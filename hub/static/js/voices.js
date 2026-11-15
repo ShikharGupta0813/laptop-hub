@@ -5,7 +5,7 @@ import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
 import { forgetAssistants, refreshAssistants } from "./assistants.js";
-import { forgetVoiceStatus } from "./hubtts.js";
+import { forgetVoiceStatus, createAudioPlayer, explainProblem } from "./hubtts.js";
 
 const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -13,7 +13,7 @@ const TONE = { cyan: "accent", amber: "orange", green: "good", violet: "violet",
 const ENGINE_LABEL = { "": "Default", browser: "This phone's voice", sapi: "Windows voices", piper: "Piper", command: "My command" };
 
 // Plays the voice the way the app will: the hub's audio when the engine makes some, else this phone's own voice.
-let testAudio = null;
+const testPlayer = createAudioPlayer();
 export async function testVoice({ assistant, engine, voice, rate, pitch, text = "Hello, this is how I sound. Is that voice all right?" }) {
   let response;
   try {
@@ -21,15 +21,16 @@ export async function testVoice({ assistant, engine, voice, rate, pitch, text = 
       body: JSON.stringify({ text, assistant: assistant || undefined, engine: engine || undefined, voice: voice ?? undefined, rate, pitch }) });
   } catch (_) { throw new Error("Can't reach your laptop."); }
   if (response.status === 200) {
-    const url = URL.createObjectURL(await response.blob());
-    try { testAudio?.pause(); } catch (_) { /* ignore */ }
-    testAudio = new Audio(url);
-    testAudio.onended = () => URL.revokeObjectURL(url);
-    await testAudio.play().catch(() => { throw new Error("The browser blocked the sound. Tap Test voice again."); });
+    const blob = await response.blob();
+    testPlayer.play(blob);                      // the shared, tap-unlocked <audio> element (hubtts.js)
     return;
   }
   if (response.status === 204) {
-    if (!("speechSynthesis" in window)) throw new Error("This browser has no voice of its own.");
+    if (!("speechSynthesis" in window) || !window.speechSynthesis.getVoices().length) {
+      const e = new Error("This phone has no voice of its own. Pick Windows voices (SAPI) as the engine, or tap Use Windows voice.");
+      e.problem = { reason: "no-voice", detail: e.message };
+      throw e;
+    }
     const u = new SpeechSynthesisUtterance(text);
     if (rate && rate !== 1) u.rate = rate;
     if (typeof pitch === "number" && pitch !== 1) u.pitch = pitch;
@@ -39,10 +40,14 @@ export async function testVoice({ assistant, engine, voice, rate, pitch, text = 
     window.speechSynthesis.speak(u);
     return;
   }
-  let detail = "";
-  try { detail = (await response.json()).detail; } catch (_) { /* not JSON */ }
-  throw new Error(detail || (response.status === 423 ? "Voice is paused by the panic button." : `The hub answered ${response.status}.`));
+  let body = {};
+  try { body = await response.json(); } catch (_) { /* not JSON */ }
+  const e = new Error(body.detail || (response.status === 423 ? "Voice is paused (the hub did not say why)." : `The hub answered ${response.status}.`));
+  e.problem = { reason: body.reason || (response.status === 423 ? "panic" : "engine"), detail: e.message };
+  throw e;
 }
+// Shows the real reason with its one-tap fix (Resume for Panic, Use Windows voice otherwise).
+const testFail = (error) => (error?.problem ? explainProblem(error.problem) : fail(error));
 
 export async function openVoices() {
   let st = await api("/api/tts/status").catch((e) => { fail(e); return null; });
@@ -60,7 +65,7 @@ export async function openVoices() {
   const put = async (path, json) => { try { st = await api(path, { method: "PUT", json }); forgetVoiceStatus(); return st; } catch (e) { fail(e); throw e; } };
 
   // ---- the hint card --------------------------------------------------------------------------------------
-  const hint = ui.notice("Voice quality: the default is this phone's own voice. For a more natural voice, install Piper on the laptop (pip install piper-tts) and download a small voice below. " +
+  const hint = ui.notice("The laptop makes the voice and this phone just plays it, so the phone needs no voice of its own. The laptop tries Piper first, then Windows voices. For a more natural voice, run scripts\\setup-all.ps1 on the laptop (it installs Piper) and download a small voice below. " +
     "Small Piper voices usually run faster than real time on a CPU-only laptop, so the first sentence starts quickly (not measured on your laptop). " +
     "Windows voices need nothing extra. Nothing is downloaded unless you press Download.", { tone: "info" });
 
@@ -108,7 +113,7 @@ export async function openVoices() {
     paint();
     const read = () => ({ engine: eng.value, voice: ["sapi", "piper", "command"].includes(eng.value || st.engine) ? voiceSel.value : voiceText.value.trim(),
       rate: Number(rate.value) || 1, pitch: Number(pitch.value) || 1 });
-    const testBtn = ui.button({ label: "Test voice", icon: "volume", variant: "tonal", onClick: () => testVoice({ assistant: a.id, ...read() }).catch(fail) });
+    const testBtn = ui.button({ label: "Test voice", icon: "volume", variant: "tonal", onClick: () => testVoice({ assistant: a.id, ...read() }).catch(testFail) });
     const field = (label, input) => el("label", { class: "ui-field" }, el("span", { class: "ui-label" }, label), input);
     return { read, node: el("div", { class: "ui-stack ui-stack--lg" }, field("Engine", eng), field("Voice", el("div", {}, voiceSel, voiceText)),
       field("Speed (0.5 to 2)", rate), field("Pitch (0 to 2)", pitch), hintP, testBtn) };
@@ -175,7 +180,7 @@ export async function openVoices() {
       rowOf: (m) => ({ icon: "volume", tone: "accent", title: m.id, sub: `${(m.bytes / 1048576).toFixed(0)} MB` }),
       onDelete: async (m) => { piper = await api(`/api/tts/piper/${m.id}`, { method: "DELETE" }); Object.keys(voiceCache).forEach((k) => delete voiceCache[k]); paintPiper(); good("Deleted."); } });
     piperBox.replaceChildren(el("h2", { class: "ui-caps st-caps" }, "Piper voices"),
-      ui.notice(piper.warning + " " + piper.note + (piper.installed_exe ? "" : " Piper itself is not installed yet: pip install piper-tts."), { tone: "warn" }),
+      ui.notice(piper.warning + " " + piper.note + (piper.installed_exe ? "" : " Piper itself is not installed yet: run scripts\\setup-all.ps1 on the laptop (Windows voices work meanwhile)."), { tone: "warn" }),
       models.el, el("div", { class: "ui-stack" }, sel, custom, dl), jobLine);
     const j = piper.job || {};
     jobLine.textContent = j.state === "running" ? `Downloading ${j.voice}… ${j.total ? Math.round((j.bytes / j.total) * 100) + "%" : (j.bytes / 1048576).toFixed(0) + " MB"}`
@@ -194,6 +199,6 @@ export async function openVoices() {
   if (piper?.job?.state === "running") startPoll();
 
   ui.sheet({ title: "Voices", class: "st-sheet st-sheet--tall", content: el("div", { class: "ui-stack ui-stack--lg" }, hint, general, ed.el, piperBox, cmdEd.el,
-    ui.notice("The laptop's voices speak in voice mode and the Talk tab. Anything that goes wrong falls back to this phone's voice, so you always hear the answer. The panic button silences all of them.", { tone: "info" })),
+    ui.notice("The laptop's voices speak in voice mode and the Talk tab. If Piper is missing the laptop uses its Windows voice, then this phone's voice. The panic button silences all of them until you tap Resume.", { tone: "info" })),
   onClose: () => clearInterval(poll) });
 }

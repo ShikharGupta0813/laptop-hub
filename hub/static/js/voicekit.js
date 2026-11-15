@@ -7,7 +7,7 @@
 // Plus the "Voice on/off" switch and "Test voice" button every screen shows (voiceControls) and plain-language messages.
 import { el } from "./api.js";
 import * as ui from "./ui.js";
-import { loadVoiceStatus, profileFor, speakReply, stopReply } from "./hubtts.js";
+import { loadVoiceStatus, profileFor, speakReply, stopReply, explainProblem, useWindowsVoice } from "./hubtts.js";
 import { speakable } from "./speechchunk.js";
 
 const KEY = "hub.voice.on";
@@ -17,6 +17,8 @@ export const MESSAGES = {
     + "install Google Speech Services and a voice. Or choose a laptop voice (Piper or Windows) in Settings > Voices.",
   blocked: "The browser blocked sound until you tap something on the page. Tap Test voice once.",
   off: "Voice is switched off. Turn on Voice to hear replies.",
+  panic: "Voice is paused because Panic is on. Tap Resume to hear replies again.",
+  "no-voice-fix": "This phone has no voice to read with. The laptop can speak for it: tap Use Windows voice (nothing to install).",
   error: "The voice stopped with an error. Try Test voice again.",
 };
 
@@ -141,13 +143,21 @@ export async function hubProfile(assistant = "jarvis") {
 export async function speak(text, { assistant = "jarvis", force = false } = {}) {
   if (!force && !voiceOn()) return { ok: false, reason: "off", spoken: 0 };
   if (!text || !String(text).trim()) return { ok: true, spoken: 0 };
+  const status = await loadVoiceStatus();
+  if (status && status.silenced) {                 // Panic is on: say nothing, and say WHY with a Resume button
+    explainProblem({ reason: "panic", detail: status.silent_reason || MESSAGES.panic });
+    return { ok: false, reason: "panic", spoken: 0 };
+  }
   if (await hubProfile(assistant)) {
     let fell = null;
     await speakReply(text, assistant, (t) => { fell = speakBrowser(t); });
     const r = fell ? await fell : { ok: true, spoken: 1 };
+    if (fell && !r.ok && (r.reason === "no-voice" || r.reason === "no-api")) explainProblem({ reason: "no-voice", detail: MESSAGES["no-voice-fix"] });
     return { ...r, via: fell ? "phone" : "hub" };
   }
-  return { ...(await speakBrowser(text)), via: "phone" };
+  const r = await speakBrowser(text);
+  if (!r.ok && (r.reason === "no-voice" || r.reason === "no-api") && status) explainProblem({ reason: "no-voice", detail: MESSAGES["no-voice-fix"] });
+  return { ...r, via: "phone" };
 }
 
 export async function voiceStatus(assistant = "jarvis") {
@@ -182,16 +192,21 @@ export function voiceControls({ assistant = "jarvis", name = "Jarvis" } = {}) {
     note.textContent = "Playing…"; note.classList.remove("bad");
     const r = await speak(`This is ${name}. If you can hear this, my voice works on this phone.`, { assistant, force: true });
     if (r.ok && r.spoken) { note.textContent = r.via === "hub" ? "Played through the laptop's voice." : "Played with this phone's voice."; note.classList.remove("bad"); }
-    else { note.textContent = MESSAGES[r.reason] || MESSAGES.error; note.classList.add("bad"); }
+    else { note.textContent = MESSAGES[r.reason] || MESSAGES.error; note.classList.add("bad"); fixRow.hidden = !(r.reason === "no-voice" || r.reason === "no-api"); }
   } });
+  const fixBtn = ui.button({ label: "Use Windows voice", icon: "volume", variant: "primary", size: "sm", onClick: async () => {
+    try { await useWindowsVoice(); note.textContent = "Done. The laptop speaks for this phone now. Tap Test voice."; note.classList.remove("bad"); fixRow.hidden = true; }
+    catch (e) { note.textContent = e?.message || "That did not work."; note.classList.add("bad"); }
+  } });
+  const fixRow = el("div", { class: "fk-row", hidden: true }, fixBtn);
   const node = el("section", { class: "ui-card fk-voice", "aria-label": `${name} voice` },
-    el("div", { class: "fk-row" }, el("label", { class: "fk-switch" }, sw, el("span", {}, "Voice on")), test), note);
+    el("div", { class: "fk-row" }, el("label", { class: "fk-switch" }, sw, el("span", {}, "Voice on")), test), note, fixRow);
   async function paint() {
     sw.input.checked = voiceOn();
     const st = await voiceStatus(assistant);
     if (!voiceOn()) { note.textContent = MESSAGES.off; note.classList.remove("bad"); return; }
     if (!st.hub && !st.supported) { note.textContent = MESSAGES["no-api"]; note.classList.add("bad"); }
-    else if (!st.hub && st.voices === 0) { note.textContent = MESSAGES["no-voice"]; note.classList.add("bad"); }
+    else if (!st.hub && st.voices === 0) { note.textContent = MESSAGES["no-voice"]; note.classList.add("bad"); fixRow.hidden = false; }
     else { note.textContent = st.hub ? `Speaks through the laptop's ${st.engine} voice, this phone's voice as backup.` : `Speaks with this phone's voice (${st.voices} found).`; note.classList.remove("bad"); }
   }
   paint();

@@ -386,7 +386,7 @@ class Job:
 # real drivers (lazy imports; the hub starts without any of them)
 # ======================================================================================================
 
-INSTALL_HINT = "Run: pip install pyautogui pywinauto (see requirements-extra.txt) and, for the screen, requirements-screen.txt."
+INSTALL_HINT = "Run scripts\\setup-all.ps1 (or: pip install pyautogui pywinauto, see requirements-extra.txt, and for the screen requirements-screen.txt)."
 
 
 class RealScreen:

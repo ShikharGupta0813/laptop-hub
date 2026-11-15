@@ -304,7 +304,7 @@ class Wiring(unittest.TestCase):
         from pathlib import Path
         txt = (Path(__file__).resolve().parents[1] / "requirements-voice.txt").read_text(encoding="utf-8")
         self.assertIn("sounddevice", txt)
-        self.assertIn("av>=14.0,<17", txt)
+        self.assertIn("av==16.1.0", txt)
 
 
 if __name__ == "__main__":

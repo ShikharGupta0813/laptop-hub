@@ -2,7 +2,7 @@
 // Routes: docs/api/settings.md, docs/api/notify.md (push), docs/api/capture-android.md (HubCapture plugin).
 // Sections (openSection): appearance, models, folders, push (alias notifications), capture, diagnostics, audit, backup, about,
 // and the owner's lists (js/ownerlists.js): assistants, notifyprefs, safetyrules, redactrules, memorykinds.
-import { wakeEnabled, setWakeEnabled, wakeSupported, keepAwakeEnabled, setKeepAwake, wakeLockSupported } from "./wake.js";
+import { wakeChoice, setWakeEnabled, wakeSupported, nativeShell, keepAwakeEnabled, setKeepAwake, wakeLockSupported } from "./wake.js";
 import { api, ApiError, sse, el } from "./api.js";
 import * as ui from "./ui.js";
 import { usageCard, capsSheet, redactionSheet } from "./privacy.js";
@@ -85,10 +85,12 @@ export function init(container, ctx) {
         if (on) document.documentElement.dataset.motion = "reduce"; else delete document.documentElement.dataset.motion;
       } });
     const wakeOk = wakeSupported() && window.isSecureContext;
-    const wake = switchRow({ icon: "mic", tone: "teal", title: "Hey Jarvis / Hey Friday",
-      sub: wakeOk ? "Say it hands-free to start voice mode. Works only while the app is open and the screen is on: Android stops the microphone in the background. Keeps the microphone open and keeps the screen on while listening, so it uses battery."
+    const inApp = nativeShell();
+    const wake = switchRow({ icon: "mic", tone: "teal", title: inApp ? "Use in-page wake word" : "Hey Jarvis / Hey Friday",
+      sub: inApp ? "Off by default in the app: the always-on wake word below listens without any sound. This older in-page listener restarts every few seconds and Android plays its listening beep each time, so only switch it on if you need it. It is paused while the background one runs."
+        : wakeOk ? "Say it hands-free to start voice mode. Works only while the app is open and the screen is on: Android stops the microphone in the background. Keeps the microphone open and keeps the screen on while listening, so it uses battery."
         : "Needs Chrome on the secure (https) address. This browser cannot listen for a wake word.",
-      checked: wakeEnabled() && wakeOk, disabled: !wakeOk, onChange: (on) => setWakeEnabled(on) });
+      checked: wakeChoice() && wakeOk, disabled: !wakeOk, onChange: (on) => setWakeEnabled(on) });
     const keep = switchRow({ icon: "phone", tone: "teal", title: "Keep screen on while listening",
       sub: wakeLockSupported() ? "Stops the screen from turning off while Hey Jarvis is listening, so the microphone keeps working. Uses battery."
         : "This browser cannot keep the screen on.",

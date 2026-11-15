@@ -41,7 +41,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .common import Ctx, JsonFile
 
@@ -409,7 +409,6 @@ class TTS:
         self.platform = platform or sys.platform
         self.which = which or shutil.which
         self._presence = presence
-        self.silenced = False
         self.last_error = ""
         self._synth_lock = threading.Lock()
         self._speak_lock = threading.Lock()
@@ -430,11 +429,45 @@ class TTS:
     def settings(self) -> dict:
         raw = self._file().load({})
         raw = raw if isinstance(raw, dict) else {}
-        engine = str(raw.get("engine") or getattr(self.config, "tts_engine", "browser") or "browser")
+        engine = str(raw.get("engine") or "") or self._default_engine()
         enabled = raw["enabled"] if isinstance(raw.get("enabled"), bool) else getattr(self.config, "tts_enabled", True) is not False
         return {"enabled": enabled, "engine": engine if engine in ENGINES else "browser", "headphones": raw.get("headphones") is True,
                 "piper_exe": str(raw.get("piper_exe") or ""), "cache_phrases": int(_num(raw.get("cache_phrases"), CACHE_MAX_DEFAULT, 10, 2000)),
                 "commands": self._clean_stored_commands(raw.get("commands"))}
+
+    def _default_engine(self) -> str:
+        """The engine when the owner never picked one: config.tts_engine if set to something else than the old default,
+        else Piper when it is ready, else Windows voices on Windows (they need nothing extra), else the phone's voice."""
+        cfg = str(getattr(self.config, "tts_engine", "") or "browser")
+        if cfg != "browser" and cfg in ENGINES:
+            return cfg
+        try:
+            raw = self._file().load({})
+            exe = str(raw.get("piper_exe") or "") if isinstance(raw, dict) else ""
+            if self._piper_base(exe) is not None and self._piper_models():
+                return "piper"
+            if self._powershell() is not None:
+                return "sapi"
+        except Exception:  # noqa: BLE001
+            pass
+        return "browser"
+
+    def _available(self, eid: str) -> bool:
+        if eid == "sapi":
+            return self._powershell() is not None
+        if eid == "piper":
+            return self._piper_base() is not None and bool(self._piper_models())
+        if eid == "command":
+            return bool(self.settings()["commands"])
+        return False
+
+    def engine_chain(self, engine: str) -> list[str]:
+        """Laptop engines to try, in order: the chosen one, then Piper, then Windows SAPI. Only the ones that can run here.
+        Empty means the phone's own voice (or the owner chose it)."""
+        if engine == "browser":
+            return []
+        order = [engine] + [e for e in ("piper", "sapi") if e != engine]
+        return [e for e in order if self._available(e)]
 
     @staticmethod
     def _clean_stored_commands(items: Any) -> list[dict]:
@@ -482,12 +515,30 @@ class TTS:
     def laptop_barge_enabled(self) -> bool:
         return self.settings()["headphones"]            # speakers would hear themselves, so only in headphones mode
 
-    def silence(self) -> None:                         # panic hook
-        self.silenced = True
-        self.stop_speaking()
+    @property
+    def silenced(self) -> bool:
+        """True while Panic is active. Read LIVE from the persisted config flag, never kept as a sticky copy here: the
+        old copy was set by the panic hook, but panic.resume() only calls the resume hook of a hook whose stop returned
+        something, and this one returned None, so Resume never cleared it (and a hub restart forgot it)."""
+        return getattr(self.config, "panic_active", False) is True
 
-    def resume(self) -> None:
-        self.silenced = False
+    def silence(self) -> str | None:                   # panic hook: cut off what is playing; the gate itself is panic_active
+        was = self.speaking
+        self.stop_speaking()
+        return "voice stopped" if was else None
+
+    def resume(self, _state: Any = None) -> None:      # nothing to restore: silenced reads panic_active
+        return None
+
+    def why_silent(self) -> str:
+        """One plain sentence for the owner saying the real reason nothing is spoken by the laptop right now."""
+        if self.silenced:
+            return "Voice is paused because Panic is on. Tap Resume."
+        if not self.enabled:
+            return "The laptop's voices are switched off in Settings > Voices."
+        if self.quiet_by_presence():
+            return "Quiet: your status is in a meeting or focusing."
+        return ""
 
     def stop_speaking(self) -> None:
         self._stop.set()
@@ -530,8 +581,9 @@ class TTS:
         except OSError:
             return []
 
-    def _piper_base(self) -> list[str] | None:
-        exe = self.settings()["piper_exe"]
+    def _piper_base(self, exe: str | None = None) -> list[str] | None:
+        if exe is None:
+            exe = self.settings()["piper_exe"]
         if exe and Path(exe).is_file():
             return [exe]
         found = self.which("piper")
@@ -559,7 +611,7 @@ class TTS:
             elif eid == "piper":
                 have_exe, models = self._piper_base() is not None, len(self._piper_models())
                 ok = have_exe and models > 0
-                note = "Install piper (pip install piper-tts) and download a voice below." if not have_exe else ("Download a voice below." if not models else "")
+                note = "Not installed: run scripts\\setup-all.ps1 (or pip install piper-tts), then download a voice below." if not have_exe else ("Download a voice below." if not models else "")
             elif eid == "command":
                 cmds = self.settings()["commands"]
                 ok = bool(cmds)
@@ -620,11 +672,10 @@ class TTS:
         except Exception:  # noqa: BLE001
             ids = ["jarvis", "friday"]
         st = self.settings()
-        avail = {e["id"]: e["available"] for e in self.engine_status()}
         out = {}
         for aid in ids:
             p = self.profile_for(aid)
-            p["hub"] = bool(st["enabled"] and p["engine"] != "browser" and avail.get(p["engine"]))
+            p["hub"] = bool(st["enabled"] and self.engine_chain(p["engine"]))
             out[aid] = p
         return out
 
@@ -649,23 +700,35 @@ class TTS:
             return Synth(eng, reason="disabled")
         if eng == "browser":
             return Synth(eng, reason="browser")
-        voice = self._resolve_voice(eng, prof["voice"])
-        cache = self.cache
-        key = cache.key(eng, voice, prof["rate"], prof["pitch"], text)
-        hit = cache.get(key)
-        if hit is not None:
-            return Synth(eng, hit, cached=True)
-        with self._synth_lock:                         # one voice job at a time: a CPU cannot do two faster anyway
-            if self.silenced:
-                return Synth(eng, reason="silenced")
-            try:
-                wav = self._run_engine(eng, text, voice, prof["rate"], prof["pitch"])
-            except TTSError as exc:
-                self.last_error = str(exc)
-                return Synth(eng, reason=str(exc))
-        self.last_error = ""
-        cache.put(key, wav)
-        return Synth(eng, wav)
+        chain = self.engine_chain(eng)
+        if not chain:                                  # nothing on the laptop can run: say why, the phone's voice takes over
+            self.last_error = self._chain_error(eng)
+            return Synth(eng, reason=self.last_error if eng != "browser" else "browser")
+        cache, first_error = self.cache, ""
+        for try_eng in chain:
+            voice = self._resolve_voice(try_eng, prof["voice"] if try_eng == eng else "")
+            key = cache.key(try_eng, voice, prof["rate"], prof["pitch"], text)
+            hit = cache.get(key)
+            if hit is not None:
+                return Synth(try_eng, hit, cached=True)
+            with self._synth_lock:                     # one voice job at a time: a CPU cannot do two faster anyway
+                if self.silenced:
+                    return Synth(try_eng, reason="silenced")
+                try:
+                    wav = self._run_engine(try_eng, text, voice, prof["rate"], prof["pitch"])
+                except TTSError as exc:
+                    first_error = first_error or str(exc)
+                    continue                           # Piper broke: try Windows voices, then give up
+            self.last_error = ""
+            cache.put(key, wav)
+            return Synth(try_eng, wav)
+        self.last_error = first_error or "No laptop voice worked."
+        return Synth(eng, reason=self.last_error)
+
+    def _chain_error(self, eng: str) -> str:
+        if self.platform == "win32":
+            return "No laptop voice is ready. Use the Windows voice (Settings > Voices) or run scripts\\setup-all.ps1."
+        return "No laptop voice is ready here: install Piper (run scripts/setup-all.ps1 on Windows, or pip install piper-tts)."
 
     def _resolve_voice(self, engine: str, voice: str) -> str:
         if voice:
@@ -698,7 +761,7 @@ class TTS:
             if engine == "piper":
                 base = self._piper_base()
                 if base is None:
-                    raise TTSError("Piper is not installed. Run: pip install piper-tts (or set the program in Settings > Voices).")
+                    raise TTSError("Piper is not installed. Run scripts\\setup-all.ps1 (or pip install piper-tts), or set the program in Settings > Voices.")
                 models = {p.stem: p for p in self._piper_models()}
                 model = models.get(voice) if voice else (next(iter(models.values())) if models else None)
                 if model is None:
@@ -742,7 +805,7 @@ class TTS:
             return "suppressed"
         sentences = split_sentences(text)
         prof = self.profile_for(persona)
-        usable = self.enabled and prof["engine"] != "browser" and {e["id"]: e["available"] for e in self.engine_status()}.get(prof["engine"])
+        usable = self.enabled and bool(self.engine_chain(prof["engine"]))
         if not usable:
             if fallback:
                 fallback(text)
@@ -971,16 +1034,19 @@ def make_router(ctx: Ctx, *, service: TTS | None = None) -> APIRouter:
         if r.wav is not None:
             return Response(r.wav, media_type="audio/wav", headers={"X-TTS-Engine": r.engine, "X-TTS-Cached": "1" if r.cached else "0",
                                                                       "Cache-Control": "no-store"})
-        if r.reason == "silenced":
-            return Response(status_code=423, headers={"X-TTS-Engine": r.engine})      # panic: say nothing, do not fall back to the phone
+        if r.reason == "silenced":                     # panic: say nothing, do not fall back to the phone. JSON says WHY.
+            return JSONResponse({"detail": svc.why_silent() or "Voice is paused because Panic is on. Tap Resume.", "reason": "panic"},
+                                status_code=423, headers={"X-TTS-Engine": r.engine, "X-TTS-Reason": "panic"})
         if r.reason in ("browser", "disabled"):
-            return Response(status_code=204, headers={"X-TTS-Engine": "browser"})
-        raise HTTPException(502, r.reason or "The voice engine failed.")
+            return Response(status_code=204, headers={"X-TTS-Engine": "browser", "X-TTS-Reason": r.reason})
+        return JSONResponse({"detail": r.reason or "The voice engine failed.", "reason": "engine"}, status_code=502,
+                            headers={"X-TTS-Reason": "engine"})
 
     @router.get("/status")
     def status():
         st = svc.settings()
         return {"enabled": st["enabled"], "engine": st["engine"], "headphones": st["headphones"], "silenced": svc.silenced,
+                "silent_reason": svc.why_silent(), "windows": svc.platform == "win32", "sapi_ready": svc._available("sapi"),
                 "engines": svc.engine_status(), "profiles": svc.profiles(), "commands": st["commands"], "piper_exe": st["piper_exe"],
                 "cache": svc.cache.stats(), "speaking": svc.speaking, "last_error": svc.last_error,
                 "max_text": MAX_TEXT, "quiet_now": svc.quiet_by_presence()}
