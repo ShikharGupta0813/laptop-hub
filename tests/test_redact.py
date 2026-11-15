@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 import unittest
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -332,7 +333,7 @@ class AssistantRoundTrips(Base):
         events = await collect(svc.run("s", f"read {self.home}/bob@example.com please", "claude", False))
         self.assertFalse(of(events, "error"), events)
         start = of(events, "tool_start")[0]
-        self.assertEqual(start["input"]["path"], str(self.target))      # restored BEFORE the tool ran
+        self.assertEqual(Path(start["input"]["path"]), self.target)      # restored BEFORE the tool ran
         ok = of(events, "tool_result")[0]
         self.assertTrue(ok["ok"], ok)
         text = "".join(e["t"] for e in of(events, "text"))

@@ -862,10 +862,14 @@ class Hygiene(Base):
 
 class RealApp(unittest.TestCase):
     def test_a_routine_runs_through_the_real_routes(self):
-        from hub.server import create_app
+        from hub.server import Deps, create_app
         config, root = make_config(data_dir=None)
         config.data_dir = str(root / "data")
-        client = TestClient(create_app(config, audit_path=root / "audit.log"), base_url="http://testserver",
+
+        async def no_label(text):          # never let a real local AI (Ollama on this machine) title the note
+            from hub.notes import fallback_title
+            return fallback_title(text), []
+        client = TestClient(create_app(config, Deps(label=no_label), audit_path=root / "audit.log"), base_url="http://testserver",
                             headers={"X-Hub": "1"})
         with client:
             self.assertEqual(client.get("/api/automations").status_code, 401)

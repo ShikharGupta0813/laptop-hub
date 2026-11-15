@@ -78,7 +78,11 @@ class BackupTest(Fixture):
         _, z, _ = self.make()
         out = self.root / "x.db"
         out.write_bytes(zipfile.ZipFile(z).read("data/notes.db"))
-        self.assertEqual(sqlite3.connect(out).execute("select t from n").fetchone(), ("hello",))
+        con = sqlite3.connect(out)
+        try:
+            self.assertEqual(con.execute("select t from n").fetchone(), ("hello",))
+        finally:
+            con.close()
 
     def test_no_secrets_in_zip(self):
         _, z, _ = self.make()

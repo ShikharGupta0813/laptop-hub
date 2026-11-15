@@ -645,7 +645,7 @@ class Misc(unittest.TestCase):
     def test_node_check(self):
         for name in ("listeditor.js", "ownerlists.js", "assistants.js", "brain.js", "settings.js", "speechchunk.js", "voicemode.js"):
             src = (STATIC / "js" / name).read_text(encoding="utf-8")
-            r = subprocess.run([NODE, "--input-type=module", "--check"], input=src, capture_output=True, text=True, timeout=30)
+            r = subprocess.run([NODE, "--input-type=module", "--check"], input=src, capture_output=True, text=True, encoding="utf-8", timeout=30)
             self.assertEqual(r.returncode, 0, f"{name}: {r.stderr}")
 
 
