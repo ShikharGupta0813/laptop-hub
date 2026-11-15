@@ -14,6 +14,7 @@ command or setting that fixes it. See docs/api/fixit.md.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, AsyncIterator, Callable
@@ -195,8 +196,9 @@ class ChainModel:
     name = "chain"
 
     def __init__(self, config, choice: str | None, build: Callable[[str], Any], say: Callable[[str], None] | None = None,
-                 ollama_up: Callable[[], bool | None] | None = None):
+                 ollama_up: Callable[[], bool | None] | None = None, skip_cli: bool = False):
         self.config = config
+        self.skip_cli = skip_cli      # leave out the command line logins (slow to start) when something faster may answer
         self.choice = choice
         self.build = build
         self.say = say or (lambda text: log.info("%s", text))
@@ -208,6 +210,8 @@ class ChainModel:
         avail = providers.availability(self.config, up)
         ids, skipped = [], []
         for ident in ordered_ids(self.config, self.choice):
+            if self.skip_cli and ident.startswith("cli:"):
+                continue
             ok, why = readiness(self.config, ident, up, avail)
             if ok:
                 ids.append(ident)
@@ -226,7 +230,7 @@ class ChainModel:
             self.say(f"AI: answered with {_label(self.config, used)}.")
 
     async def complete(self, system: str, user: str, json_mode: bool = False) -> str:
-        ids, skipped = self._plan()
+        ids, skipped = await asyncio.to_thread(self._plan)      # PATH lookups and file reads: off the loop
         failed: list[tuple[str, str]] = []
         for ident in ids:
             client = self.build(ident)
@@ -244,7 +248,7 @@ class ChainModel:
         raise AssertionError  # pragma: no cover
 
     async def stream(self, system: str, user: str) -> AsyncIterator[str]:
-        ids, skipped = self._plan()
+        ids, skipped = await asyncio.to_thread(self._plan)      # PATH lookups and file reads: off the loop
         failed: list[tuple[str, str]] = []
         for ident in ids:
             client = self.build(ident)

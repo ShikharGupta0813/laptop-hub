@@ -7,6 +7,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -85,6 +86,40 @@ class Base(unittest.TestCase):
 
 
 class Running(Base):
+    def test_a_slow_program_start_does_not_stall_the_event_loop(self):
+        """Starting a program can block (antivirus, slow PATH): it must happen off the loop. Heartbeat gap stays small."""
+        import subprocess
+        real_popen = subprocess.Popen
+
+        class SlowStart(real_popen):
+            def __init__(self, *a, **kw):
+                time.sleep(0.6)                      # a start that blocks for 0.6 s
+                super().__init__(*a, **kw)
+
+        gaps = []
+
+        async def beat(stop):
+            last = time.perf_counter()
+            while not stop.is_set():
+                await asyncio.sleep(0.01)
+                now = time.perf_counter()
+                gaps.append(now - last)
+                last = now
+
+        async def go():
+            stop = asyncio.Event()
+            task = asyncio.create_task(beat(stop))
+            await asyncio.sleep(0.05)
+            answer = await self.client("echo", str(self.dir / "hb.txt")).complete("s", "heartbeat question")
+            stop.set()
+            await task
+            return answer
+
+        with unittest.mock.patch.object(subprocess, "Popen", SlowStart):
+            answer = self.run_(go())
+        self.assertIn("ANSWER:", answer)             # the program really ran
+        self.assertLess(max(gaps), 0.2)
+
     def test_prompt_goes_on_stdin_never_argv(self):
         out_file = self.dir / "got.txt"
         client = self.client("echo", str(out_file))

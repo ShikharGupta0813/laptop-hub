@@ -216,6 +216,17 @@ def _patch_for_demo(root: Path) -> Path:
     return folder
 
 
+def _fake_cli_providers() -> None:
+    """A CLI login entry (agy, gemini...) must never start a real program from the dev server."""
+    from . import cliprov
+
+    async def no_spawn(*argv, **kwargs):
+        raise OSError("the dev server never starts real programs")
+
+    cliprov.thread_spawn = no_spawn
+    cliprov.build_guarded = lambda config, audit, ident, *a, **k: FakeLLM()
+
+
 def build(port: int):
     os.environ.setdefault("HUB_DEMO", "1")  # feature modules fill themselves with sample data
     os.environ.setdefault("HUB_WORK_DEMO", "1")  # Work tab shows sample tasks, meetings and contacts
@@ -238,10 +249,13 @@ def build(port: int):
         data_dir=str(root / "data"),  # never the real ~/.laptop-hub/data
         ccsessions_dir=str(root / "ccsessions"),  # never the real ~/.claude/projects (it holds real session names)
         port=port, jarvis_dir=str(jarvis_folder),
+        default_provider="local",   # "auto" must mean the fake model here, never a real CLI login, key or Ollama
         apps={"Notepad": {"target": "notepad.exe", "args": []}, "Calculator": {"target": "calc.exe", "args": []}},
         scripts={"hello": {"label": "Say hello", "argv": ["echo", "hello from a button"]}})
-    deps = Deps(llm=FakeLLM(), claude=FakeLLM(), transcriber=FakeTranscriber(),
-                assistant=FakeAssistant())
+    # Every provider is a fake (also gemini, the claude login and duo), so the "auto" chain, Friday and the notes
+    # tagger can never reach a real cloud key, CLI login program or Ollama on the machine running this.
+    deps = Deps(llm=FakeLLM(), claude=FakeLLM(), claude_login=FakeLLM(), gemini=FakeLLM(), duo=FakeLLM(),
+                transcriber=FakeTranscriber(), assistant=FakeAssistant())
     return create_app(config, deps, audit_path=root / "audit.log"), root
 
 
@@ -249,6 +263,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8799)
     args = parser.parse_args()
+    _fake_cli_providers()      # process-wide, so only when really serving (tests call build() alone)
     app, root = build(args.port)
     print(f"Dev hub on http://127.0.0.1:{args.port}   token: {DEV_TOKEN}   data: {root}")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
