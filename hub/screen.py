@@ -36,7 +36,9 @@ from .llm import FALLBACK_BETA, LLMError
 
 log = logging.getLogger("hub.screen")
 
-INSTALL_HINT = "Run scripts\\setup-all.ps1 (or: pip install -r requirements-screen.txt)"
+from .common import setup_all_hint
+
+INSTALL_HINT = setup_all_hint()
 
 # ---- limits -----------------------------------------------------------------------------------------
 FRAMES_PER_SECOND_LIMIT = 6      # per logged-in session, for /frame

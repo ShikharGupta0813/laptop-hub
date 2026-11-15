@@ -3,8 +3,9 @@
 // through renderMarkdown (sanitised). innerHTML is never fed raw text.
 import { sse, renderMarkdown, el, ApiError } from "./api.js";
 import * as ui from "./ui.js";
-import { lanePicker, runInLane } from "./lanepicker.js";
-import { providerSegmented, normalizeProvider, defaultProvider, loadProviders } from "./providers.js";
+import { startLaneRun, waitForRun, resultSheet } from "./lanepicker.js";
+import { defaultProvider, loadProviders, providerLabel } from "./providers.js";
+import { aiButton, normalizeChoice, isLaneChoice, laneOf, chooseLane, loadChoices, councilSetupSheet, COUNCIL_OFF } from "./aichat.js";
 
 const SUGGESTIONS = [
   "What's using my disk space?",
@@ -33,6 +34,21 @@ const store = {
     try { window[area].setItem(key, value); } catch (_) { /* not remembered, still works */ }
   },
 };
+
+// The AI chosen for each conversation ("AI for this chat"): {sessionId: choice}, newest last, 40 kept. The last choice
+// also becomes the start for the next new chat.
+const AI_MAP_KEY = "hub.assistant.chatai";
+function readAiMap() {
+  try { const m = JSON.parse(store.get("localStorage", AI_MAP_KEY, "{}")); return m && typeof m === "object" && !Array.isArray(m) ? m : {}; } catch (_) { return {}; }
+}
+function rememberAi(sid, choice) {
+  const map = readAiMap();
+  delete map[sid];
+  map[sid] = choice;
+  for (const old of Object.keys(map).slice(0, Math.max(0, Object.keys(map).length - 40))) delete map[old];
+  store.set("localStorage", AI_MAP_KEY, JSON.stringify(map));
+  store.set("localStorage", "hub.assistant.provider", choice);
+}
 
 function newSessionId() {
   const bytes = new Uint8Array(12);
@@ -117,7 +133,7 @@ export function init(container, ctx) {
   store.set("sessionStorage", "hub.assistant.session", sessionId);
 
   const prefs = {
-    provider: normalizeProvider(store.get("localStorage", "hub.assistant.provider", "") || defaultProvider()),
+    provider: normalizeChoice(readAiMap()[sessionId] || store.get("localStorage", "hub.assistant.provider", "") || defaultProvider()),
     speak: store.get("localStorage", "hub.assistant.speak", "1") !== "0",
     autoSend: store.get("localStorage", "hub.assistant.autosend", "1") !== "0",
     // Per browser session only (sessionStorage), never localStorage: off again after a restart.
@@ -133,9 +149,7 @@ export function init(container, ctx) {
   let fullControl = false; // hub-wide Full Control: no approval prompts at all (fullcontrol.js keeps this in step)
 
   // ---------------------------------------------------------------- toolbar (no header chrome: the top bar is the header)
-  const providerSeg = providerSegmented({
-    value: prefs.provider, label: "Which assistant answers", onChange: (v) => setProvider(v),
-  });
+  const providerSeg = aiButton({ value: prefs.provider, ctx, onChange: (v) => setProvider(v) });
   const optionsButton = ui.button({
     variant: "ghost", iconOnly: true, icon: "sliders", "aria-label": "Assistant options", "aria-expanded": "false",
     "aria-controls": "as-options", onClick: () => toggleOptions(),
@@ -170,7 +184,7 @@ export function init(container, ctx) {
       optionRow("Read answers aloud", null, speakSwitch),
       optionRow("Send automatically after I speak", "For the mic button", autoSendSwitch)));
 
-  const toolbar = el("div", { class: "as-bar" }, providerSeg, el("span", { class: "grow" }), optionsButton, newChatButton);
+  const toolbar = el("div", { class: "as-bar" }, providerSeg.el, optionsButton, newChatButton);
 
   const autoBannerText = el("span", { class: "grow" }, "Commands run without asking, and files can change.");
   const autoBannerBtn = ui.button({ variant: "ghost", size: "sm", label: "Turn off", onClick: () => setAutoApprove(false) });
@@ -217,10 +231,11 @@ export function init(container, ctx) {
   const fridayChip = el("button", { type: "button", class: "ui-chip as-friday", onclick: () => ctx.open("friday") },
     ui.icon("sparkles"), "Friday");
   const pill = el("div", { class: "as-pill" }, micButton, input, voiceButton, sendButton, stopButton);
-  // Work lanes (docs/api/lanes.md): Auto = the normal assistant; any other lane hands the message to that lane instead.
-  const lanes = lanePicker({ value: "auto", label: "Send to", onChange: (v) => { laneChoice = v; input.placeholder = v === "auto" ? "Message your laptop…" : "Message to hand to this lane…"; } });
-  let laneChoice = "auto";
-  const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip, lanes.el), pill);
+  // Work lanes (docs/api/lanes.md) are a separate, explicit action: "Send to lane" hands the written message to one lane
+  // and posts the answer in the chat (the result sheet is only an optional detail). Which AI answers normally is the
+  // "AI for this chat" button in the toolbar.
+  const laneChip = el("button", { type: "button", class: "ui-chip as-lane", onclick: () => sendToLane() }, ui.icon("share"), "Send to lane");
+  const composer = el("div", { class: "as-composer" }, notice, recBar, el("div", { class: "as-friday-row" }, fridayChip, laneChip), pill);
 
   // The core: Jarvis = cyan orb, Friday = amber orb. It follows whoever answered last (persona routing is server-side,
   // by a leading name), pulses while the assistant works and shows a waveform line while words stream in.
@@ -254,7 +269,7 @@ export function init(container, ctx) {
   list.append(empty);
   // No saved choice: use the hub's default AI (Claude key, Gemini, Claude login or local) once it is known.
   if (!store.get("localStorage", "hub.assistant.provider", "")) {
-    loadProviders().then(() => { prefs.provider = normalizeProvider(defaultProvider()); providerSeg.value = prefs.provider; });
+    loadProviders().then(() => { if (!readAiMap()[sessionId]) { prefs.provider = normalizeChoice(defaultProvider()); providerSeg.value = prefs.provider; } });
   }
 
   // ---------------------------------------------------------------- prefs / controls
@@ -270,7 +285,8 @@ export function init(container, ctx) {
 
   function setProvider(id) {
     prefs.provider = id;
-    store.set("localStorage", "hub.assistant.provider", id);
+    rememberAi(sessionId, id);                 // remembered for THIS conversation, and as the start of the next one
+    input.placeholder = "Message your laptop…";
   }
 
   function toggleOptions(force) {
@@ -681,6 +697,19 @@ export function init(container, ctx) {
       case "note":
         if (ev.text) showNotice(ev.text);
         break;
+      case "answered_by": {
+        // under the reply: which AI really wrote it (a not-ready pick falls back to the next one that works)
+        const picked = t.picked || prefs.provider;
+        const last = t.bubbles[t.bubbles.length - 1];
+        const same = !ev.provider || picked === "auto" || picked === ev.provider || isLaneChoice(picked);
+        const caption = el("div", { class: "as-by", "data-provider": ev.provider || "" },
+          el("span", {}, `answered by ${ev.label || providerLabel(ev.provider)}` + (same ? "" : ` (${providerLabel(picked)} wasn't available)`)),
+          ev.detail ? el("button", { type: "button", class: "as-by__link", onclick: ev.detail }, "Details") : null);
+        (last ? last.wrap : list.lastElementChild || list).after(caption);
+        t.by = caption;
+        scrollToBottom();
+        break;
+      }
       case "stopped":
         t.stopped = true;
         break;
@@ -701,13 +730,12 @@ export function init(container, ctx) {
 
   // `vh` (optional) are the hooks voice mode passes in: {onEvent, onApproval, onApprovalDone, onApprovalError}.
   // Resolves with {text, stopped, hadError} once the turn is over.
-  async function send(raw, vh = null, persona = "auto") {
+  // `lane` (optional) = hand THIS message to that work lane ("Send to lane"); otherwise the AI chosen for this chat answers,
+  // and a lane choice ("Council", "Local deep thinking") also answers through its lane. Either way the reply lands in the chat.
+  async function send(raw, vh = null, persona = "auto", lane = "") {
     const text = (raw || "").trim();
     if (!text || streaming) return null;
-    if (laneChoice !== "auto" && !vh) {                       // a lane was picked: hand the text to it, not to the chat
-      if (await runInLane(text, laneChoice)) { input.value = ""; resizeInput(); }
-      return null;
-    }
+    const viaLane = lane || (isLaneChoice(prefs.provider) ? laneOf(prefs.provider) : "");
     if (micState === "recording") cancelRecording();
     showNotice("");
     stopSpeech();
@@ -717,7 +745,7 @@ export function init(container, ctx) {
 
     const t = {
       sid: sessionId, bubble: null, bubbles: [], cards: new Map(), pending: null, typing: null, voice: vh,
-      gotEvent: false, gotDone: false, stopped: false, hadError: false,
+      gotEvent: false, gotDone: false, stopped: false, hadError: false, picked: viaLane ? `lane:${viaLane}` : prefs.provider,
     };
     turn = t;
     controller = new AbortController();
@@ -729,7 +757,8 @@ export function init(container, ctx) {
 
     try {
       const payload = { session_id: t.sid, text, provider: prefs.provider, auto_approve: prefs.autoApprove, persona, voice: !!vh };
-      for (let attempt = 1; ; attempt++) {
+      if (viaLane) await laneTurn(t, text, viaLane, signal);
+      else for (let attempt = 1; ; attempt++) {
         try {
           for await (const ev of sse("/api/assistant/message", payload, signal)) {
             t.gotEvent = true;
@@ -763,6 +792,54 @@ export function init(container, ctx) {
       finishTurn(t);
     }
     return { text: t.bubbles.map((b) => b.raw).join("\n\n").trim(), stopped: t.stopped, hadError: t.hadError, error: t.errorMessage };
+  }
+
+  // A work-lane answer, posted into the chat exactly like a streamed reply (so it is spoken when voice is on, and voice mode
+  // hears it). Council runs in the background: the typing dots stay until it finishes, and Stop cancels it.
+  async function laneTurn(t, text, laneId, signal) {
+    t.gotEvent = true;                              // the user's message stays on screen whatever happens next
+    const fail = (message) => { handleEvent(t, { type: "error", message }); handleEvent(t, { type: "done" }); };
+    let label = laneId === "council" ? "Council" : laneId === "local-reasoning" ? "Local deep thinking" : laneId;
+    try {
+      const choice = (await loadChoices(true)).find((c) => c.id === `lane:${laneId}`);
+      if (choice) label = choice.label;
+      if (choice && !choice.ready) {
+        if (t.typing) { t.typing.remove(); t.typing = null; }
+        if (laneId === "council") {
+          append(el("div", { class: "as-msg as-noterow" }, el("div", { class: "as-note" }, `${COUNCIL_OFF}.`),
+            ui.button({ label: "How to set up", icon: "help", variant: "tonal", size: "sm", onClick: () => councilSetupSheet(ctx) })));
+          t.hadError = true; t.gotDone = true;
+        } else fail(`${label} can't answer right now: ${choice.reason || "it isn't ready"}`);
+        return;
+      }
+      let run = await startLaneRun({ task: text, lane: laneId });
+      if (run.running) {
+        showNotice(`${label} is working in the background. This can take a few minutes; the answer will appear here.`);
+        try { run = await waitForRun(run, { stopped: () => signal.aborted || t.stopped }); } finally { showNotice(""); }
+      }
+      if (signal.aborted || t.stopped) {
+        if (run?.id && run.running !== false) ctx.api(`/api/lanes/runs/${run.id}/cancel`, { method: "POST", json: {} }).catch(() => {});
+        t.gotDone = true;
+        return;
+      }
+      if (run.status === "done" && run.answer) {
+        handleEvent(t, { type: "text", t: run.answer });
+        handleEvent(t, { type: "answered_by", provider: `lane:${laneId}`, label: run.lane && run.lane !== laneId ? `${label} (${run.lane})` : label,
+          detail: () => resultSheet(run) });
+        handleEvent(t, { type: "done" });
+      } else fail(run.note || `${label} could not finish.`);
+    } catch (error) {
+      if (!signal.aborted) fail(error?.message || `${label} could not answer.`); else t.gotDone = true;
+    }
+  }
+
+  // "Send to lane": one explicit hand-over of the written message. The chat AI stays as it was.
+  async function sendToLane() {
+    const text = input.value.trim();
+    if (!text) { ui.toast("Write the message first, then choose a lane.", { kind: "warn" }); return; }
+    if (streaming) return;
+    const laneId = await chooseLane({ ctx });
+    if (laneId) send(text, null, "auto", laneId);
   }
 
   function finishTurn(t) {
@@ -813,6 +890,7 @@ export function init(container, ctx) {
     stopSpeech();
     sessionId = newSessionId();
     store.set("sessionStorage", "hub.assistant.session", sessionId);
+    rememberAi(sessionId, prefs.provider);      // a new chat starts with the AI you were using
     // A fresh chat starts safe: commands need a tap again.
     if (prefs.autoApprove) { prefs.autoApprove = false; store.set("sessionStorage", "hub.assistant.autoapprove", "0"); syncControls(); }
     list.replaceChildren(empty);

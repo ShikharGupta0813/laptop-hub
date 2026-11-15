@@ -393,7 +393,7 @@ class Deps(unittest.TestCase):
         d.start()
         st = d.status()
         self.assertEqual(st["state"], "missing_dependency")
-        self.assertIn("python -m pip install pynput sounddevice", st["message"])
+        self.assertIn("scripts\\setup-all.ps1 (installs everything)", st["message"])
         self.assertFalse(st["active"])
 
     def test_missing_sounddevice_status(self):
@@ -427,7 +427,7 @@ class Deps(unittest.TestCase):
         with mock.patch.object(dictation.importlib.util, "find_spec", return_value=None):
             ok, text = dictation.doctor_line(config)
         self.assertFalse(ok)
-        self.assertIn("pip install", text)
+        self.assertIn("setup-all.ps1", text)
 
 
 class Routes(unittest.TestCase):

@@ -52,12 +52,12 @@ export function listEditor({ title, hint, items = [], rowOf, onToggle, onEdit, o
 
   function paint() {
     list.replaceChildren(...(current.length ? current.map(row) : [el("p", { class: "ui-hint le-empty" }, empty)]));
-    foot.replaceChildren(
+    foot.replaceChildren(...[
       onAdd ? ui.button({ label: addLabel, icon: "plus", variant: "tonal", size: "sm", onClick: () => onAdd() }) : null,
       onReset ? ui.button({ label: resetLabel, icon: "refresh", variant: "ghost", size: "sm", onClick: async () => {
         if (!(await ui.confirm({ title: resetLabel + "?", message: "Your changes to this list are removed.", confirmLabel: "Reset", danger: true, icon: "refresh" }))) return;
         try { await onReset(); } catch (error) { fail(error); }
-      } }) : null);
+      } }) : null].filter(Boolean));
   }
   paint();
   return { el: root, set(next) { current = Array.isArray(next) ? next : []; paint(); }, get items() { return current; } };

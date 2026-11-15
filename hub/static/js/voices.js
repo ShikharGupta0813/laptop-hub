@@ -6,6 +6,7 @@ import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
 import { forgetAssistants, refreshAssistants } from "./assistants.js";
 import { forgetVoiceStatus, createAudioPlayer, explainProblem } from "./hubtts.js";
+import { SETUP_ALL, setupHint } from "./setuphint.js";
 
 const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });

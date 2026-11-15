@@ -53,7 +53,9 @@ RATE = 16000
 FRAME = 512
 CHUNK = 24                      # characters typed per burst
 MIN_S = 0.25                    # a shorter hold is an accidental tap
-INSTALL_HINT = "Dictation needs optional packages. Run scripts\\setup-all.ps1 (or: python -m pip install pynput sounddevice)"
+from .common import setup_all_hint
+
+INSTALL_HINT = setup_all_hint("Dictation")
 
 DEFAULT_BLOCKLIST = ["password", "keepass", "bitwarden", "1password", "lastpass"]
 DEFAULT_SPOKEN = {"comma": ",", "full stop": ".", "question mark": "?", "exclamation mark": "!", "colon": ":",

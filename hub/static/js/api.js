@@ -1,5 +1,18 @@
 // Shared helpers for talking to the hub. Every tab module imports from here.
 
+// The browser turns a null/undefined child of append()/prepend()/replaceChildren() into the TEXT "null"/"undefined"
+// (e.g. `foot.replaceChildren(onAdd ? button : null)` printed "null" in Settings > Voices). Every screen builds its
+// DOM that way, so skip those children once, here (api.js is imported by every screen module).
+for (const proto of [Element.prototype, DocumentFragment.prototype]) {
+  for (const name of ["append", "prepend", "replaceChildren"]) {
+    const native = proto[name];
+    if (typeof native !== "function" || native.__skipsEmpty) continue;
+    const wrapped = function (...nodes) { return native.apply(this, nodes.filter((n) => n !== null && n !== undefined && n !== false)); };
+    wrapped.__skipsEmpty = true;
+    proto[name] = wrapped;
+  }
+}
+
 export class ApiError extends Error {
   constructor(status, message) {
     super(message);

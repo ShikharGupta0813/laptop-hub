@@ -5,6 +5,7 @@
 // itself, and every input uses normalized 0..1 coordinates. Polling stops whenever the screen is hidden.
 import { api, ApiError, el, renderMarkdown } from "./api.js";
 import * as ui from "./ui.js";
+import { SETUP_ALL, setupHint } from "./setuphint.js";
 
 // A sheet button that is still working ignores further taps (a double-tap must not send two requests).
 const guard = (actions) => (actions || []).map((a) => {
@@ -107,7 +108,7 @@ export function init(container, ctx) {
           el("div", { class: "ui-row__body" }, el("div", { class: "ui-row__title" }, "Screen view isn't set up"),
             el("div", { class: "ui-row__sub" }, s.reason || "The screen libraries are not installed on the laptop."))),
         el("p", { class: "sc-hint" }, "On the laptop, run this once, then restart the hub:"),
-        el("code", { class: "sc-code" }, "pip install -r requirements-screen.txt"),
+        el("code", { class: "sc-code" }, SETUP_ALL),
         el("div", { class: "sc-actions" }, ui.button({ label: "Check again", icon: "refresh", variant: "tonal", onClick: (e) => ui.busy(e.currentTarget, loadStatus()) })));
       viewer.hidden = true; controls.hidden = true;
       return;
@@ -525,7 +526,7 @@ export function init(container, ctx) {
     minutesSeg = ui.segmented({ label: "Control time", options: [1, 5, 10, 15].map((m) => ({ value: m, label: `${m} min` })), value: S.minutes, block: true, onChange: (v) => { S.minutes = v; store.set("minutes", v); } });
     const controlCard = el("div", { class: "ui-card sc-card" },
       el("div", { class: "ui-card__head" }, el("div", {}, el("div", { class: "ui-card__title" }, "Control"), el("div", { class: "ui-card__sub" }, "Off until you enable it. It expires by itself."))),
-      s.control_available ? [minutesSeg, armBtn, disarmBtn] : ui.notice(s.control_reason || "Control needs pyautogui on the laptop (requirements-screen.txt).", { tone: "warn" }));
+      s.control_available ? [minutesSeg, armBtn, disarmBtn] : ui.notice(s.control_reason || "Control needs pyautogui on the laptop. " + setupHint() + "", { tone: "warn" }));
     modeRow = ui.segmented({ label: "Touch mode", block: true, value: S.mode, options: [{ value: "trackpad", label: "Trackpad" }, { value: "direct", label: "Direct touch" }], onChange: (v) => { S.mode = v; store.set("mode", v); } });
     const smooth = ui.switchControl({ checked: S.smooth, label: "Smooth video", onChange: (v) => { S.smooth = v; store.set("smooth", v); startView(); } });
     const saver = ui.switchControl({ checked: S.saver, label: "Data saver", onChange: (v) => { S.saver = v; store.set("saver", v); startView(); } });

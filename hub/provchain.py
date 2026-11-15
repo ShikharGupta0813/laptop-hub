@@ -201,6 +201,7 @@ class ChainModel:
         self.build = build
         self.say = say or (lambda text: log.info("%s", text))
         self.ollama_up = ollama_up or (lambda: None)
+        self.used = ""          # the provider that really answered the last call (for "answered by ...")
 
     def _plan(self) -> tuple[list[str], list[tuple[str, str]]]:
         up = self.ollama_up()
@@ -216,6 +217,7 @@ class ChainModel:
 
     def _done(self, used: str, skipped: list[tuple[str, str]], failed: list[tuple[str, str]]) -> None:
         LAST.update(used=used, skipped=[{"id": i, "why": w} for i, w in skipped + failed], at=time.time())
+        self.used = used
         first = ordered_ids(self.config, self.choice)[0]
         if used != first or failed:
             why = (dict(skipped + failed).get(first) or "not ready")

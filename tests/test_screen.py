@@ -826,7 +826,7 @@ class RealSystemTests(unittest.TestCase):
         lines = out.stdout.strip().splitlines()
         self.assertEqual(len(lines), 3)
         for line in lines:
-            self.assertIn("pip install -r requirements-screen.txt", line)
+            self.assertIn("scripts\\setup-all.ps1 (installs everything)", line)
         self.assertIn("not installed", lines[0])
         self.assertIn("not installed", lines[1])
 

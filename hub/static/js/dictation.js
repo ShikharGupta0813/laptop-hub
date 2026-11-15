@@ -4,6 +4,7 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 import { listEditor, formSheet } from "./listeditor.js";
+import { setupHint } from "./setuphint.js";
 
 const CSS = "/css/dictation.css";
 const good = (text) => ui.toast(text, { kind: "good" });
@@ -147,7 +148,7 @@ export async function openDictation(onChange) {
       notice,
       el("p", { class: "ui-hint" }, "Hold the hotkey on the laptop, say a sentence, let go. The words are typed into WHATEVER WINDOW HAS FOCUS at that moment: an editor, a browser, a chat. It never presses Enter by itself."),
       el("div", { class: "ui-list ui-list--inset ui-list--icons" },
-        switchRow("Dictation on", "Needs the optional packages: python -m pip install pynput sounddevice", s.enabled, (on) => toggle({ enabled: on })),
+        switchRow("Dictation on", setupHint("Dictation"), s.enabled, (on) => toggle({ enabled: on })),
         switchRow("Pause", "Keeps the settings but ignores the hotkey.", s.paused, (on) => toggle({ paused: on }))),
       hotkeyField(),
       el("section", { class: "ui-card ui-stack" }, ui.eyebrow("02", "How it behaves"),
