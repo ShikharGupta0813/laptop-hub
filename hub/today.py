@@ -246,10 +246,10 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
         ok, status = await ccall("GET", "/api/work/status")
         me = clean(((status.get("asana") or {}).get("user")) if ok and isinstance(status, dict) else "", 80).lower()
         updated, commented = [], []
-        for t in (late + due)[:ASANA_DETAIL_LIMIT]:
-            if not t["gid"].isdigit():
-                continue
-            ok, detail = await ccall("GET", f"/api/work/asana/tasks/{t['gid']}")
+        picked = [t for t in (late + due)[:ASANA_DETAIL_LIMIT] if t["gid"].isdigit()]
+        # one request per task, asked together (they were one after another, ~20 s on a live refresh); order is kept
+        details = await asyncio.gather(*(ccall("GET", f"/api/work/asana/tasks/{t['gid']}") for t in picked))
+        for t, (ok, detail) in zip(picked, details):
             task = detail.get("task") if ok and isinstance(detail, dict) else None
             if not isinstance(task, dict):
                 continue
