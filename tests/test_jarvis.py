@@ -45,12 +45,20 @@ def jarvis_processes(folder: Path) -> list[psutil.Process]:
     found = []
     for proc in psutil.process_iter():
         try:
-            if proc.status() != psutil.STATUS_ZOMBIE and "jarvis.py" in " ".join(proc.cmdline()) \
+            if "jarvis.py" in " ".join(proc.cmdline()) and proc.status() != psutil.STATUS_ZOMBIE \
                     and os.path.samefile(proc.cwd(), folder):
                 found.append(proc)
         except (psutil.Error, OSError):
             continue
     return found
+
+
+def running_jarvis_count(folder: Path) -> int:
+    """How many Jarvis instances run from `folder`. A Windows venv python.exe is a launcher that starts the real
+    interpreter as its child, so a process whose parent is also a match is the same instance."""
+    procs = jarvis_processes(folder)
+    pids = {p.pid for p in procs}
+    return len([p for p in procs if p.ppid() not in pids])  # ppid only for the few matches: it is slow on Windows
 
 
 def is_gone(pid: int) -> bool:
@@ -205,7 +213,7 @@ class StartStopTests(JarvisCase):
         first = self.start(client)
         second = self.start(client)
         self.assertEqual(first["pid"], second["pid"])
-        self.assertEqual(len(jarvis_processes(self.dir)), 1)
+        self.assertEqual(running_jarvis_count(self.dir), 1)
         self.assertEqual([a[0] for a in self.audits], ["jarvis_start"])        # only one real start
         self.stop(client)
 
@@ -221,7 +229,7 @@ class StartStopTests(JarvisCase):
         for t in threads:
             t.join(30)
         self.assertEqual(len({r["pid"] for r in results}), 1, results)
-        self.assertEqual(len(jarvis_processes(self.dir)), 1)
+        self.assertEqual(running_jarvis_count(self.dir), 1)
         self.stop(client)
 
     def test_stop_needs_confirmation_then_ends_jarvis_and_its_children(self):
@@ -302,7 +310,7 @@ class PidPersistenceTests(JarvisCase):
         status = second.get("/api/jarvis/status").json()
         self.assertEqual((status["running"], status["pid"]), (True, pid))
         self.assertEqual(self.start(second)["pid"], pid)               # no second process
-        self.assertEqual(len(jarvis_processes(self.dir)), 1)
+        self.assertEqual(running_jarvis_count(self.dir), 1)
         self.assertEqual(self.stop(second).status_code, 200)
         self.assertTrue(is_gone(pid))
         self.assertFalse(first.get("/api/jarvis/status").json()["running"])

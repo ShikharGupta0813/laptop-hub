@@ -1,6 +1,7 @@
 """Cross-feature checks over the REAL tool registry and app: taint gate for every changing tool after every untrusted
 tool, outbound tools asking in Full Control, redaction of results from new tools, secrets never in responses or the
 audit log, and the alert -> proactive -> notification/spoken pipeline. Fakes only."""
+import asyncio
 import os
 import re
 import shutil
@@ -107,6 +108,11 @@ class EveryToolValidatesTest(RealRegistry):
 
 
 class TaintAcrossModulesTest(RealRegistry):
+    async def asyncSetUp(self):
+        # IsolatedAsyncioTestCase runs the loop in debug mode, which records a stack for every scheduled callback; across
+        # the several hundred (untrusted x changing) turns below that costs minutes on Windows (slow linecache stat calls).
+        asyncio.get_running_loop().set_debug(False)
+
     async def test_every_untrusted_tool_blocks_every_changing_tool(self):
         self.maxDiff = None
         tools = self.tools()
