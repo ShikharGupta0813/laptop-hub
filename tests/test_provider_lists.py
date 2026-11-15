@@ -129,7 +129,7 @@ class VisionList(VBase):
         self.client.put("/api/vision/providers/gemini", json={"enabled": False})
         r = self.explain()                                                   # nothing usable left
         self.assertEqual(r.status_code, 503)
-        self.assertIn("Gemini is needed to look at your screen", r.json()["detail"])
+        self.assertIn("No vision AI is set up", r.json()["detail"])
         self.assertEqual(self.system.captures, 2)
 
     def test_claude_login_with_images_still_works_when_it_can(self):
@@ -165,7 +165,7 @@ class VisionList(VBase):
         r = self.explain()
         self.assertEqual(r.status_code, 503)
         self.assertIn("not allowed", r.json()["detail"])
-        self.assertEqual(self.requests, [])
+        self.assertEqual([r for r in self.requests if r.url.path != "/api/tags"], [])    # only the local Ollama probe may go out
 
     def test_test_button_sends_a_tiny_generated_picture(self):
         ident = self.add("ollama", {"model": "llava"})

@@ -47,7 +47,13 @@
 #view-screen .sc-keys[hidden] { display: none; }
 #view-screen .sc-key { flex: none; min-width: var(--tap); height: var(--tap); padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--c-line-strong); background: var(--c-surface-2); color: var(--c-text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-medium); display: inline-grid; place-items: center; cursor: pointer; }
 #view-screen .sc-key:active { background: var(--c-surface-3); transform: scale(.97); }
-#view-screen .sc-typer { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; font-size: var(--fs-base); pointer-events: none; }
+#view-screen .sc-kbar { display: flex; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--c-surface-1); border-top: 1px solid var(--c-line); }
+#view-screen .sc-kbar .ui-btn.is-on { background: var(--c-accent); color: var(--c-on-accent, #fff); }
+#view-screen .sc-kbpanel { padding: var(--sp-3); background: var(--c-surface-1); border-top: 1px solid var(--c-line); }
+#view-screen .sc-kbpanel[hidden] { display: none; }
+#view-screen .sc-typer, #view-screen .sc-sendtext { width: 100%; box-sizing: border-box; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--c-line-strong); background: var(--c-surface-2); color: var(--c-text); font: inherit; font-size: 16px; }
+#view-screen .sc-sendtext { resize: vertical; }
+.sc-working { display: flex; align-items: center; gap: var(--sp-2); }
 #view-screen .sc-paste, #view-screen .sc-ask { width: 100%; }
 .sc-answer .markdown { font-size: var(--fs-md); }
 .sc-answer__text { font-size: var(--fs-md); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }

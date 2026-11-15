@@ -340,10 +340,16 @@ class KeyboardTests(ScreenCase):
 
     def test_named_keys_are_allowed(self):
         names = ["enter", "esc", "tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
-                 "pageup", "pagedown", "space"] + [f"f{n}" for n in range(1, 13)]
+                 "pageup", "pagedown", "space", "win"] + [f"f{n}" for n in range(1, 13)]
         for name in names:
             self.assertEqual(self.send(action="key", key=name).status_code, 200, name)
         self.assertEqual([c[1] for c in self.system.of("press")], names)
+
+    def test_unicode_and_multiline_text_is_typed_and_kept_out_of_the_audit(self):
+        text = "caf\u00e9 \u65e5\u672c\u8a9e \U0001f600\nline two"
+        self.assertEqual(self.send(action="type", text=text).status_code, 200)
+        self.assertEqual(self.system.of("type")[0][1], text)
+        self.assertNotIn("caf", self.audit_dump())
 
     def test_aliases_and_case(self):
         self.assertEqual(self.send(action="key", key=" Escape ").status_code, 200)
@@ -351,7 +357,7 @@ class KeyboardTests(ScreenCase):
         self.assertEqual([c[1] for c in self.system.of("press")], ["esc", "pagedown"])
 
     def test_other_keys_are_refused(self):
-        for key in ("a", "f13", "printscreen", "ctrl", "win", "alt", "capslock", "ctrl+c", "", "  ", "enter; calc", "\x1b"):
+        for key in ("a", "f13", "printscreen", "ctrl", "alt", "capslock", "ctrl+c", "", "  ", "enter; calc", "\x1b"):
             r = self.send(action="key", key=key)
             self.assertEqual(r.status_code, 400, repr(key))
         for bad in (None, 5, ["enter"], True):

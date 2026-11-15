@@ -58,7 +58,7 @@ MSG_DISARMED = "Remote control is off. Tap Enable control first."
 # ---- keyboard allow-lists ---------------------------------------------------------------------------
 NAMED_KEYS = frozenset(
     ["enter", "esc", "tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
-     "pageup", "pagedown", "space"] + [f"f{n}" for n in range(1, 13)])
+     "pageup", "pagedown", "space", "win"] + [f"f{n}" for n in range(1, 13)])
 KEY_ALIASES = {"escape": "esc", "return": "enter", "del": "delete", "pgup": "pageup", "pgdn": "pagedown",
                "pageup": "pageup", "pagedown": "pagedown", "spacebar": "space", "arrowup": "up",
                "arrowdown": "down", "arrowleft": "left", "arrowright": "right"}
@@ -345,7 +345,7 @@ def clean_key(raw: Any) -> str:
     name = KEY_ALIASES.get(name, name)
     if name not in NAMED_KEYS:
         raise BadInput(f"The key '{raw.strip()[:30]}' is not on the allowed list. Allowed: Enter, Esc, Tab, "
-                       "Backspace, Delete, arrows, Home, End, Page up/down, Space and F1 to F12.")
+                       "Backspace, Delete, arrows, Home, End, Page up/down, Space, Win and F1 to F12.")
     return name
 
 
