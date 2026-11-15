@@ -1,5 +1,5 @@
 /* Automations. Screen rules scoped under #view-automations; the editor and results live in sheets (body), scoped under .au-sheet. */
-#view-automations .au-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) var(--gutter) calc(var(--sp-10) + var(--sp-8)); position: relative; }
+#view-automations .au-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) 0 calc(var(--sp-10) + var(--sp-8)); position: relative; }
 #view-automations .au-head { position: sticky; top: 0; z-index: 2; padding: var(--sp-1) 0 var(--sp-2); background: var(--c-bg); }
 #view-automations .au-new { position: fixed; right: max(var(--gutter), calc(50% - var(--content-max) / 2 + var(--gutter))); bottom: calc(var(--nav-h) + var(--sp-5) + env(safe-area-inset-bottom)); z-index: 3; box-shadow: var(--shadow-accent), var(--shadow-3); border-radius: var(--r-lg); }
 #view-automations .au-new[hidden] { display: none; }

@@ -1,5 +1,5 @@
 /* Posts (route id devto). Scoped under #view-devto; tokens only. */
-#view-devto .dv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-devto .dv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-devto .dv > *, #view-devto .dv-card > * { min-width: 0; }
 #view-devto .dv-card { padding: var(--sp-4); }
 #view-devto .dv-tabs { width: 100%; }

@@ -1,5 +1,5 @@
 /* Tailor (js/tailor.js). ARC-Glass tokens only; every grid child can shrink (min-width: 0) so nothing overflows at 390px. */
-#view-tailor .tl { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-tailor .tl { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-tailor .tl > * { min-width: 0; }
 #view-tailor .tl-form, #view-tailor .tl-fit, #view-tailor .tl-cover, #view-tailor .tl-resume { padding: var(--sp-4); min-width: 0; }
 #view-tailor .tl-form .ui-input, #view-tailor .tl-form select, #view-tailor .tl-form textarea { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }

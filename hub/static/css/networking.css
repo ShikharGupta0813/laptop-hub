@@ -1,5 +1,5 @@
 /* Networking drafts. Scoped under the view id; tokens only. Fits 390 px: one column, wrapping text, 40 px+ tap targets. */
-#view-networking .nw { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-networking .nw { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-networking .nw > * { min-width: 0; }
 .nw-note, .nw-sub { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .nw-sub { display: block; color: var(--c-text-2); }

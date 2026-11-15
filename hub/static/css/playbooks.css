@@ -1,5 +1,5 @@
 /* Playbooks (js/playbooks.js). ARC-Glass tokens only; every grid child can shrink (min-width: 0) so nothing overflows at 390px. */
-#view-playbooks .pb { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-playbooks .pb { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-playbooks .pb > * { min-width: 0; }
 .pb-master { border: 1px solid var(--c-line); border-radius: var(--r-lg, 12px); background: var(--c-surface-2, var(--c-surface-1)); }
 .pb-badges, .pb-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; min-width: 0; }

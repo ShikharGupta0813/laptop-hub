@@ -1,5 +1,5 @@
 /* Interview coach. Scoped under the view id; tokens only. Fits 390 px: one column, wrapping text, 40 px+ tap targets. */
-#view-interviews .iv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-interviews .iv { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-interviews .iv > * { min-width: 0; }
 .iv-note { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .iv-h { margin: 0; font-size: var(--fs-md, 1rem); }

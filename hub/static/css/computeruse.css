@@ -1,5 +1,5 @@
 /* Computer control (js/computeruse.js). Scoped under #view-computer. Tokens only; no horizontal overflow at 390px. */
-#view-computer .cu { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-computer .cu { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-computer .cu > * { min-width: 0; }
 #view-computer .cu-card { padding: var(--sp-4); }
 #view-computer .cu-card--live { border-color: color-mix(in srgb, var(--c-bad) 50%, transparent); }

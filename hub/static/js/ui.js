@@ -471,7 +471,7 @@ export function segmented({ options = [], value, onChange, label = "Options", bl
     node.style.setProperty("--n", String(Math.max(1, options.length)));
     // Many or long labels cannot share equal columns on a phone (they overlapped): scroll sideways instead.
     const chars = options.reduce((n, o) => n + String(o.label ?? "").length, 0);
-    node.classList.toggle("ui-seg--scroll", options.length > 4 && chars > 30);
+    node.classList.toggle("ui-seg--scroll", (options.length > 4 && chars > 30) || (options.length > 2 && chars > 40));
     buttons = options.map((opt, i) => {
       const b = el("button", { type: "button", role: "radio", "data-value": String(opt.value) },
         opt.icon ? icon(opt.icon) : null, opt.label);

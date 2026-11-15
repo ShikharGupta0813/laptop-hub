@@ -1,5 +1,5 @@
 /* Job tracker. Scoped under #view-jobtrack; tokens only. */
-#view-jobtrack .jt { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-jobtrack .jt { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-jobtrack .jt > * { min-width: 0; }
 .jt-stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .jt-stat { display: flex; flex-direction: column; min-width: 4.5rem; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); }

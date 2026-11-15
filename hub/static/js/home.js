@@ -399,11 +399,11 @@ export function init(container, ctx) {
       const meta = STREAK_META[key] || { label: v.label || String(key), tone: ["accent", "teal", "orange"][i % 3] };
       const goal = v.goal || 7;
       const ring = ui.ringProgress({ value: Math.min(1, v.days / goal), size, stroke: size > 64 ? 7 : 6, tone: meta.tone, big: String(v.days), small: v.days === 1 ? "day" : "days", label: `${meta.label} streak` });
-      return el("div", { class: "hm-ring" }, ring, el("span", { class: "hm-ring-label" }, v.label || meta.label));
+      return el("div", { class: "hm-streak" }, ring, el("span", { class: "hm-ring-label" }, v.label || meta.label));
     });
     if (!items.length || entries.every(([, raw]) => !streakValue(raw).days)) {
       ringsCard.body.replaceChildren(el("div", { class: "hm-rings hm-rings--empty" }, ...(items.length ? items : ["Learning", "English", "Notes"].map((l, i) =>
-        el("div", { class: "hm-ring" }, ui.ringProgress({ value: 0, size: 72, stroke: 7, tone: ["violet", "teal", "orange"][i], big: "0", small: "days", label: l }), el("span", { class: "hm-ring-label" }, l))))),
+        el("div", { class: "hm-streak" }, ui.ringProgress({ value: 0, size: 72, stroke: 7, tone: ["violet", "teal", "orange"][i], big: "0", small: "days", label: l }), el("span", { class: "hm-ring-label" }, l))))),
       el("p", { class: "hm-rings-hint" }, "Do one quiz or speaking practice today to start a streak."));
       return;
     }

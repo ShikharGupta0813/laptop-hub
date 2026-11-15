@@ -70,7 +70,7 @@
   animation: ui-rise var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 50ms + 80ms);
 }
 #view-home .hm-node .ui-icon { width: 20px; height: 20px; color: var(--c-accent-text); }
-#view-home .hm-node-label { font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--c-text-2); line-height: 1; }
+#view-home .hm-node-label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--c-text-2); line-height: 1; }
 #view-home .hm-node:hover { border-color: var(--c-accent-line); }
 #view-home .hm-node:active { transform: translate(-50%, -50%) scale(.94); border-color: var(--c-accent); }
 #view-home .hm-node[data-persona="jarvis"] { border-color: color-mix(in srgb, var(--jarvis) 45%, transparent); box-shadow: var(--shadow-2), 0 0 20px -6px var(--jarvis); }
@@ -92,9 +92,9 @@ html[data-motion="reduce"] #view-home .hm-ring-core { animation: none; }
 /* telemetry window */
 #view-home .hm-hero-body { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
 #view-home .hm-status { margin: 0; font-size: var(--fs-sm); }
-#view-home .hm-kv { grid-template-columns: 8ch minmax(0, 1fr); min-height: 28px; align-items: center; padding: 0; }
+#view-home .hm-kv { grid-template-columns: 13ch minmax(0, 1fr); min-height: 28px; align-items: center; padding: 0; }
 #view-home .hm-kv--btn {
-  grid-template-columns: 8ch minmax(0, 1fr) auto; min-height: var(--tap); width: calc(100% + 16px); margin: 0 -8px; padding: 0 8px;
+  grid-template-columns: 13ch minmax(0, 1fr) auto; min-height: var(--tap); width: calc(100% + 16px); margin: 0 -8px; padding: 0 8px;
   border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--r-sm);
 }
 #view-home .hm-kv--btn:hover { background: rgb(255 255 255 / .05); }
@@ -169,7 +169,8 @@ html[data-motion="reduce"] #view-home .hm-ring-core { animation: none; }
 #view-home .hm-pair { display: grid; gap: var(--sp-6); }
 @media (min-width: 560px) { #view-home .hm-pair { grid-template-columns: 1fr 1fr; gap: var(--sp-4); } }
 #view-home .hm-rings { display: flex; justify-content: space-around; gap: var(--sp-2); padding: var(--sp-2) 0 var(--sp-2); }
-#view-home .hm-ring { display: grid; justify-items: center; gap: 8px; min-width: 0; }
+#view-home .hm-streak { display: grid; justify-items: center; gap: 8px; min-width: 0; }
+#view-home .hm-streak .hm-ring-label { color: var(--c-text-2); }
 #view-home .hm-ring-label { font-size: var(--fs-xs); color: var(--c-text-2); font-weight: var(--fw-medium); }
 #view-home .hm-rings--empty .ui-ring__big { color: var(--c-text-3); }
 #view-home .hm-rings-hint { margin: 0; text-align: center; font-size: var(--fs-xs); color: var(--c-text-2); }

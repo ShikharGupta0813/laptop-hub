@@ -10,7 +10,7 @@
   max-width: var(--content-max); margin: 0 auto; display: block; overscroll-behavior-y: contain;
 }
 #view-files .fl-top { display: flex; align-items: center; gap: var(--sp-2); }
-#view-files .fl-roots { flex: 1; min-width: 0; gap: var(--sp-2); padding: 2px 0; }
+#view-files .fl-roots { flex: 1; min-width: 0; gap: var(--sp-2); margin: 0; padding: 2px 0; }
 #view-files .fl-chip { min-height: 40px; padding: 0 var(--sp-4); }
 #view-files .fl-chip[data-writable="0"] .ui-icon { color: var(--c-warn); }
 #view-files .fl-top > .ui-btn { flex: none; margin-right: -8px; }

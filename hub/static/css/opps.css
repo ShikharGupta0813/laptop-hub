@@ -1,5 +1,5 @@
 /* Opportunities. Scoped under #view-opps; tokens only. */
-#view-opps .op { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-opps .op { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-opps .op > * { min-width: 0; }
 #view-opps .op-tools, #view-opps .ui-hud { padding: var(--sp-4); }
 #view-opps .op-auto { display: flex; align-items: center; gap: var(--sp-3); }

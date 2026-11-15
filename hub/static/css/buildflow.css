@@ -1,5 +1,5 @@
 /* Build (spec-first delegation). Scoped under #view-buildflow; tokens only. Jarvis cyan via .ui-persona-jarvis. */
-#view-buildflow .bf { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-buildflow .bf { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-buildflow .bf > * { min-width: 0; }
 #view-buildflow .bf-new, #view-buildflow .bf-card { padding: var(--sp-4); }
 #view-buildflow textarea { width: 100%; min-height: 80px; }
