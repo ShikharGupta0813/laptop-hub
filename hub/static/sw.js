@@ -36,6 +36,8 @@ const SHELL = [
   "/js/tailor.js", "/css/tailor.css", "/js/studylib.js",
   "/js/chatch.js", "/js/aichat.js", "/css/aichat.css", "/css/sheets.css", "/js/setuphint.js",
   "/js/tailor.js", "/css/tailor.css", "/css/perf.css", "/js/poller.js", "/js/navstack.js",
+  "/js/networking.js", "/css/networking.css",
+  "/js/interviews.js", "/css/interviews.css",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

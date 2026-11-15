@@ -56,6 +56,7 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "tailor_enabled", "tailor_ai", "answerbank_enable
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batches_outreach_cap")   # hub/batches.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "chatch_enabled", "chatch_email_parse")   # hub/chatchan.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "networking_enabled", "networking_nudge_days", "networking_ai", "interviews_enabled", "interviews_ai")   # hub/networking.py, hub/interviews.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -296,6 +297,14 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
                 raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
             changes[key] = {k: v for k, v in value.items() if v}
+        elif key in ("networking_enabled", "networking_ai", "interviews_enabled", "interviews_ai"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "networking_nudge_days":
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 365:
+                raise HTTPException(400, "networking_nudge_days must be a whole number from 1 to 365.")
+            changes[key] = value
         elif key in ("batches_catchup_min", "batches_outreach_cap"):
             high = 1440 if key == "batches_catchup_min" else 200
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= high:
@@ -618,6 +627,9 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": config.batches_catchup_min,
             "batches_outreach_cap": config.batches_outreach_cap,
             "chatch_enabled": config.chatch_enabled is not False, "chatch_email_parse": config.chatch_email_parse is not False,
+            "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": config.networking_nudge_days,
+            "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
+            "interviews_ai": config.interviews_ai is True,
             "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
             "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": config.answerbank_min_confidence,
             "answerbank_embeddings": config.answerbank_embeddings is True,
