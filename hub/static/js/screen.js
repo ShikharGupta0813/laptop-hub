@@ -20,10 +20,11 @@ const KEYS = [
   { label: "Back", key: "backspace", icon: "arrow-left" }, { label: "Del", key: "delete" },
   { label: "Up", key: "up", icon: "arrow-up" }, { label: "Down", key: "down", icon: "arrow-down" },
   { label: "Left", key: "left", icon: "chevron-left" }, { label: "Right", key: "right", icon: "chevron-right" },
-  { label: "Home", key: "home" }, { label: "End", key: "end" },
+  { label: "Home", key: "home" }, { label: "End", key: "end" }, { label: "PgUp", key: "pageup" }, { label: "PgDn", key: "pagedown" },
   { label: "Ctrl+C", keys: ["ctrl", "c"] }, { label: "Ctrl+V", keys: ["ctrl", "v"] },
   { label: "Ctrl+A", keys: ["ctrl", "a"] }, { label: "Ctrl+Z", keys: ["ctrl", "z"] },
-  { label: "Alt+Tab", keys: ["alt", "tab"] }, { label: "Win+D", keys: ["win", "d"] },
+  { label: "Alt+Tab", keys: ["alt", "tab"] }, { label: "Win", key: "win" }, { label: "Win+D", keys: ["win", "d"] },
+  { label: "F5", key: "f5" }, { label: "Space", key: "space" },
 ];
 // Keys for driving the laptop's browser from the phone. Only shortcuts on the hub's allow-list (hub/screen.py HOTKEYS)
 // may be sent. Ones it does not have yet are listed in MISSING_ON_SERVER and left out; delete a name from that set
@@ -49,7 +50,7 @@ export function init(container, ctx) {
 
   // ---- state ----------------------------------------------------------------------------------
   const S = {
-    status: null, monitor: 1, smooth: false, saver: store.get("saver", true), mode: store.get("mode", "trackpad"),
+    status: null, monitor: 1, smooth: store.get("smooth", true), drag: false, saver: store.get("saver", true), mode: store.get("mode", "trackpad"),
     minutes: store.get("minutes", 5), armedUntil: 0, visible: false, viewing: false,
     scale: 1, tx: 0, ty: 0, nw: 16, nh: 9, cursor: null, full: false, windows: null, fps: 0,
   };
@@ -72,10 +73,22 @@ export function init(container, ctx) {
   const kbBtn = ui.button({ label: "Keyboard", icon: "command", variant: "ghost", iconOnly: true, class: "sc-hudbtn" });
   const hudRight = el("div", { class: "sc-hud__side" }, armChip, kbBtn, fullBtn);
   const hud = el("div", { class: "sc-hud" }, hudLeft, hudRight);
-  const typer = el("textarea", { class: "sc-typer", rows: "1", autocapitalize: "off", autocomplete: "off", autocorrect: "off", spellcheck: "false", "aria-label": "Type on the laptop", tabindex: "-1" });
+  // The typing field is a real, visible input (an invisible 1px one is not reliably focused by Android keyboards).
+  // It always holds one zero-width sentinel so that Backspace on an "empty" field still produces an input event.
+  const SENT = "\u200b";
+  const typer = el("input", { type: "text", class: "sc-typer", value: SENT, enterkeyhint: "send", autocapitalize: "off", autocomplete: "off", autocorrect: "off", spellcheck: "false", placeholder: "Type here: goes to the laptop as you type", "aria-label": "Type on the laptop" });
+  const sendArea = el("textarea", { class: "sc-sendtext", rows: "2", maxlength: "20000", placeholder: "Or write a whole text here, then send it (any language, paste)", "aria-label": "Text to send to the laptop" });
+  const kbSend = ui.button({ label: "Send text", icon: "send", variant: "primary", size: "sm" });
+  const kbSendEnter = ui.button({ label: "Send + Enter", icon: "send", variant: "tonal", size: "sm" });
+  const kbClose = ui.button({ label: "Done", icon: "check", variant: "ghost", size: "sm" });
+  const kbPanel = el("div", { class: "sc-kbpanel ui-stack", hidden: true }, el("p", { class: "sc-hint" }, "Click the field on the laptop screen first (the Chrome search bar, say), then type here."), typer, sendArea,
+    el("div", { class: "sc-actions" }, kbSend, kbSendEnter, kbClose));
+  const kbarOpen = ui.button({ label: "Keyboard", icon: "command", variant: "primary", size: "sm", class: "sc-kbopen" });
+  const dragBtn = ui.button({ label: "Drag", icon: "arrow-up-right", variant: "tonal", size: "sm", class: "sc-dragbtn", "aria-pressed": "false" });
+  const kbar = el("div", { class: "sc-kbar", role: "toolbar", "aria-label": "Keyboard and gestures" }, kbarOpen, dragBtn);
   const keyRow = el("div", { class: "sc-keys ui-hscroll", hidden: true, role: "toolbar", "aria-label": "Keys" });
   const browserRow = el("div", { class: "sc-keys sc-keys--browser ui-hscroll", hidden: true, role: "toolbar", "aria-label": "Browser keys" });
-  const viewer = el("div", { class: "sc-viewer", hidden: true }, stage, hud, keyRow, browserRow, typer);
+  const viewer = el("div", { class: "sc-viewer", hidden: true }, stage, hud, kbar, kbPanel, keyRow, browserRow);
   const wsCard = el("section", { class: "ui-card sc-card sc-ws", "aria-label": "Workspaces" });
   const controls = el("div", { class: "sc-controls ui-stack", hidden: true });
   const root = el("div", { class: "sc-root ui-stack ui-stack--lg" }, wsCard, statusCard, viewer, controls);
@@ -131,7 +144,7 @@ export function init(container, ctx) {
 
   // ---- live view ------------------------------------------------------------------------------
   const frameUrl = () => `/api/screen/frame?monitor=${S.monitor}&max_side=${S.saver ? 720 : 1280}&quality=${S.saver ? 38 : 62}&t=${Date.now()}`;
-  const streamUrl = () => `/api/screen/stream?monitor=${S.monitor}&fps=${S.saver ? 2 : 4}&max_side=${S.saver ? 720 : 1280}&quality=${S.saver ? 38 : 62}&t=${Date.now()}`;
+  const streamUrl = () => `/api/screen/stream?monitor=${S.monitor}&fps=${S.saver ? 2 : 3}&max_side=${S.saver ? 720 : 1280}&quality=${S.saver ? 38 : 62}&t=${Date.now()}`;
 
   function stopView() {
     S.viewing = false;
@@ -147,11 +160,12 @@ export function init(container, ctx) {
     S.viewing = true;
     overlay.replaceChildren();
     liveChip.classList.remove("is-paused");
-    if (S.smooth) startStream(); else { interval = 380; poll(); }
+    if (S.smooth) startStream(); else { interval = 600; poll(); }
   }
   function startStream() {
     img.onload = () => { sizeFrom(); stage.classList.remove("is-loading"); };
-    img.onerror = () => showOverlay("The live stream stopped.", "Restart stream", startView);
+    // If the stream cannot start, fall back to 1-2 pictures a second instead of giving up.
+    img.onerror = () => { if (!S.viewing) return; S.smooth = false; startView(); };
     stage.classList.add("is-loading");
     img.src = streamUrl();
     liveChip.querySelector(".sc-fps").textContent = "Smooth";
@@ -192,7 +206,7 @@ export function init(container, ctx) {
         overlay.replaceChildren();
         // Aim for 2-4 frames a second: faster when frames arrive quickly, slower on a weak link.
         const took = performance.now() - started;
-        interval = Math.max(250, Math.min(500, took * 1.4));
+        interval = Math.max(500, Math.min(1000, took * 1.4));
         const label = liveChip.querySelector(".sc-fps");
         if (label.textContent === "Slowing down") label.textContent = S.fps ? `${S.fps.toFixed(1)} fps` : "Live";
         wait = Math.max(0, interval - took);
@@ -288,7 +302,7 @@ export function init(container, ctx) {
     stage.setPointerCapture?.(e.pointerId);
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 1) {
-      g = { sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, multi: false, long: false, startN: norm(e.clientX, e.clientY), scrollAcc: 0 };
+      g = { sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, multi: false, long: false, startN: norm(e.clientX, e.clientY), startCursor: S.cursor ? { ...S.cursor } : null, scrollAcc: 0 };
       g.timer = setTimeout(() => {
         if (g && !g.moved && !g.multi && armed()) {
           g.long = true; ui.haptic("medium");
@@ -338,7 +352,8 @@ export function init(container, ctx) {
       const r = canvas.getBoundingClientRect(), f = fit();
       const base = S.cursor || { x: 0.5, y: 0.5 };
       const p = { x: Math.min(1, Math.max(0, base.x + (dx * 1.7) / (r.width * f.w))), y: Math.min(1, Math.max(0, base.y + (dy * 1.7) / (r.height * f.h))) };
-      showCursor(p); sendMove(p);
+      showCursor(p);
+      if (!S.drag) sendMove(p);
     }
   });
   const end = (e) => {
@@ -353,6 +368,8 @@ export function init(container, ctx) {
       if (armed() && S.mode === "direct") {
         const p = norm(e.clientX, e.clientY);
         if (Math.hypot(e.clientX - done.sx, e.clientY - done.sy) > 24) send({ action: "drag", x: done.startN.x, y: done.startN.y, x2: p.x, y2: p.y });
+      } else if (armed() && S.drag && done.startCursor && S.cursor) {
+        send({ action: "drag", x: done.startCursor.x, y: done.startCursor.y, x2: S.cursor.x, y2: S.cursor.y });
       }
       return;
     }
@@ -381,16 +398,46 @@ export function init(container, ctx) {
   // ---- keyboard, keys, paste ----------------------------------------------------------------------
   function openKeyboard() {
     if (!armed()) { promptArm(); return; }
-    typer.tabIndex = 0; typer.focus({ preventScroll: true });
+    kbPanel.hidden = false;
+    typer.value = SENT;
+    typer.focus({ preventScroll: false });
+    kbPanel.scrollIntoView?.({ block: "nearest" });
   }
-  typer.addEventListener("input", () => {
-    const text = typer.value;
-    typer.value = "";
-    if (text) send({ action: "type", text: text.slice(0, 500) });
-  });
+  function closeKeyboard() { kbPanel.hidden = true; typer.blur(); }
+  let composing = false;
+  // Forwards what was typed. Text goes in slices of the hub's limit; a vanished sentinel means Backspace.
+  async function flushTyper() {
+    const v = typer.value;
+    typer.value = SENT;
+    const text = v.split(SENT).join("");
+    if (!text) { if (!v.includes(SENT)) await send({ action: "key", key: "backspace" }, { quiet: true }); return; }
+    for (let i = 0; i < text.length; i += 500) if (!(await send({ action: "type", text: text.slice(i, i + 500) }))) break;
+  }
+  typer.addEventListener("compositionstart", () => { composing = true; });
+  typer.addEventListener("compositionend", () => { composing = false; flushTyper(); });
+  typer.addEventListener("input", () => { if (!composing) flushTyper(); });
+  typer.addEventListener("focus", () => { if (!typer.value) typer.value = SENT; });
   typer.addEventListener("keydown", (e) => {
-    const map = { Enter: "enter", Backspace: "backspace", Tab: "tab", Escape: "esc", ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+    const map = { Enter: "enter", Tab: "tab", Escape: "esc", ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
     if (map[e.key] && !e.isComposing) { e.preventDefault(); send({ action: "key", key: map[e.key] }); }
+  });
+  async function sendWhole(thenEnter) {
+    const text = sendArea.value;
+    if (!text) { sendArea.focus(); return; }
+    try {
+      await api("/api/screen/paste", { method: "POST", json: { text } });
+      if (thenEnter) await send({ action: "key", key: "enter" });
+      sendArea.value = ""; ui.toast("Sent to the laptop", { kind: "good" });
+    } catch (error) { if (error.status === 409) { setArmed(0); promptArm(); } else ctx.toast(error.message, { kind: "bad" }); }
+  }
+  kbSend.addEventListener("click", () => sendWhole(false));
+  kbSendEnter.addEventListener("click", () => sendWhole(true));
+  kbClose.addEventListener("click", closeKeyboard);
+  kbarOpen.addEventListener("click", () => (kbPanel.hidden ? openKeyboard() : closeKeyboard()));
+  dragBtn.addEventListener("click", () => {
+    if (!armed()) { promptArm(); return; }
+    S.drag = !S.drag; dragBtn.setAttribute("aria-pressed", String(S.drag)); dragBtn.classList.toggle("is-on", S.drag);
+    ctx.toast(S.drag ? "Drag is on: slide a finger to drag, then lift." : "Drag is off.", { kind: "info" });
   });
   kbBtn.addEventListener("click", openKeyboard);
 
@@ -450,6 +497,7 @@ export function init(container, ctx) {
     keyRow.hidden = !on;
     browserRow.hidden = !on;
     kbBtn.hidden = !on;
+    if (!on) closeKeyboard();
     ctrlBtn.hidden = on || !S.status?.control_available;
     stage.classList.toggle("is-armed", on);
     if (!on) cursorDot.hidden = true;
@@ -479,7 +527,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-card__head" }, el("div", {}, el("div", { class: "ui-card__title" }, "Control"), el("div", { class: "ui-card__sub" }, "Off until you enable it. It expires by itself."))),
       s.control_available ? [minutesSeg, armBtn, disarmBtn] : ui.notice(s.control_reason || "Control needs pyautogui on the laptop (requirements-screen.txt).", { tone: "warn" }));
     modeRow = ui.segmented({ label: "Touch mode", block: true, value: S.mode, options: [{ value: "trackpad", label: "Trackpad" }, { value: "direct", label: "Direct touch" }], onChange: (v) => { S.mode = v; store.set("mode", v); } });
-    const smooth = ui.switchControl({ checked: S.smooth, label: "Smooth video", onChange: (v) => { S.smooth = v; startView(); } });
+    const smooth = ui.switchControl({ checked: S.smooth, label: "Smooth video", onChange: (v) => { S.smooth = v; store.set("smooth", v); startView(); } });
     const saver = ui.switchControl({ checked: S.saver, label: "Data saver", onChange: (v) => { S.saver = v; store.set("saver", v); startView(); } });
     const toggle = (title, sub, sw) => el("div", { class: "ui-row sc-toggle" }, el("div", { class: "ui-row__body" }, el("div", { class: "ui-row__title" }, title), el("div", { class: "ui-row__sub" }, sub)), sw);
     const mons = s.monitors || [];
@@ -488,7 +536,7 @@ export function init(container, ctx) {
       el("div", { class: "ui-card__head" }, el("div", { class: "ui-card__title" }, "View")),
       monitorSeg,
       el("div", { class: "ui-list ui-list--inset sc-list" },
-        toggle("Smooth video", "Continuous stream, uses more data", smooth),
+        toggle("Smooth video", "Continuous stream (falls back to 1-2 pictures a second)", smooth),
         toggle("Data saver", "Smaller, lower quality pictures", saver)),
       el("div", { class: "sc-label" }, "Touch mode"), modeRow,
       el("div", { class: "sc-actions" },
@@ -509,24 +557,97 @@ export function init(container, ctx) {
   }
   let windowsBtn;
 
-  // ---- explain this screen (Gemini, POST /api/vision/explain) -------------------------------------
+  // ---- explain this screen -------------------------------------------------------------------------
+  // Two sources: the laptop screen (a picture, needs a vision AI) or this app's own screen (its visible text, needs only a
+  // text AI). Every outcome is shown in a sheet, never only inside the page, so a failure cannot go unseen.
+  function appScreenText() {
+    const views = [...document.querySelectorAll('[id^="view-"]')].filter((n) => !n.hidden && n.offsetParent !== null);
+    const root = views.find((n) => n.id !== "view-screen") || views[0] || document.querySelector("main") || document.body;
+    return (root.innerText || "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 6000);
+  }
+  // Close a sheet, then open the next one after its history step has settled (two layers at once confuse Back).
+  const swap = async (sheet, next) => { sheet.close(); await ui.historySettled(); setTimeout(next, 120); };
+  async function explainFlow(source, question, trigger) {
+    const phone = source === "phone";
+    const text = phone ? appScreenText() : "";
+    if (phone && !text) { ctx.toast("This app screen has no visible text to explain.", { kind: "warn" }); return; }
+    const ok = await ui.confirm(phone
+      ? { title: "Explain this app screen?", message: "The visible text of this screen is sent to your AI to explain it (no picture). Depending on your AI choice that may be a cloud AI.", confirmLabel: "Explain", icon: "sparkles" }
+      : { title: "Send a screenshot to your vision AI?", message: "A picture of your laptop screen is sent to a vision AI (a local Ollama model stays on the laptop; Gemini or another cloud one leaves it). Close anything private first.", confirmLabel: "Send screenshot", icon: "eye" });
+    if (!ok) return;
+    await ui.historySettled();     // the confirm's own history step must finish before a sheet adds one
+    const body = el("div", { class: "ui-stack sc-explain" });
+    const sheet = gsheet({ title: phone ? "This app screen" : "Your laptop screen", content: body });
+    const working = (msg) => body.replaceChildren(el("div", { class: "sc-working", role: "status" }, el("span", { class: "ui-spinner" }), el("span", {}, msg)), ui.skeleton("lines", 3));
+    working(phone ? "Reading the screen text and asking your AI..." : "Capturing the screen and asking the vision AI. A local model can take up to a minute.");
+    try {
+      const r = await api("/api/vision/explain", { method: "POST", json: phone ? { source: "phone", text, question } : { question } });
+      body.replaceChildren(el("p", { class: "sc-answer__text" }, r.answer || ""),
+        el("p", { class: "sc-hint" }, phone ? "Only this screen's text was sent, no picture." : `Explained by ${r.provider || "the vision AI"}. The screenshot was not saved.`));
+    } catch (error) {
+      const noVision = !phone && (error.status === 503 || error.status === 501);
+      body.replaceChildren(ui.notice(error.message || "Could not explain the screen.", { tone: "bad" }),
+        el("div", { class: "sc-actions" },
+          noVision ? ui.button({ label: "Set up vision", icon: "settings", variant: "primary", size: "sm", class: "sc-setupvision", onClick: () => swap(sheet, visionSetup) }) : null,
+          noVision ? ui.button({ label: "Explain the app screen instead", icon: "sparkles", variant: "tonal", size: "sm", onClick: () => swap(sheet, () => explainFlow("phone", question, trigger)) }) : null,
+          ui.button({ label: "Try again", icon: "refresh", variant: "tonal", size: "sm", onClick: () => swap(sheet, () => explainFlow(source, question, trigger)) })));
+    }
+  }
+  // One place to see what vision AI exists, test it, and download a local vision model.
+  async function visionSetup() {
+    const body = el("div", { class: "ui-stack sc-vsetup" }, ui.skeleton("list", 3));
+    const sheet = gsheet({ title: "Set up vision", content: body });
+    const out = el("div", { class: "sc-answer", "aria-live": "polite" });
+    let timer = null;
+    sheet.el.addEventListener("remove", () => clearTimeout(timer));
+    async function draw() {
+      let v;
+      try { v = await api("/api/vision/setup"); } catch (error) { body.replaceChildren(ui.notice(error.message, { tone: "bad" })); return; }
+      const o = v.ollama || {};
+      const rows = (v.providers || []).map((p) => ui.notice(`${p.label}: ${p.usable ? "ready" : (p.why || "not usable")}`, { tone: p.usable ? "good" : "warn" }));
+      const pulls = (v.pull_options || []).map((opt) => ui.button({ label: `Download ${opt.tag}`, icon: "download", variant: "tonal", size: "sm", class: "sc-pull", "data-tag": opt.tag, onClick: () => pull(opt) }));
+      const testBtn = ui.button({ label: "Test", icon: "zap", variant: "primary", size: "sm", class: "sc-vtest", onClick: (e) => ui.busy(e.currentTarget, test()) });
+      body.replaceChildren(
+        ui.notice(v.ready ? "A vision AI is ready. Tap Test to confirm." : "No vision AI is set up yet. Any one of the options below fixes it.", { tone: v.ready ? "good" : "warn" }),
+        el("ul", { class: "sc-hint" }, (v.kinds || []).map((k) => el("li", {}, k))),
+        ...rows,
+        ui.notice(o.up ? `Ollama is running. Vision models found: ${(o.vision || []).join(", ") || "none"}.` : `Ollama is not reachable at ${o.host || "this laptop"}. Start the Ollama app to use a local vision model.`, { tone: o.up ? "info" : "warn" }),
+        o.up && pulls.length ? el("div", { class: "ui-stack" }, el("div", { class: "sc-label" }, "Download a local vision model"), el("div", { class: "sc-actions" }, pulls)) : el("span", { hidden: true }),
+        el("div", { class: "sc-actions" }, testBtn), out);
+    }
+    async function test() {
+      out.replaceChildren(ui.skeleton("lines", 2));
+      try {
+        const r = await api("/api/vision/test", { method: "POST", json: {} });
+        out.replaceChildren(ui.notice(r.ok ? `Works: ${r.provider} says "${r.answer}"` : (r.error || "No answer."), { tone: r.ok ? "good" : "bad" }));
+      } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
+    }
+    async function pull(opt) {
+      const yes = await ui.confirm({ title: `Download ${opt.tag}?`, message: `${opt.label}. It downloads onto the laptop through Ollama and can take a while.`, confirmLabel: "Download", icon: "download" });
+      if (!yes) return;
+      try { await api("/api/models/pull", { method: "POST", json: { tag: opt.tag, confirm: true } }); } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); return; }
+      const watch = async () => {
+        let j = null;
+        try { j = (await api("/api/models/pull")).pull; } catch (_) { /* keep trying */ }
+        if (j && j.status === "running") {
+          out.replaceChildren(ui.notice(`Downloading ${j.tag}: ${j.percent == null ? j.line : j.percent + "%"}`, { tone: "info" }));
+          timer = setTimeout(watch, 1500);
+        } else if (j && j.status === "done") { out.replaceChildren(ui.notice(`${j.tag} is downloaded.`, { tone: "good" })); draw(); }
+        else if (j) out.replaceChildren(ui.notice(j.error || j.line || "The download did not finish.", { tone: "bad" }));
+      };
+      watch();
+    }
+    draw();
+  }
   function buildExplain() {
     const q = el("input", { type: "text", class: "sc-ask", maxlength: "500", placeholder: "Optional: what do you want to know?", "aria-label": "Question about the screen (optional)" });
-    const out = el("div", { class: "sc-answer", "aria-live": "polite" });
-    const btn = ui.button({ label: "Explain this screen", icon: "sparkles", variant: "primary", size: "sm", onClick: async (e) => {
-      const ok = await ui.confirm({ title: "Send a screenshot to Gemini?", message: "A picture of your laptop screen will leave the laptop and be sent to Gemini. Close anything private first.", confirmLabel: "Send screenshot", icon: "eye" });
-      if (!ok) return;
-      out.replaceChildren(ui.skeleton("lines", 3));
-      await ui.busy(e.currentTarget, (async () => {
-        try {
-          const r = await api("/api/vision/explain", { method: "POST", json: { question: q.value.trim() } });
-          out.replaceChildren(el("p", { class: "sc-answer__text" }, r.answer || ""), el("p", { class: "sc-hint" }, "This screenshot was sent to Gemini and not saved."));
-        } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
-      })());
-    } });
+    let source = store.get("explainSource", "laptop");
+    const seg = ui.segmented({ label: "What to explain", block: true, value: source, options: [{ value: "laptop", label: "Laptop screen" }, { value: "phone", label: "This app screen" }], onChange: (v) => { source = v; store.set("explainSource", v); } });
+    const btn = ui.button({ label: "Explain this screen", icon: "sparkles", variant: "primary", size: "sm", class: "sc-explain-btn", onClick: (e) => explainFlow(source, q.value.trim(), e.currentTarget) });
+    const setup = ui.button({ label: "Set up vision", icon: "settings", variant: "tonal", size: "sm", class: "sc-setupvision", onClick: visionSetup });
     return el("div", { class: "ui-card ui-card--glass sc-card" },
       el("div", { class: "ui-card__head" }, ui.tile("eye", "violet"), el("div", {}, el("div", { class: "ui-card__title" }, "Explain this screen"), el("div", { class: "ui-card__sub" }, "What is it, what caused it, how to fix it."))),
-      q, el("div", { class: "sc-actions" }, btn), out);
+      seg, q, el("div", { class: "sc-actions" }, btn, setup));
   }
   function resetZoom() { S.scale = 1; S.tx = 0; S.ty = 0; applyTransform(); }
 

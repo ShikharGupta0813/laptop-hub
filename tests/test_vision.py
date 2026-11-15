@@ -121,8 +121,29 @@ class Route(Base):
         self.gemini.key = False
         r = self.explain()
         self.assertEqual(r.status_code, 503)
-        self.assertIn("Gemini is needed to look at your screen", r.json()["detail"])
+        self.assertIn("No vision AI is set up", r.json()["detail"])
+        self.assertIn("moondream", r.json()["detail"])
         self.assertEqual(self.system.captures, 0)         # nothing was captured
+
+    def test_setup_view_and_test_button_when_nothing_is_set_up(self):
+        self.gemini.key = False
+        info = self.client.get("/api/vision/setup").json()
+        self.assertFalse(info["ready"])
+        self.assertIn("moondream", [o["tag"] for o in info["pull_options"]])
+        self.assertFalse(self.client.post("/api/vision/test").json()["ok"])
+
+    def test_phone_screen_explained_from_its_text_without_a_vision_model(self):
+        self.gemini.key = False
+
+        class Text:
+            async def complete(self, system, user, json_mode=False):
+                return "This is the Notes list."
+        self.models["auto"] = Text()
+        r = self.explain(source="phone", text="Notes\nNew note\nGroceries")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["source"], "phone")
+        self.assertEqual(self.system.captures, 0)
+        self.assertEqual(self.explain(source="phone", text="  ").status_code, 400)
 
     def test_claude_without_images_is_never_used(self):
         class NoImages:
@@ -226,3 +247,34 @@ class GeminiImage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoOllama(Base):
+    """A vision model already pulled into Ollama works with no provider list entry."""
+
+    def setUp(self):
+        import httpx
+        self.tags = {"models": [{"name": "llama3:8b", "size": 1}, {"name": "moondream:latest", "size": 1}]}
+
+        def handler(request):
+            if request.url.path == "/api/tags":
+                return httpx.Response(200, json=self.tags)
+            if request.url.path == "/api/chat":
+                return httpx.Response(200, json={"message": {"content": "A red square."}})
+            return httpx.Response(404)
+        self.transport = httpx.MockTransport(handler)
+        super().setUp()
+        app = FastAPI()
+        app.include_router(vision.make_router(self.ctx, system=self.system, today=lambda: self.day, transport=self.transport))
+        vision.ENGINES[id(self.ctx)].transport = self.transport
+        self.client = TestClient(app, cookies={"hub_session": "yes"})
+
+    def test_pulled_vision_model_is_used_automatically(self):
+        self.gemini.key = False
+        r = self.explain()
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("moondream", r.json()["provider"])
+        self.assertTrue(self.client.get("/api/vision/status").json()["ready"])
+        t = self.client.post("/api/vision/test").json()
+        self.assertTrue(t["ok"], t)
+        self.assertEqual(self.client.get("/api/vision/setup").json()["pull_options"][0]["tag"], "llava:7b")

@@ -41,3 +41,13 @@ With no usable provider: 503 "Gemini is needed to look at your screen..." plus a
 The screenshot is held in memory only: no file, never logged, audited or returned. The audit event `vision_explain`
 carries the model name, question length, image KB and whether a region was used. The phone button asks for
 confirmation before the picture leaves the laptop. Tests: `tests/test_vision.py`.
+
+## Setup, test and the phone screen (bug-fix round)
+- `GET /api/vision/setup`: which providers are usable and why not, whether Ollama is running, which vision models it holds
+  (llava, qwen2.5-vl, moondream, ...) and which small ones can be downloaded (`pull_options`; the phone downloads them through
+  `POST /api/models/pull`). `POST /api/vision/test` sends a generated red square through every possible provider (no screen
+  capture, no daily budget used).
+- A vision model already pulled into Ollama is used automatically, even when it is not in the provider list.
+- `POST /api/vision/explain {source: "phone", text, question?}` explains the app's own screen from its visible text with the
+  normal text model (no vision model, no picture). The Screen tab offers the choice (Laptop screen / This app screen) and shows
+  every result or error in a sheet with Set up vision / Test / Try again.
