@@ -56,6 +56,7 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "tailor_enabled", "tailor_ai", "answerbank_enable
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batches_outreach_cap")   # hub/batches.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "chatch_enabled", "chatch_email_parse")   # hub/chatchan.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "jobtrack_enabled", "jobtrack_followup_days", "jobtrack_ghost_days")   # hub/jobtrack.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -207,7 +208,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse"):
+        elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse", "jobtrack_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -296,6 +297,15 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
                 raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
             changes[key] = {k: v for k, v in value.items() if v}
+        elif key == "jobtrack_followup_days":
+            if (not isinstance(value, list) or len(value) > 4
+                    or not all(isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 120 for v in value)):
+                raise HTTPException(400, "jobtrack_followup_days must be a list of up to 4 whole numbers from 1 to 120 (days after applying), or [] for none.")
+            changes[key] = sorted(set(value))
+        elif key == "jobtrack_ghost_days":
+            if isinstance(value, bool) or not isinstance(value, int) or not 3 <= value <= 120:
+                raise HTTPException(400, "jobtrack_ghost_days must be a whole number from 3 to 120.")
+            changes[key] = value
         elif key in ("batches_catchup_min", "batches_outreach_cap"):
             high = 1440 if key == "batches_catchup_min" else 200
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= high:
@@ -618,6 +628,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": config.batches_catchup_min,
             "batches_outreach_cap": config.batches_outreach_cap,
             "chatch_enabled": config.chatch_enabled is not False, "chatch_email_parse": config.chatch_email_parse is not False,
+            "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
+            "jobtrack_ghost_days": config.jobtrack_ghost_days,
             "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
             "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": config.answerbank_min_confidence,
             "answerbank_embeddings": config.answerbank_embeddings is True,
