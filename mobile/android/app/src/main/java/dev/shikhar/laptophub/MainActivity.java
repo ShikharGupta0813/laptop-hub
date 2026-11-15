@@ -1,6 +1,8 @@
 package dev.shikhar.laptophub;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -23,6 +25,22 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         visible = true;
+        openAlertsIfAsked();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);   // so onResume sees the extras of the newest launch (the alert notification's "Open")
+    }
+
+    /** The alert notification opens the app on its alerts page. Only this one fixed address is ever accepted. */
+    private void openAlertsIfAsked() {
+        Intent in = getIntent();
+        if (in == null || !"#/alerts".equals(in.getStringExtra("open_hash"))) return;
+        in.removeExtra("open_hash");   // once
+        final WebView wv = getBridge() == null ? null : getBridge().getWebView();
+        if (wv != null) wv.postDelayed(() -> wv.evaluateJavascript("location.hash='#/alerts'", null), 700);
     }
 
     @Override

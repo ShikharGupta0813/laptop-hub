@@ -39,6 +39,15 @@ final class WakeState {
         prefs(c).edit().putBoolean("bg_reply", on).apply();
     }
 
+    /** Speak urgent alerts and ring for calls while the screen is off (needs the always-on service). On unless switched off. */
+    static boolean urgentVoice(Context c) {
+        return prefs(c).getBoolean("urgent_voice", true);
+    }
+
+    static void setUrgentVoice(Context c, boolean on) {
+        prefs(c).edit().putBoolean("urgent_voice", on).apply();
+    }
+
     static String lastError() {
         return lastError;
     }

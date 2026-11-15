@@ -65,6 +65,7 @@ public class HubWakePlugin extends Plugin {
         o.put("enabled", WakeState.enabled(c));
         o.put("running", WakeService.running);
         o.put("bgReply", WakeState.backgroundReply(c));
+        o.put("urgentVoice", WakeState.urgentVoice(c));
         o.put("micGranted", micGranted());
         o.put("notifGranted", notifGranted());
         o.put("error", WakeState.lastError());
@@ -82,6 +83,13 @@ public class HubWakePlugin extends Plugin {
     @PluginMethod
     public void setBackgroundReply(PluginCall call) {
         WakeState.setBackgroundReply(getContext(), Boolean.TRUE.equals(call.getBoolean("enabled", true)));
+        call.resolve(statusObject());
+    }
+
+    /** {enabled: bool}: speak urgent alerts and ring for call reminders while the screen is off (default on). */
+    @PluginMethod
+    public void setUrgentVoice(PluginCall call) {
+        WakeState.setUrgentVoice(getContext(), Boolean.TRUE.equals(call.getBoolean("enabled", true)));
         call.resolve(statusObject());
     }
 
