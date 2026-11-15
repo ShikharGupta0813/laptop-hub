@@ -49,7 +49,7 @@ export function init(container, ctx) {
 
   // ---- state ----------------------------------------------------------------------------------
   const S = {
-    status: null, monitor: 1, smooth: false, saver: store.get("saver", true), mode: store.get("mode", "trackpad"),
+    status: null, monitor: 1, smooth: true, saver: store.get("saver", true), mode: store.get("mode", "trackpad"),
     minutes: store.get("minutes", 5), armedUntil: 0, visible: false, viewing: false,
     scale: 1, tx: 0, ty: 0, nw: 16, nh: 9, cursor: null, full: false, windows: null, fps: 0,
   };
@@ -147,11 +147,12 @@ export function init(container, ctx) {
     S.viewing = true;
     overlay.replaceChildren();
     liveChip.classList.remove("is-paused");
-    if (S.smooth) startStream(); else { interval = 380; poll(); }
+    if (S.smooth) startStream(); else { interval = 900; poll(); }
   }
   function startStream() {
     img.onload = () => { sizeFrom(); stage.classList.remove("is-loading"); };
-    img.onerror = () => showOverlay("The live stream stopped.", "Restart stream", startView);
+    // The stream is the default. If the browser can't hold it open, fall back (once) to slow polling instead of an overlay.
+    img.onerror = () => { if (S.viewing && S.smooth && !S.streamFailed) { S.streamFailed = true; S.smooth = false; startView(); } else showOverlay("The live stream stopped.", "Restart stream", startView); };
     stage.classList.add("is-loading");
     img.src = streamUrl();
     liveChip.querySelector(".sc-fps").textContent = "Smooth";
@@ -190,9 +191,9 @@ export function init(container, ctx) {
         sizeFrom();
         stage.classList.remove("is-loading");
         overlay.replaceChildren();
-        // Aim for 2-4 frames a second: faster when frames arrive quickly, slower on a weak link.
+        // Fallback pace: 1-2 frames a second, slower on a weak link.
         const took = performance.now() - started;
-        interval = Math.max(250, Math.min(500, took * 1.4));
+        interval = Math.max(500, Math.min(1000, took * 1.4));   // 1-2 fps: the fallback, not the main path
         const label = liveChip.querySelector(".sc-fps");
         if (label.textContent === "Slowing down") label.textContent = S.fps ? `${S.fps.toFixed(1)} fps` : "Live";
         wait = Math.max(0, interval - took);
@@ -521,7 +522,10 @@ export function init(container, ctx) {
         try {
           const r = await api("/api/vision/explain", { method: "POST", json: { question: q.value.trim() } });
           out.replaceChildren(el("p", { class: "sc-answer__text" }, r.answer || ""), el("p", { class: "sc-hint" }, "This screenshot was sent to Gemini and not saved."));
-        } catch (error) { out.replaceChildren(ui.notice(error.message, { tone: "bad" })); }
+        } catch (error) {
+          const msg = error.status === 503 ? "No vision provider is set up. Add a Gemini key in Settings > Providers, then try again." : error.message;
+          out.replaceChildren(ui.notice(msg, { tone: "warn" }));
+        }
       })());
     } });
     return el("div", { class: "ui-card ui-card--glass sc-card" },
@@ -923,7 +927,7 @@ export function init(container, ctx) {
   function show() {
     S.visible = true;
     clearInterval(tickTimer); clearInterval(statusTimer);
-    tickTimer = setInterval(tick, 1000);
+    tickTimer = setInterval(() => { if (!document.hidden) tick(); }, 1000);
     statusTimer = setInterval(() => { if (!document.hidden) api("/api/screen/status").then((s) => { S.status = s; S.armedUntil = s.control_armed ? Date.now() + (s.armed_seconds_left || 0) * 1000 : 0; renderStatus(); renderArm(); }).catch(() => {}); }, 20000);
     if (!S.status) { renderStatus(); loadStatus(); } else { renderStatus(); startView(); }
     loadWorkspaces();

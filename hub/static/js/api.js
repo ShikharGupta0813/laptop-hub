@@ -14,8 +14,32 @@ function problem(status, body) {
   return `The laptop answered with an error (${status}).`;
 }
 
+// Identical GETs made at the same moment (a screen asking for /api/cards/decks three times while it opens) share one
+// request, and an answer is reused for 2 s. Any write clears the lot, so nothing shown is older than the last action.
+// Not shared: requests with an abort signal, live endpoints (frames, status of a running thing, streams).
+const LIVE = /\/(frame|stream|status|session|ticker|logs?|events?)(\?|\/|$)|^\/api\/(screen|terminal|assistant)\b/;
+const RECENT_MS = 2000;
+const inflight = new Map();
+const recent = new Map();
+const copy = (v) => (v && typeof v === "object" ? structuredClone(v) : v);
+
 // api("/api/notes") -> parsed JSON. Options: method, json (object body), form (FormData), signal.
-export async function api(path, { method = "GET", json, form, signal } = {}) {
+export async function api(path, opts = {}) {
+  const { method = "GET", signal } = opts;
+  if (method !== "GET") { inflight.clear(); recent.clear(); return rawApi(path, opts); }
+  if (signal || LIVE.test(path)) return rawApi(path, opts);
+  const hit = recent.get(path);
+  if (hit && Date.now() - hit.at < RECENT_MS) return copy(hit.body);
+  let p = inflight.get(path);
+  if (!p) {
+    p = rawApi(path, opts).then((body) => { recent.set(path, { at: Date.now(), body }); return body; })
+      .finally(() => inflight.delete(path));
+    inflight.set(path, p);
+  }
+  return copy(await p);
+}
+
+async function rawApi(path, { method = "GET", json, form, signal } = {}) {
   // X-Hub marks a request as sent by this app's own code. A plain HTML form cannot add it.
   const init = { method, signal, credentials: "same-origin", headers: { "X-Hub": "1" } };
   if (json !== undefined) {

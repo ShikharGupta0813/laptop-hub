@@ -33,7 +33,7 @@ const SHELL = [
   "/js/meetings.js", "/css/meetings.css", "/js/computeruse.js", "/css/computeruse.css",
   "/js/meetings.js", "/css/meetings.css", "/js/playbooks.js", "/css/playbooks.css",
   "/js/jobprefs.js", "/js/batches.js", "/css/jobprefs.css",
-  "/js/tailor.js", "/css/tailor.css",
+  "/js/tailor.js", "/css/tailor.css", "/css/perf.css", "/js/poller.js", "/js/navstack.js",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 
@@ -52,6 +52,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin ||
       url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
+  // Vendor libraries, fonts and icons never change between releases: serve the cached copy at once, refresh it quietly.
+  if (/^\/(vendor|icons)\//.test(url.pathname)) {
+    event.respondWith(caches.open(CACHE).then((c) => c.match(event.request).then((hit) => {
+      const fresh = fetch(event.request).then((r) => { if (r.ok && r.type === "basic") c.put(event.request, r.clone()); return r; });
+      return hit || fresh;
+    })));
+    return;
+  }
   // Network first (the laptop is the source of truth), cache when it can't answer.
   event.respondWith(
     fetch(event.request).then((response) => {

@@ -3,6 +3,7 @@
 // rules in Settings. Routes: docs/api/presence.md. Everything shown is text (textContent), never HTML.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { subscribe } from "./poller.js";
 import { listEditor, formSheet } from "./listeditor.js";
 
 const STATE_LABEL = { at_laptop: "at the laptop", near: "near the laptop", away: "away", phone_active: "on the phone", in_meeting: "in a meeting",
@@ -15,25 +16,31 @@ export function mountPresence(ctx) {
   if (started) return;
   started = true;
   let dead = false;
-  const beat = async () => {
+  let lastBeat = { visible: null, at: 0 };
+  // Only on a change of visibility, or at most once a minute while visible (it used to fire every 30 s plus on every event).
+  const beat = async (force) => {
     if (dead) return;
-    try { await api("/api/presence/phone", { method: "POST", json: { visible: !document.hidden, screen_on: !document.hidden } }); }
+    const visible = !document.hidden;
+    if (!force && lastBeat.visible === visible && Date.now() - lastBeat.at < 55000) return;
+    lastBeat = { visible, at: Date.now() };
+    try { await api("/api/presence/phone", { method: "POST", json: { visible, screen_on: visible } }); }
     catch (error) { if (error?.status === 404 || error?.status === 405) dead = true; }
   };
-  const speakPending = async () => {
-    if (dead || document.hidden) return;
+  const spoken = new Set();
+  const speakPending = async (t) => {
+    const speech = (t.speech || []).filter((s) => !spoken.has(s.id));
+    if (dead || document.hidden || !speech.length) return;
+    for (const s of speech) spoken.add(s.id);
     try {
-      const { speech } = await api("/api/presence/pending");
-      if (!speech?.length) return;
       ctx.speak?.(speech.map((s) => s.text).join(" "));
       await api("/api/presence/pending/ack", { method: "POST", json: { ids: speech.map((s) => s.id) } });
     } catch (_) { /* try again next time */ }
   };
-  document.addEventListener("visibilitychange", beat);
+  document.addEventListener("visibilitychange", () => beat(false));
   window.addEventListener("pagehide", () => { try { navigator.sendBeacon?.("/api/presence/phone", new Blob([JSON.stringify({ visible: false, screen_on: false })], { type: "application/json" })); } catch (_) { /* ignore */ } });
-  setInterval(() => { if (!document.hidden) { beat(); } }, 30000);
-  setInterval(speakPending, 20000);
-  setTimeout(beat, 1500);
+  subscribe((t) => { speakPending(t); });                       // spoken items ride the shared poll
+  subscribe(() => { beat(false); });                            // so does the once-a-minute heartbeat (no timer of its own)
+  setTimeout(() => beat(true), 1500);
 }
 
 // A row for Home: where the hub thinks you are, and a tap to start or end focus.

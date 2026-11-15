@@ -2,6 +2,7 @@
 // Routes: docs/api/panic.md. One tap works in an emergency; `panic_confirm` (Settings) adds an "are you sure" step.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { subscribe } from "./poller.js";
 
 const CSS = "/css/panic.css";
 const state = { active: false, paused: [], errors: [], confirm: false, btn: null, banner: null };
@@ -61,6 +62,5 @@ export function mountPanic(ctx, { bar } = {}) {
   (bar || document).querySelector(".sh-actions")?.prepend(state.btn);
   state.banner = el("div", { class: "pn-banner", role: "alert", hidden: true });
   document.body.append(state.banner);
-  refresh();
-  setInterval(refresh, 30000);
+  subscribe((t) => { if (t.panic && typeof t.panic === "object") { Object.assign(state, t.panic); paint(); } });
 }

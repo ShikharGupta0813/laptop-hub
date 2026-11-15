@@ -1,0 +1,20 @@
+/* Phone performance: loaded last. Backdrop blur is kept only on the two big bars; small controls repeat the blur
+   many times per screen and force an off-screen pass each (the main source of dropped frames while scrolling). */
+.sh-bar, .sh-dock { contain: layout paint; }
+:where(.ui-btn, .ui-chip, .ui-seg, .ui-window, .hm-qa, .hm-node, .hm-jump, .hm-ring-core, .wl-item, .pv-home, .as-pill, .as-core) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+/* Looping animations stop while the app is in the background. */
+html.is-hidden *, html.is-hidden *::before, html.is-hidden *::after { animation-play-state: paused !important; }
+/* Looping glows animate box-shadow / text-shadow, which repaints every frame even when nothing else moves
+   (about a third of a throttled phone CPU while idle on Home). The static glow stays; the loop goes. */
+.hm-ring-core, .wl-orb__core, .ui-led, .hm-name, .sh-bar h1 { animation: none !important; }
+.hm-ring-gauge { filter: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+  .lg-scanlines, .lg-haze, .ui-cursor { animation: none !important; }
+}

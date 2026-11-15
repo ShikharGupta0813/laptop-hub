@@ -255,7 +255,7 @@ export function init(container, ctx) {
       const p = m.daypart(), who = userName || m.addressAs();
       f.textContent = (p === "night" ? "Still up" : `Good ${p}`) + (who ? `, ${who}` : "");
     };
-    paint(); fridayCard.hidden = false; setInterval(paint, 60000);
+    paint(); fridayCard.hidden = false; setInterval(() => { if (!document.hidden) paint(); }, 60000);
   }).catch(() => { /* Friday is optional */ });
 
   // "Finish setting up" card: only while the essentials aren't green or under half the optional items are done.
@@ -264,7 +264,7 @@ export function init(container, ctx) {
   function checkSetup() {
     let dismissed = false;
     try { dismissed = localStorage.getItem("hub.setup.dismissed") === "1"; } catch (_) { /* private mode */ }
-    if (dismissed || Date.now() - setupChecked < 120000) return;
+    if (dismissed || Date.now() - setupChecked < 600000) return;   // the checks fan out to a dozen endpoints: at most every 10 min
     setupChecked = Date.now();
     import("./setup.js").then((m) => m.runChecks(ctx, true).then((rows) => {
       const s = m.summarize(rows);
@@ -462,6 +462,17 @@ export function init(container, ctx) {
       meta: n.created ? ui.relTime(n.created) : null, onClick: () => openTarget(n.open, { view: "notes", id: n.id }) }))));
   }
 
+  // "Google isn't connected" is remembered for 10 minutes so Home doesn't ask (and fail with a 503) on every visit.
+  function calendarOff(set) {
+    const key = "hub.calendar.off";
+    try {
+      if (set === true) sessionStorage.setItem(key, String(Date.now()));
+      else if (set === false) sessionStorage.removeItem(key);
+      else return Date.now() - Number(sessionStorage.getItem(key) || 0) < 600000;
+    } catch (_) { /* private mode: just ask again */ }
+    return false;
+  }
+
   async function load(force) {
     if (loading) return loading;
     if (!force && Date.now() - loadedAt < 60000) return null;
@@ -478,7 +489,9 @@ export function init(container, ctx) {
       const tasksP = has("tasks") ? Promise.resolve(arr(h.tasks))
         : api("/api/work/asana/tasks?filter=today").then((r) => arr(r?.tasks).filter((t) => !t.completed), (e) => { if (e.status === 503) hints.push("Connect Asana to see tasks here."); return []; });
       const agendaP = has("agenda") ? Promise.resolve(arr(h.agenda))
-        : api(`/api/work/calendar?day=${today()}&days=1`).then((r) => arr(r?.meetings), (e) => { if (e.status === 503) hints.push("Connect your calendar to see meetings."); return []; });
+        : calendarOff() ? (hints.push("Connect Google to see meetings here."), Promise.resolve([]))
+        : api(`/api/work/calendar?day=${today()}&days=1`).then((r) => { calendarOff(false); return arr(r?.meetings); },
+          (e) => { if (e.status === 503) { calendarOff(true); hints.push("Connect Google to see meetings here."); } return []; });
       const remindersP = Promise.resolve(arr(h.reminders));
       // learning
       const historyP = has("learning") ? Promise.resolve(null) : api("/api/learn/history").catch(() => null);
@@ -512,11 +525,12 @@ export function init(container, ctx) {
 
   paintClock();
   load(true);
-  checkSetup();
-  const clockTimer = setInterval(paintClock, 60000);
+  setTimeout(checkSetup, 4000);   // after the first paint: the setup checks are a burst of requests
+  let gaugeAt = Date.now();
+  const clockTimer = setInterval(() => { if (!document.hidden) paintClock(); }, 60000);
 
   return {
-    show() { paintClock(); load(false); checkSetup(); usageGauge.refresh(); },
+    show() { paintClock(); load(false); checkSetup(); if (Date.now() - gaugeAt > 60000) { gaugeAt = Date.now(); usageGauge.refresh(); } },
     refresh() { return load(true); },
     destroy() { clearInterval(clockTimer); },
   };
