@@ -55,6 +55,12 @@ export function init(container, ctx) {
   }
 
   // One small line from the application queue (hub/applyq.py); hidden when empty
+  // One small line from the job tracker (hub/jobtrack.py): "N follow-ups due"; hidden when empty
+  function jobtrackLine() {
+    if (!data.jobtrack) return null;
+    return el("p", { class: "ui-hint", style: "cursor:pointer", onclick: () => ctx?.open?.("jobtrack") }, data.jobtrack);
+  }
+
   function applyqLine() {
     if (!data.applyq) return null;
     return el("p", { class: "ui-hint", style: "cursor:pointer", onclick: () => ctx?.open?.("applyq") }, data.applyq);
@@ -184,7 +190,7 @@ export function init(container, ctx) {
       data.cache?.stale?.length ? ui.notice("Calendar, tasks or mail could not be reached, so older copies are shown.", { tone: "warn" }) : null,
       data.cache?.age_min >= 1 ? el("p", { class: "ui-hint" }, `Calendar, tasks and mail are from ${data.cache.age_min} min ago. Tap Refresh for live.`) : null,
       data.sources_failed?.length ? ui.notice(`Could not read: ${data.sources_failed.join(", ")}.`, { tone: "warn" }) : null,
-      (askNode ||= askBar()), now(), held(), followups(), applyqLine(), timeline(), doneToday(), numbers(), tasks(), summary(),
+      (askNode ||= askBar()), now(), held(), followups(), applyqLine(), jobtrackLine(), timeline(), doneToday(), numbers(), tasks(), summary(),
     ].filter(Boolean));
   }
 

@@ -93,3 +93,4 @@ flowchart TD
 ## About this guide
 
 It matches the project as of its `HANDOFF.md` (last updated 2026-11-04, with later notes through 2026-11-12). If the code changes, update the page that mentions it.
+27. [39 · Job tracker](39-job-tracker.md): every application with its status, day 5 and 10 follow-up reminders with a draft nudge you copy yourself, and which sources get replies.

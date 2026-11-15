@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor, chatchan
+from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor, chatchan, jobtrack
 from . import models as models_mod
 from . import llm as llm_mod
 from . import updater as updater_mod
@@ -79,6 +79,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("ticker",)   # one combined poll for the ap
 FEATURE_MODULES = FEATURE_MODULES + ("oppsources",)   # job/freelance source connectors: ATS boards, remote boards, company watch list (docs/api/oppsources.md)
 FEATURE_MODULES = FEATURE_MODULES + ("chatchan",)   # Google Chat channels for a personal account: parse notifications/emails, per-space drafts, copy-and-open replies (docs/api/chatchan.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tailor", "answerbank")   # per-job resume + cover note from your own facts, fit and honesty check, answer bank (docs/api/tailor.md)
+FEATURE_MODULES = FEATURE_MODULES + ("jobtrack",)   # job tracker: applications, follow-ups, learning loop (docs/api/jobtrack.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -235,7 +236,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + batches.build(lambda: app, config)
         + oppsources.build(lambda: app, config)
         + tailor.build(lambda: app, config)
-        + chatchan.build(lambda: app, config))
+        + chatchan.build(lambda: app, config)
+        + jobtrack.build(lambda: app, config))
 
     latency = getattr(assistant, "latency", None) or Latency()   # per-turn timings for GET /api/latency
     warming = {"busy": False}
