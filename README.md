@@ -240,10 +240,6 @@ This registers a second on-demand scheduled task, `LaptopHubUpdate`, and adds an
 | No push when the app is closed | Subscribe the ntfy app to the same topic; check quiet hours |
 | Notes have no tags | The local model adds them a few seconds after saving; check `python -m hub doctor` |
 
-## What is not tested
-
-Everything was tested in a Linux container with fake models and a fake operating system. **Not yet run on real hardware:** the Windows laptop (terminal, lock, volume, screenshots, Jarvis launch), real Ollama, Whisper, Claude, Asana, Gmail and calendar, and any Android phone. The Android capture code (UPI, Gmail and Chat notifications) has never been run on a phone. Remote screen touch control and streaming, hands-free voice, and ntfy push are also untested for real. Expect small fixes on the first real run, and run `python -m hub doctor` first.
-
 ## Android app
 
 `mobile/` builds a real Android app (APK) around the hub. See `mobile/README.md`. It needs Android Studio and Node 22 on the laptop that builds it.
