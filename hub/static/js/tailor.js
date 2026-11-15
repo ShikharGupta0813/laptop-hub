@@ -66,7 +66,8 @@ export function init(container) {
     } });
     pick.addEventListener("change", () => { for (const n of [title, company, desc]) n.disabled = !!pick.value; });
     const form = el("section", { class: "ui-card ui-hud ui-stack tl-form" }, ui.eyebrow("01", "Pick a posting"),
-      field("Application", pick), field("Job title", title), field("Company", company), field("Posting", desc), field("Format", channel), ai, go);
+      field("Application", pick), field("Job title", title), field("Company", company), field("Posting", desc), field("Format", channel),
+      el("div", { class: "ui-row", style: "padding-left:0;padding-right:0" }, el("div", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Polish the wording with my AI"), el("span", { class: "ui-row__sub ui-row__sub--wrap" }, "Still checked against my facts.")), ai), go);
     const parts = [form];
     if (variant) parts.push(...variantView(variant));
     const rows = (await api("/api/tailor/variants")).variants || [];

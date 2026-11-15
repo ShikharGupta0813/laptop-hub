@@ -1,5 +1,5 @@
 /* Skills. Scoped under #view-skills; tokens only. */
-#view-skills .sk { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-skills .sk { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-skills .sk > * { min-width: 0; }
 #view-skills .sk-card { padding: var(--sp-4); }
 #view-skills .sk-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }

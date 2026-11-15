@@ -1,5 +1,5 @@
 /* Memory (Brain). Scoped under #view-brain; tokens only. */
-#view-brain .bn { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-brain .bn { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-brain .bn > * { min-width: 0; }
 #view-brain .bn-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 #view-brain .bn-count { margin-left: auto; color: var(--c-text-3); font-size: var(--fs-sm); }

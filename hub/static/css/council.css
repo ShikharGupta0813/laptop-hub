@@ -1,5 +1,5 @@
 /* Council. Scoped under #view-council; tokens only. */
-#view-council .cn { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-council .cn { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-council .cn > * { min-width: 0; }
 #view-council .cn-new, #view-council .cn-running, #view-council .cn-result, #view-council .cn-setup { padding: var(--sp-4); }
 #view-council textarea { width: 100%; min-height: 96px; }

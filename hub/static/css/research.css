@@ -1,5 +1,5 @@
 /* Research. Scoped under #view-research; tokens only. Jarvis = cyan, Friday = amber (fixed persona colours). */
-#view-research .rs { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); --_p: var(--jarvis); }
+#view-research .rs { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); --_p: var(--jarvis); }
 #view-research .rs[data-persona="friday"] { --_p: var(--friday); }
 #view-research .rs > * { min-width: 0; }
 #view-research .rs-ask, #view-research .rs-report { padding: var(--sp-4); --_hud: var(--_p); border-color: color-mix(in srgb, var(--_p) 35%, var(--c-line)); }

@@ -1,5 +1,5 @@
 /* Alerts (urgent triage). Scoped under #view-alerts; tokens only. */
-#view-alerts .al { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-alerts .al { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-alerts .al > * { min-width: 0; }
 #view-alerts .al-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
 #view-alerts .al-count { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); }

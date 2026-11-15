@@ -1,5 +1,5 @@
 /* Autopilot. Scoped under #view-autopilot; tokens only. */
-#view-autopilot .ap { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-autopilot .ap { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
 #view-autopilot .ap > * { min-width: 0; }
 #view-autopilot .ap-card, #view-autopilot .ap-off, #view-autopilot .ap-foot { padding: var(--sp-4); }
 #view-autopilot .ap-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }

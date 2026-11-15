@@ -1,5 +1,5 @@
 /* Remote screen. Scoped under #view-screen; tokens only. */
-#view-screen .sc-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-screen .sc-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) 0 var(--sp-8); }
 #view-screen .sc-status { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
 #view-screen .sc-status__head { display: flex; align-items: center; gap: var(--sp-3); }
 #view-screen .sc-status__head .ui-row__body { flex: 1; min-width: 0; }

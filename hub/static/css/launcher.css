@@ -1,5 +1,5 @@
 /* Launcher. Scoped under #view-launcher; tokens only. Sheets render outside it, so their classes are plain .lc-*. */
-#view-launcher .lc-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-launcher .lc-root { max-width: var(--content-max); margin: 0 auto; padding: var(--sp-4) 0 var(--sp-8); }
 #view-launcher .lc-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
 #view-launcher .lc-card[hidden] { display: none; }
 #view-launcher .lc-head { display: flex; align-items: center; gap: var(--sp-3); }
