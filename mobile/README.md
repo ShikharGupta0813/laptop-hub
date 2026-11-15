@@ -217,6 +217,29 @@ after the usual 10 s pause. Details:
 - Not run on a phone: only the pure parts (`WakeReply`: event parsing, speech cleanup, "open the app" detection) have JVM tests
   (`WakeReplyTest`).
 
+**Urgent voice and ring (screen off, app closed).** While the always-on service runs and the app is **not** on screen, the
+service asks your hub every **30 seconds** (`GET /api/alerts/pending`, the same login cookie as the voice reply; nothing is
+stored, nothing goes to any outside service) and then acks what it handled (`POST /api/alerts/pending/ack`) so it never repeats.
+- Urgency 2 (for example "meeting in 5 minutes", a hub problem): the phone **speaks** it with its own voice (about 300 characters).
+- Urgency 3 and **call reminders**: the phone **rings like an alarm** (the default alarm sound at alarm volume, plus vibration),
+  reads the **full text** (up to about 900 characters), then rings again; about 20 seconds in all. A heads-up / lock-screen
+  notification has **Open** (opens the app on the alerts page) and **Stop**. This is **not a real phone call**: it is a local alarm sound.
+- Quiet hours are decided by the hub (it holds everything except urgency 3), the phone adds no second filter. The hub's
+  "spoken alerts" switch is read once when the service starts (and again after a logout is fixed); change it, then restart
+  the always-on service to apply it. Wrong or logged-out: the phone stays quiet and tries again every 2 minutes.
+- With the app open, the page handles alerts exactly as before; the service does nothing then.
+- **The switch:** Settings, "Speak urgent alerts and ring for calls while the screen is off" (SharedPreferences `hub_wake`,
+  key `urgent_voice`, default on). Plugin: `setUrgentVoice({enabled})`; `status` returns `urgentVoice`.
+- **Battery:** a small request every 30 s on top of the always-on listening (the wake lock is already held). Not measured.
+- **Needs** Tailscale (or any way to reach the hub) and a hub that has the matching update (alerts with `speech` and `call`);
+  and **a NEW APK**: build it with the "Build Android APK" workflow, **uninstall the old APK first** (debug-signed builds do not
+  install over each other), log in again and switch the wake word on. Allow notifications and, on Android 14+, "full-screen
+  notifications" for the app if the phone asks.
+- Not run on a phone. Only the pure parts have JVM tests (`AlertSpeechTest`: what to say, ring or not, caps, dedupe, reading
+  the pending JSON). The ring, the voice, the notification and the "Open" button are unverified on a real device.
+- Code: `AlertWatcher` (30 s loop in its own thread), `AlertRinger` (alarm sound), `AlertSpeech` (pure decisions); speech is
+  serialised with the voice replies in `WakeService`, and the wake microphone is switched off while an alert is spoken.
+
 **How it works** (`android/app/src/main/java/dev/shikhar/laptophub/wake/`): `WakeService` (foreground service, type
 `microphone`, `AudioRecord` 16 kHz) feeds a Vosk recognizer limited to a grammar built from the assistants' names ("hey X", "ok X", "okay X", "X", `[unk]`;
 `WakeGrammar`, `WakeMatcher`, `WakeAssistants`). On a match it

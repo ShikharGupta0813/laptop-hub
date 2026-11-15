@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -78,6 +79,9 @@ public class WakeService extends Service {
     private volatile boolean ttsOk = false;
     private volatile CountDownLatch spoken;          // counted down when the current sentence has been spoken
     private volatile HttpURLConnection activeConn;   // the hub call in progress, closed on destroy
+    private volatile AlertWatcher alerts;            // urgent alerts while the app is closed (own thread)
+    private final Object speechLock = new Object();  // one voice at a time: replies and alerts never talk over each other
+    private volatile boolean micHold = false;        // an alert is being spoken: the wake microphone stays off
 
     /** Must be called while the app is visible (a button tap). */
     static void start(Context c) {
@@ -98,6 +102,14 @@ public class WakeService extends Service {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             WakeState.setEnabled(this, false);
             stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (intent != null && AlertWatcher.ACTION_ALERT_STOP.equals(intent.getAction())) {
+            // "Stop" on the alarm notification: silence the ring and the voice; the listening service goes on.
+            AlertWatcher w = alerts;
+            if (w != null) w.dismissAlarm();
+            cancelSpeech();
+            if (worker == null) stopSelf();   // the service was not really running: do not stay half started
             return START_NOT_STICKY;
         }
         try {
@@ -123,6 +135,9 @@ public class WakeService extends Service {
             }
             worker = new Thread(this::listenLoop, "wake-listen");
             worker.start();
+            // Urgent alerts and call reminders while the app is closed: its own thread, same TTS, one voice at a time.
+            alerts = new AlertWatcher(this, this::sayAlert);
+            alerts.start();
         }
         return START_NOT_STICKY;   // never resurrected by the system: a microphone service cannot start from the background
     }
@@ -131,6 +146,10 @@ public class WakeService extends Service {
     public void onDestroy() {
         stopped = true;
         running = false;
+        try {
+            if (alerts != null) alerts.stop();
+        } catch (Exception ignored) {
+        }
         try {
             HttpURLConnection c = activeConn;
             if (c != null) c.disconnect();
@@ -175,6 +194,7 @@ public class WakeService extends Service {
         alert.enableVibration(false);
         alert.enableLights(false);
         nm.createNotificationChannel(alert);
+        AlertWatcher.createChannel(this);   // heads-up screen for urgent alerts (the app rings by itself)
     }
 
     private PendingIntent openAppIntent(Intent launch, int requestCode) {
@@ -255,6 +275,15 @@ public class WakeService extends Service {
             Ring ring = new Ring();
             int failedReads = 0;
             while (!stopped) {
+                if (micHold) {
+                    // An alert is being spoken: release the microphone (so it does not hear the alert) and wait.
+                    ar.stop();
+                    rec.reset();
+                    ring.clear();
+                    while (micHold && !stopped) sleepQuietly(100);
+                    if (!stopped) ar.startRecording();
+                    continue;
+                }
                 int n = ar.read(buf, 0, buf.length);
                 if (n < 0) {
                     if (++failedReads > 20) throw new IllegalStateException("The microphone stopped working.");
@@ -452,20 +481,53 @@ public class WakeService extends Service {
 
     /** Says the text with the phone's voice and waits until it is finished (the microphone is off meanwhile). */
     private void speak(String text) {
-        if (text == null || text.isEmpty() || stopped) return;
+        speakNow(text, false);
+    }
+
+    /** From the alert thread: keeps the wake microphone off while talking (it must not hear the alert). */
+    private void sayAlert(String text, boolean alarm) {
+        micHold = true;
         try {
-            if (!ttsReady.await(5, TimeUnit.SECONDS) || !ttsOk || tts == null) return;
-            CountDownLatch l = new CountDownLatch(1);
-            spoken = l;
-            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "wake-reply") != TextToSpeech.SUCCESS) return;
-            long end = System.currentTimeMillis() + SPEAK_MAX_MS;
-            while (!stopped && System.currentTimeMillis() < end) {
-                if (l.await(200, TimeUnit.MILLISECONDS)) break;
-            }
-            if (l.getCount() > 0 && tts != null) tts.stop();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            speakNow(text, alarm);
+        } finally {
+            micHold = false;
+        }
+    }
+
+    /** The "Stop" button: end whatever is being spoken now. */
+    private void cancelSpeech() {
+        try {
+            if (tts != null) tts.stop();
         } catch (Exception ignored) {
+        }
+        CountDownLatch l = spoken;
+        if (l != null) l.countDown();
+    }
+
+    private void speakNow(String text, boolean alarm) {
+        if (text == null || text.isEmpty() || stopped) return;
+        synchronized (speechLock) {   // replies and alerts take turns
+            try {
+                if (!ttsReady.await(5, TimeUnit.SECONDS) || !ttsOk || tts == null) return;
+                try {
+                    tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(alarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build());
+                } catch (Exception ignored) {
+                }
+                CountDownLatch l = new CountDownLatch(1);
+                spoken = l;
+                if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "wake-reply") != TextToSpeech.SUCCESS) return;
+                long end = System.currentTimeMillis() + SPEAK_MAX_MS;
+                while (!stopped && System.currentTimeMillis() < end) {
+                    if (l.await(200, TimeUnit.MILLISECONDS)) break;
+                }
+                if (l.getCount() > 0 && tts != null) tts.stop();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception ignored) {
+            }
         }
     }
 
