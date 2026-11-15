@@ -119,8 +119,8 @@ export function init(container, ctx) {
         el("div", { class: "ui-list ui-list--inset" }, ...due.map((d) => ui.listRow({ icon: "bell", tone: d.overdue ? "warn" : "accent", title: d.title, sub: (d.who ? "from " + d.who + " · " : "") + at(d.remind_at) })))));
     }
     nodes.push(items.length ? el("div", { class: "ui-stack" }, ...items.map(card))
-      : ui.emptyState({ icon: "book-open", title: query ? "Nothing like that" : "Nothing remembered yet",
-        body: query ? "Try other words." : 'Say "Jarvis, remember ..." or add something above.' }));
+      : ui.emptyState({ icon: "book-open", title: query ? "Nothing like that" : (kind || persona || status !== "open" ? "Nothing here" : "Nothing remembered yet"),
+        body: query ? "Try other words." : (kind || persona || status !== "open" ? "Nothing fits this filter. Pick another one." : 'Say "Jarvis, remember ..." or add something above.') }));
     slot.list.replaceChildren(...nodes);
     if (slot.count) slot.count.textContent = `${items.length} of ${total}`;
   }

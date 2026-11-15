@@ -236,6 +236,7 @@ def build(port: int):
         roots={"docs": str(root / "docs"), "notes": str(root / "notes"), "inbox": str(root / "inbox")},
         notes_dir=str(root / "notes"), inbox_dir=str(root / "inbox"),
         data_dir=str(root / "data"),  # never the real ~/.laptop-hub/data
+        ccsessions_dir=str(root / "ccsessions"),  # never the real ~/.claude/projects (it holds real session names)
         port=port, jarvis_dir=str(jarvis_folder),
         apps={"Notepad": {"target": "notepad.exe", "args": []}, "Calculator": {"target": "calc.exe", "args": []}},
         scripts={"hello": {"label": "Say hello", "argv": ["echo", "hello from a button"]}})
