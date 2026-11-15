@@ -60,7 +60,7 @@ class StaticChecks(unittest.TestCase):
 
     def test_no_other_notification_channel_in_the_app(self):
         for p in (ROOT / "mobile" / "android" / "app" / "src" / "main").rglob("*.java"):
-            if p.name in ("WakeService.java", "NotifyPolicy.java"):
+            if p.name in ("WakeService.java", "NotifyPolicy.java", "AlertWatcher.java"):   # AlertWatcher: the urgent-alert channel (#30)
                 continue
             self.assertNotIn("NotificationChannel(", p.read_text(encoding="utf-8"), p.name)
 
