@@ -1091,5 +1091,14 @@ class Docs(unittest.TestCase):
         self.assertIn("main.js", "main.js")
 
 
+class OddKindTest(Base):
+    def test_a_kind_that_is_not_text_is_a_400_not_a_500(self):
+        for kind in ([], {}, ["manual"], 5, 1.5, True, None):
+            with self.subTest(kind=kind):
+                r = self.client.post("/api/destinations", json={"kind": kind, "label": "x"})
+                self.assertEqual(r.status_code, 400)
+                self.assertIn("kind must be one of", r.json()["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

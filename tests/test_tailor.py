@@ -1086,5 +1086,17 @@ class NeverSendsTests(Base):
         self.assertIsNone(q.get(item["id"])["sent_at"])
 
 
+class OddTagsTest(Base):
+    def test_tags_that_are_not_a_list_of_text_are_ignored_not_a_500(self):
+        c = self.client()
+        for tags in (5, 1.5, True, {"a": 1}, "abc", [1, None, {"a": 1}]):
+            with self.subTest(tags=tags):
+                r = c.post("/api/tailor/facts", json={"text": f"Mentored two interns in {abs(hash(str(tags))) % 1000}", "tags": tags})
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.json()["tags"], [])
+                r = c.put(f"/api/tailor/facts/{r.json()['id']}", json={"tags": tags})
+                self.assertLess(r.status_code, 500)
+
+
 if __name__ == "__main__":
     unittest.main()
