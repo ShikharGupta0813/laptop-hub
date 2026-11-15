@@ -1,0 +1,18 @@
+/* Tailor (js/tailor.js). ARC-Glass tokens only; every grid child can shrink (min-width: 0) so nothing overflows at 390px. */
+#view-tailor .tl { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-tailor .tl > * { min-width: 0; }
+#view-tailor .tl-form, #view-tailor .tl-fit, #view-tailor .tl-cover, #view-tailor .tl-resume { padding: var(--sp-4); min-width: 0; }
+#view-tailor .tl-form .ui-input, #view-tailor .tl-form select, #view-tailor .tl-form textarea { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+#view-tailor .tl-score { display: flex; gap: var(--sp-3); align-items: center; min-width: 0; }
+#view-tailor .tl-sum { margin: 0; overflow-wrap: anywhere; }
+#view-tailor .tl-flag { display: flex; gap: var(--sp-2); align-items: flex-start; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+#view-tailor .tl-h { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-3); }
+#view-tailor .tl-sent { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md, 8px); border: 1px solid var(--c-line); min-width: 0; }
+#view-tailor .tl-sent.is-bad { border-color: var(--c-warn); background: color-mix(in srgb, var(--c-warn) 10%, transparent); }
+#view-tailor .tl-sent__text, #view-tailor .tl-subject, #view-tailor .tl-line { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+#view-tailor .tl-line { color: var(--c-text-2); }
+#view-tailor .tl-role { color: var(--c-text); font-weight: 600; margin-top: var(--sp-2); }
+#view-tailor .tl-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; min-width: 0; }
+#view-tailor .tl-diff { margin: 0; padding: var(--sp-3); border-radius: var(--r-md, 8px); background: var(--c-surface-2, var(--c-surface-1)); border: 1px solid var(--c-line);
+  overflow: auto; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+#view-tailor .tl-match { padding: var(--sp-3); min-width: 0; }

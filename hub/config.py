@@ -230,6 +230,12 @@ class Config:
     batches_enabled: bool = True            # False (or Panic): no slot fires; the slot list stays
     batches_catchup_min: int = 360          # a slot missed while the laptop slept still fires once if within this many minutes (0 = never catch up)
     batches_outreach_cap: int = 10          # outreach messages sent per day through batches (0 = no cap)
+    # Tailoring + answer bank (hub/tailor.py, hub/answerbank.py, hub/fitcheck.py, hub/factbase.py): per-job resume and cover note from the owner's own facts.
+    tailor_enabled: bool = True
+    tailor_ai: bool = False                 # True: cover notes are rewritten by the owner's chosen AI (still checked against the facts)
+    answerbank_enabled: bool = True
+    answerbank_min_confidence: int = 75     # an approved answer at or above this (0-100) may be pre-filled; below it is only suggested
+    answerbank_embeddings: bool = False     # True: blend local-model embeddings into question matching (words only otherwise)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -368,6 +374,9 @@ def save(config: Config, path: Path) -> None:
         "playbooks_enabled": config.playbooks_enabled is not False, "playbooks_max_concurrent": int(config.playbooks_max_concurrent or 3),
         "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": int(config.batches_catchup_min),
         "batches_outreach_cap": int(config.batches_outreach_cap),
+        "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
+        "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": int(config.answerbank_min_confidence or 75),
+        "answerbank_embeddings": config.answerbank_embeddings is True,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

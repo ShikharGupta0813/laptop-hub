@@ -52,6 +52,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
 ALLOWED_KEYS = (*ALLOWED_KEYS, "panic_confirm", "panic_phrases", "trust_enabled", "trust_threshold")   # hub/panic.py, hub/trust.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "oppsources_enabled", "oppsources_interval_min", "oppsources_watch_interval_min", "oppsources_stale_days", "oppsources_ghost_days")   # hub/oppsources.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "tailor_enabled", "tailor_ai", "answerbank_enabled", "answerbank_min_confidence", "answerbank_embeddings")   # hub/tailor.py, hub/answerbank.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batches_outreach_cap")   # hub/batches.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
@@ -208,6 +209,14 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key in ("tailor_enabled", "tailor_ai", "answerbank_enabled", "answerbank_embeddings"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "answerbank_min_confidence":
+            if isinstance(value, bool) or not isinstance(value, int) or not 30 <= value <= 100:
+                raise HTTPException(400, "answerbank_min_confidence must be a whole number from 30 to 100.")
             changes[key] = value
         elif key in ("panic_confirm", "trust_enabled"):
             if not isinstance(value, bool):
@@ -598,6 +607,9 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "applyq_enabled": config.applyq_enabled, "applyq_daily_cap": config.applyq_daily_cap,
             "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": config.batches_catchup_min,
             "batches_outreach_cap": config.batches_outreach_cap,
+            "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
+            "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": config.answerbank_min_confidence,
+            "answerbank_embeddings": config.answerbank_embeddings is True,
             "wake_laptop_enabled": config.wake_laptop_enabled, "wake_laptop_device": config.wake_laptop_device,
             "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),
             "redact_kinds_all": list(redact_mod.KINDS), "redact_names": list(config.redact_names),
