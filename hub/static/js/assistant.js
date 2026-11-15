@@ -1025,7 +1025,11 @@ export function init(container, ctx) {
       }
     },
     openSection(name) {
-      if (name === "voice") openVoice();
+      if (name === "chat") {   // the Jarvis screen hands a typed command over (hub.assistant.prefill) when its own inbox is not set up
+        let pre = "";
+        try { pre = sessionStorage.getItem("hub.assistant.prefill") || ""; sessionStorage.removeItem("hub.assistant.prefill"); } catch (_) { /* ignore */ }
+        if (pre) { input.value = pre; resizeInput(); syncSend(); input.focus(); }
+      } else if (name === "voice") openVoice();
       else if (name === "friday") openVoice({ friday: true }); // the Friday screen's mic: greets in her voice
     },
   };

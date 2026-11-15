@@ -3,6 +3,8 @@
 import { api, ApiError, el } from "./api.js";
 import { icon, spinner } from "./laptop.js";
 import { confirm as uiConfirm, haptic, tile, switchControl } from "./ui.js";
+import { createFixKit } from "./fixpanel.js";
+import { speak as vkSpeak, voiceOn } from "./voicekit.js";
 
 const POLL_MS = 5000;
 const MAX_RECORD_SECONDS = 60;
@@ -78,11 +80,13 @@ export function createJarvis(container, ctx) {
   autoBox.addEventListener("change", () => {
     try { localStorage.setItem(AUTO_KEY, autoBox.checked ? "1" : "0"); } catch (_) { /* ignore */ }
   });
+  const replyPre = el("pre", { class: "ap-log fk-log", role: "log", "aria-label": "Jarvis's reply", hidden: true });
   const sayMessage = el("p", { class: "ap-say-msg", role: "status", hidden: true });
   const sentList = el("div", { class: "ap-sent ui-hscroll", role: "group", "aria-label": "Recent commands, tap to reuse" });
   const sayForm = el("form", { class: "ap-say-form", autocomplete: "off" },
     el("label", { class: "sr-only", for: "ap-jv-say" }, "Command for Jarvis"),
     el("div", { class: "ap-say-row" }, input, sendBtn),
+    replyPre,
     el("div", { class: "ap-say-tools" }, micBtn, micCancel,
       el("label", { class: "ap-auto", for: "ap-jv-auto" }, autoSwitch, el("span", {}, "Send automatically after dictating"))),
     micStatus, sayMessage);
@@ -101,6 +105,7 @@ export function createJarvis(container, ctx) {
   const whyCard = el("section", { class: "ui-card", "aria-labelledby": "ap-jv-why-h", hidden: true },
     el("h3", { id: "ap-jv-why-h" }, "Why it may have stopped"), whyPre);
 
+  const kit = createFixKit(ctx, { assistant: "jarvis", name: "Jarvis" });
   const logPre = el("pre", { class: "ap-log", tabindex: "0", role: "log", "aria-label": "Jarvis log" });
   const moreBtn = el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", "aria-pressed": "false", onclick: () => toggleLog() }, "Show more");
   const logRefresh = el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", onclick: () => refresh(true) }, icon("refresh", 18), "Refresh");
@@ -109,7 +114,7 @@ export function createJarvis(container, ctx) {
 
   container.append(
     el("div", { class: "ap-runner-head" }, heading, el("p", { class: "muted ap-desc" }, "Your voice assistant on the laptop. Start or stop it, and send it commands from here.")),
-    stateCard, controls, actionNote, composerCard, helpCard, whyCard, logCard);
+    stateCard, controls, actionNote, composerCard, helpCard, whyCard, logCard, kit.node);
 
   // ---- status ----------------------------------------------------------------------------------
   const canSay = () => !!(status && status.configured && status.running && status.remote_ready);
@@ -159,30 +164,45 @@ export function createJarvis(container, ctx) {
     stopBtn.setAttribute("aria-busy", String(busy === "stop"));
   }
 
+  function noteBlock(title, text, ...buttons) {
+    composerNote.hidden = false;
+    composerNote.replaceChildren(icon("info", 20), el("div", {}, el("strong", {}, title), el("p", {}, text),
+      buttons.length ? el("div", { class: "ap-row wrap" }, ...buttons) : null));
+  }
+  const startHere = () => el("button", { type: "button", class: "ui-btn ui-btn--primary ui-btn--sm", disabled: !!busy, onclick: () => startJarvis() }, "Start Jarvis");
+  const talkHere = () => el("button", { type: "button", class: "ui-btn ui-btn--secondary ui-btn--sm", onclick: () => handOver() },
+    "Ask Jarvis here instead");
+
+  // The typed command goes to the Talk screen (the hub's own Jarvis) when the separate program can't take it.
+  function handOver() {
+    const text = input.value.trim();
+    try { if (text) sessionStorage.setItem("hub.assistant.prefill", text); } catch (_) { /* ignore */ }
+    ctx.open("assistant", "chat");
+  }
+
   function renderComposer() {
     const configured = !!(status && status.configured);
     const running = !!(status && status.running);
     const ready = canSay();
-    composerCard.hidden = !configured && !!status;
-    input.disabled = !ready;
-    sendBtn.disabled = !ready || sending;
-    for (const b of exampleButtons) b.disabled = !ready;
-    micBtn.disabled = !ready || rec.phase === "uploading";
+    composerCard.hidden = false;
+    input.disabled = false;                       // the box is never dead: Send explains what is missing and offers the fix
+    sendBtn.disabled = sending;
+    for (const b of exampleButtons) b.disabled = false;
+    micBtn.disabled = rec.phase === "uploading";
     if (!status) {
       composerNote.hidden = true;
+    } else if (!configured) {
+      noteBlock("Jarvis isn't set up on the laptop", (status.reason || "Set jarvis_dir in hub.json.") + " You can still ask the hub's own Jarvis.", talkHere());
     } else if (!running) {
-      composerNote.hidden = false;
-      composerNote.replaceChildren(icon("info", 20), el("div", {}, el("strong", {}, "Start it first"),
-        el("p", {}, "Jarvis has to be running before it can take a command.")));
+      noteBlock("Jarvis is not running", "Start it, then send your command. Your text stays in the box.", startHere(), talkHere());
     } else if (!status.remote_ready) {
-      composerNote.hidden = false;
-      composerNote.replaceChildren(icon("info", 20), el("div", {}, el("strong", {}, "Typing commands needs a small patch"),
-        el("p", {}, "Jarvis is running and still listens to the laptop's microphone, so you can talk to it in the room. To send commands from this phone, Jarvis needs a small optional patch."),
-        el("p", {}, "It's described in the file docs/jarvis-remote-inbox.md in the laptop-hub folder: it adds remote_inbox.py next to jarvis.py and a few lines in jarvis.py. Until then this box stays off.")));
+      noteBlock("Typing to the running Jarvis needs a small patch",
+        "Jarvis is running and listens to the laptop's microphone. To send commands from this phone, install the optional patch described in docs/jarvis-remote-inbox.md (adds remote_inbox.py next to jarvis.py). Until then, ask here: the hub's own Jarvis answers and speaks on this phone.",
+        talkHere());
     } else {
       composerNote.hidden = true;
     }
-    input.placeholder = ready ? "e.g. open the Q3 report" : "Not available yet";
+    input.placeholder = ready ? "e.g. open the Q3 report" : "Type a command (see the note above)";
   }
 
   function renderWhy() {
@@ -334,6 +354,15 @@ export function createJarvis(container, ctx) {
     if (sending) return;
     const text = input.value.trim();
     if (!text) { sayMessageShow("Type or say a command first.", true); input.focus(); return; }
+    if (!canSay()) {
+      const why = !status || !status.configured ? "Jarvis isn't set up on the laptop."
+        : !status.running ? "Jarvis is not running. Tap Start Jarvis, then send again. Your text is kept."
+        : "Jarvis can't take typed commands until the remote-inbox patch is installed. Use Ask Jarvis here instead.";
+      sayMessageShow(why, true);
+      renderComposer();
+      composerNote.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+      return;
+    }
     sending = true;
     sendBtn.disabled = true;
     sayMessageShow("");
@@ -349,12 +378,36 @@ export function createJarvis(container, ctx) {
       renderSent();
       input.value = "";
       sayMessageShow(data && data.queued ? "Queued. Jarvis will run it and answer out loud on the laptop." : "Sent.", false);
+      if (data && data.queued) { watchReply(text); if (voiceOn()) vkSpeak("Sent to Jarvis.", { assistant: "jarvis" }); }
     } catch (error) {
       sayMessageShow(error.message, true);
       if (error instanceof ApiError && error.status === 409) refresh();
     }
     sending = false;
-    sendBtn.disabled = !canSay();
+    sendBtn.disabled = false;
+  }
+
+  // Show what Jarvis wrote to its log after a command was queued (its answer is spoken on the laptop; the log has the text).
+  let replyRun = 0;
+  async function watchReply(sentText) {
+    const run = ++replyRun;
+    let base = [];
+    try { base = (await api("/api/fixit/log?source=jarvis&lines=40")).lines || []; } catch (_) { /* no log yet */ }
+    const last = base.length ? base[base.length - 1] : null;
+    replyPre.hidden = false;
+    replyPre.textContent = `Sent: ${sentText}\nWaiting for Jarvis...`;
+    for (let i = 0; i < 10 && run === replyRun && opened; i += 1) {
+      await new Promise((r) => setTimeout(r, 2500));
+      try {
+        const now = (await api("/api/fixit/log?source=jarvis&lines=40")).lines || [];
+        const at = last == null ? -1 : now.lastIndexOf(last);
+        const fresh = at >= 0 ? now.slice(at + 1) : (last == null ? now : now.slice(-6));
+        if (fresh.length) replyPre.textContent = `Sent: ${sentText}\n` + fresh.join("\n");
+      } catch (_) { /* keep waiting */ }
+    }
+    if (run === replyRun && /Waiting for Jarvis\.\.\.$/.test(replyPre.textContent)) {
+      replyPre.textContent += "\nNo log lines yet. Jarvis speaks its answer on the laptop; the full log is below.";
+    }
   }
 
   // ---- voice ---------------------------------------------------------------------------------------
@@ -517,11 +570,13 @@ export function createJarvis(container, ctx) {
     render();
     renderSent();
     setPhase("idle");
+    kit.refresh();
     refresh().then(() => { if (opened) schedule(); });
   }
 
   function close() {
     opened = false;
+    kit.stop();
     clearTimeout(timer);
     timer = null;
     if (abort) abort.abort();

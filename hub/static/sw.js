@@ -22,7 +22,7 @@ const SHELL = [
   "/js/files.js", "/js/focus.js", "/js/habits.js", "/js/home.js", "/js/hub.js", "/js/icons.js", "/js/inbox.js",
   "/js/jarvis.js", "/js/journal.js", "/js/kb.js", "/js/laptop.js", "/js/learn.js", "/js/main.js", "/css/setup.css",
   "/js/setup.js", "/vendor/fonts/jetbrains-mono-var-latin.woff2", "/css/launcher.css", "/js/launcher.js",
-  "/css/friday.css", "/js/friday.js", "/js/notes.js", "/js/notifications.js", "/js/omnibox.js", "/js/providers.js",
+  "/css/fixkit.css", "/js/fixpanel.js", "/js/voicekit.js", "/css/friday.css", "/js/friday.js", "/js/notes.js", "/js/notifications.js", "/js/omnibox.js", "/js/providers.js",
   "/js/quiz.js", "/js/reminders.js", "/js/screen.js", "/js/settings.js", "/js/sourcepicker.js", "/js/studychat.js",
   "/js/lanepicker.js", "/js/presence.js", "/css/lanes.css", "/js/terminal.js", "/js/todos.js", "/js/tools.js",
   "/js/ui.js", "/js/voicemode.js", "/js/wakebridge.js", "/css/posts.css", "/js/posts.js", "/js/devto.js",

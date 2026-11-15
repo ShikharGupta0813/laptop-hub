@@ -98,8 +98,29 @@ def cmd_serve(args) -> int:
     from .server import create_app
     path = Path(args.config) if args.config else cfg.default_path()
     config = cfg.load(path)
-    print(f"Laptop Hub on http://{config.host}:{config.port}  (config {path})")
-    print("Put HTTPS in front with:  tailscale serve --bg " + str(config.port))
+    import logging
+
+    from . import consolelog, provchain
+    from . import providers as providers_mod
+    consolelog.enable(config.data_path() / consolelog.FILE_NAME)
+
+    class _ToConsole(logging.Handler):          # warnings and errors from the hub's own code, with their cause
+        def emit(self, record):
+            consolelog.say(f"{record.levelname} {record.name}: {record.getMessage()}")
+    logging.getLogger("hub").addHandler(_ToConsole(level=logging.WARNING))
+    try:
+        from .tts import TTSService
+        engine = TTSService(config).settings()["engine"]
+    except Exception:  # noqa: BLE001 - the banner must never stop the hub
+        engine = "browser"
+    try:
+        rows = provchain.diagnose(config)
+        default = providers_mod.resolve_default(config)
+    except Exception:  # noqa: BLE001
+        rows, default = [], "local"
+    for text in consolelog.banner_lines(config, path, tts_engine=engine, provider_rows=rows,
+                                        default_provider=providers_mod.LABELS.get(default, default)):
+        consolelog.say(text)
     uvicorn.run(create_app(config, config_path=path), host=config.host, port=config.port, log_level="info")
     return 0
 
@@ -144,6 +165,8 @@ def cmd_doctor(args) -> int:
     from . import providers as providers_mod
     avail = providers_mod.availability(config)
     ready = [avail[k]["label"] for k in ("claude", "claude_login", "gemini") if avail[k]["ready"]]
+    from . import cliprov as cliprov_mod
+    ready += [e["label"] for e in cliprov_mod.ready_entries(config) if e["ready"]]
     if ready:
         line(True, "AI ready: Local model, " + ", ".join(ready)
              + f" (default: {providers_mod.LABELS.get(providers_mod.resolve_default(config), 'local')})")

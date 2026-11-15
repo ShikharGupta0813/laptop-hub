@@ -75,9 +75,13 @@ let navToken = 0;
 const $ = (id) => document.getElementById(id);
 
 function speak(text) {
-  if (!("speechSynthesis" in window) || !text) return;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  // the phone's voice, sentence by sentence, with the lazy voice list and the first-tap unlock handled (voicekit.js)
+  if (!text) return;
+  import("./voicekit.js").then((m) => m.voiceOn() && m.speakBrowser(text)).catch(() => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  });
 }
 
 // An id that is not registered still works if js/<id>.js exists (convention over configuration).

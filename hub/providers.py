@@ -3,7 +3,7 @@
 Providers: "local" (Ollama), "claude" (Anthropic API key), "claude-login" (the `claude` program logged in
 with a Claude subscription), "gemini" (Google API key) and "duo" (Claude login plans, Gemini does the work). `default_provider` in hub.json is "auto" or one
 of those names; "auto" picks claude if ANTHROPIC_API_KEY is set, else gemini if a key is saved, else claude-login if the
-`claude` program is installed, else local. Heavy jobs can pick claude-login explicitly.
+`claude` program is installed, else local. A logged-in CLI provider (Gemini CLI, `cli:<id>`) counts before the Claude login. Heavy jobs can pick claude-login explicitly.
 """
 from __future__ import annotations
 
@@ -55,6 +55,15 @@ def key_of(provider: str) -> str:
     return provider.replace("-", "_")
 
 
+def _ready_cli_entries(config) -> list[str]:
+    try:
+        from . import cliprov
+        return [e["id"] for e in cliprov.ready_entries(config) if e["ready"]
+                and cliprov.status_of(cliprov.list_for(config).get(e["id"]))["installed"]]
+    except Exception:  # noqa: BLE001 - a broken list never breaks provider choice
+        return []
+
+
 def resolve_default(config) -> str:
     choice = (getattr(config, "default_provider", "auto") or "auto").strip().lower()
     if choice in PROVIDERS:
@@ -68,6 +77,8 @@ def resolve_default(config) -> str:
     key = gemini_key()
     if key and not gemini_quota_problem(key):
         return "gemini"       # free key: routine jobs go here so the Claude subscription quota is kept
+    for entry in _ready_cli_entries(config):
+        return "cli:" + entry      # a logged-in command line AI (the Gemini CLI) counts: no API key needed
     if _claude_login_cli(config):
         return "claude-login"
     return "local"

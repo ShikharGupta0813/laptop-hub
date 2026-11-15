@@ -7,6 +7,8 @@ import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 import { guardedSheet } from "./sourcepicker.js";
+import { createFixKit } from "./fixpanel.js";
+import { voiceOn, hubProfile, speak as vkSpeak, stop as vkStop } from "./voicekit.js";
 
 // ------------------------------------------------------------------------------------------------ css
 const CSS = "/css/friday.css";
@@ -389,7 +391,18 @@ export function init(container, ctx) {
   const stage = el("div", { class: "fr-stage ui-stack ui-stack--lg" });
   const pendingSlot = el("section", { class: "fr-slot", "aria-label": "Waiting for you", hidden: true });
   const alertsSlot = el("section", { class: "fr-slot", "aria-label": "Alerts" });
-  root.append(hero, actions, player, pendingSlot, stage, alertsSlot);
+  const kit = createFixKit(ctx, { assistant: "friday", name: "Friday" });
+  root.append(hero, actions, player, pendingSlot, stage, alertsSlot, kit.node);
+  // Every spoken Friday line goes through here: respects Voice on/off, uses the laptop's voice when one is set up, else the phone's.
+  let toldOff = false;
+  async function say(text) {
+    if (!voiceOn()) {
+      if (!toldOff) { toldOff = true; ui.toast("Voice is off. Switch on Voice (below) to hear me."); }
+      return;
+    }
+    if (await hubProfile("friday")) { speaker.stop(true); vkSpeak(text, { assistant: "friday" }); return; }
+    vkStop(); speaker.play(text);
+  }
 
   function paintHero() {
     heroName.textContent = personaName();
@@ -441,7 +454,7 @@ export function init(container, ctx) {
       busy = ""; paintHero(); renderBrief();
       if (speak) {
         const ask = " Shall I plan your day, or get your laptop ready?";
-        speaker.play((FR.brief.spoken || toneLine(FR.brief)) + ask);
+        say((FR.brief.spoken || toneLine(FR.brief)) + ask);
       }
       ui.haptic("success");
     } catch (e) {
@@ -502,7 +515,7 @@ export function init(container, ctx) {
     try {
       await loadPlan();
       busy = ""; paintHero(); renderPlan();
-      if (FR.plan.spoken) speaker.play(FR.plan.spoken);
+      if (FR.plan.spoken) say(FR.plan.spoken);
     } catch (e) { busy = ""; paintHero(); planSlot.hidden = true; problem(e, () => runPlan()); }
   }
   const BLOCK_TONE = { focus: "accent", meeting: "info", task: "good", break: "teal", learning: "violet", admin: "orange" };
@@ -552,7 +565,7 @@ export function init(container, ctx) {
       busy = ""; paintHero();
       selected.clear(); FR.prep.items.forEach((i) => selected.add(i.id));
       renderPrep();
-      speaker.play(FR.prep.items.length ? `I have ${FR.prep.items.length} ${FR.prep.items.length === 1 ? "thing" : "things"} ready to open on your laptop. Have a look, and tell me when you are happy.` : "I could not find anything worth opening right now.");
+      say(FR.prep.items.length ? `I have ${FR.prep.items.length} ${FR.prep.items.length === 1 ? "thing" : "things"} ready to open on your laptop. Have a look, and tell me when you are happy.` : "I could not find anything worth opening right now.");
     } catch (e) { busy = ""; paintHero(); prepSlot.hidden = true; problem(e, () => startPrep()); }
   }
   function renderPrep() {
@@ -718,8 +731,8 @@ export function init(container, ctx) {
   const ready = boot(false);
 
   return {
-    show() { visible = true; paintHero(); if (!missing) { loadPendingStrip(); loadAlertsList(); } },
-    hide() { visible = false; speaker.stop(); },
+    show() { visible = true; paintHero(); kit.refresh(); if (!missing) { loadPendingStrip(); loadAlertsList(); } },
+    hide() { visible = false; speaker.stop(); vkStop(); kit.stop(); },
     async openSection(name) {
       await ready;
       if (missing) return;
