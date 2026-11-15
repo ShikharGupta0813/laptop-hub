@@ -1016,5 +1016,4 @@ async def start(ctx: Ctx):
     async def stop():
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-        ENGINES.pop(id(ctx), None)
     return stop

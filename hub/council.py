@@ -766,5 +766,4 @@ async def start(ctx: Ctx):
 
     async def stop():
         await mgr.shutdown()
-        MANAGERS.pop(id(ctx), None)
     return stop

@@ -256,6 +256,20 @@ Everything was tested in a Linux container with fake models and a fake operating
 
 ```bash
 python -m unittest discover -s tests -t .      # no models or network needed
+python scripts/run-tests.py                    # same tests, one process per module, 4 at a time, 420 s limit each
+python scripts/run-tests.py test_notes test_auth --workers 1   # only some modules
+```
+
+`scripts/run-tests.py` prints one line per module and a summary, and exits non-zero if any module fails or times out. Prefer it on Windows: a single `discover` run can look hung.
+
+The browser tests (`test_ui_*`, `test_chat_ai_ui`, `test_fixit_ui`, `test_screen_keyboard_ui`) skip unless Node.js, the Playwright package for Node and a browser are installed. To enable them (optional, installs outside the repo):
+
+```bash
+npm install -g playwright
+npx playwright install chromium
+```
+
+```bash
 python -m hub.devserver --port 8799            # fake models, sample files, token: devtoken
 ```
 
