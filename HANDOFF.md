@@ -668,3 +668,7 @@ Owner (real 390px Android): model strip unreadable, the chip row was the lanes p
 - Shared helper `hub/common.py setup_all_hint` + `js/setuphint.js` ("Run scripts\setup-all.ps1 (installs everything)") used by dictation, screen, hub checks, voices; the script itself is another worker's. `css/sheets.css`: reading face and line height for long sheet text, safe bottom padding.
 - Tests: `tests/test_chat_ai.py`, `tests/test_chat_ai_ui.py` (`chat_ai_check.js` at 390 and 320 with a scripted fake hub, `ui_nulltext_check.js` over every screen and Settings sheet).
 - UNVERIFIED: real phone fonts/touch, a real Antigravity login (`agy -p`), a real Council run, other screens that still use `providerSegmented` with many CLI logins (same overlap possible), lane answers do not carry earlier chat turns (stateless task).
+
+## 3u. Chat history across restarts (2026-11-15, issue #16)
+- `hub/chatstore.py`: SQLite `chat_history.sqlite` in the data folder (user text, final assistant text, "used: tools"; never tool output or tainted answers; last 40 messages, 30 days). `AssistantService` loads a session once on first use (off the loop) and saves after each finished turn in a background thread; `reset` also deletes the rows. Phone session id moved from sessionStorage to localStorage so it survives app restarts. Config `chat_history_enabled`, `chat_history_days` (Settings). Doc `docs/api/chat-history.md`, tests `tests/test_chatstore.py`.
+- UNVERIFIED: real phone restart, real models, a very large history file.

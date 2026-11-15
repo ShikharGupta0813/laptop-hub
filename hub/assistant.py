@@ -34,7 +34,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-from . import panic as panic_mod
+from . import chatstore, panic as panic_mod
 from . import providers, redact, safety, usage
 from .fastcmd import match_fast_command
 from .latency import Latency
@@ -633,6 +633,7 @@ class _Session:
         self.voice = False      # this message was spoken: shorter answers, no slow planning step
         self.memory = ""        # best matching memories for this question (hub/brain.py), "" for most messages
         self.answered_by = ""   # the provider that really wrote this turn's words (a fallback may differ from the pick)
+        self.loaded = False     # the saved conversation (hub/chatstore.py) was looked up for this session id
 
 
 class LocalChat:
@@ -842,6 +843,8 @@ class AssistantService:
         self._sessions: dict[str, _Session] = {}
         self._waiting: dict[tuple[str, str], asyncio.Future] = {}
         self._lock = threading.Lock()  # resolve/reset arrive from the server's thread pool
+        self._chat_db: chatstore.ChatStore | None = None
+        self._bg: set = set()                              # chat-history writes in flight (never awaited by a turn)
         # GRADED SAFETY (hub/safety.py). Memory only, never on disk.
         self.n3_delay = safety.N3_DELAY_SECONDS            # seconds between CONFIRM and running a critical call
         self._clock = time.time                            # tests replace it
@@ -910,6 +913,50 @@ class AssistantService:
         """Full Control: every approval is granted automatically (see docs/guide/10-security-and-privacy.md)."""
         return getattr(self.config, "full_control", False) is True
 
+    def _chat_store(self) -> chatstore.ChatStore | None:
+        """The saved-conversation file, or None when chat_history_enabled is off (or the data folder is unknown)."""
+        if getattr(self.config, "chat_history_enabled", True) is not True:
+            return None
+        try:
+            if self._chat_db is None:
+                self._chat_db = chatstore.ChatStore(Path(self.config.data_path()) / chatstore.FILE, clock=lambda: self._clock())
+            self._chat_db.days = max(1, int(getattr(self.config, "chat_history_days", chatstore.DEFAULT_DAYS) or 1))
+            return self._chat_db
+        except Exception:  # noqa: BLE001 - no history is better than no chat
+            return None
+
+    async def _restore(self, session_id: str, session: _Session) -> None:
+        """First use of a session id in this process: rebuild its history from the saved file (off the event loop).
+        Context only; nothing here runs a tool. A broken or empty file just leaves the conversation fresh."""
+        session.loaded = True
+        store = self._chat_store()
+        if store is None or any(session.history.values()):
+            return
+        rows = await asyncio.to_thread(store.load, session_id)
+        for key, role, text in rows:
+            if role not in ("user", "assistant") or not text:
+                continue
+            chat = session.history.setdefault(key, [])
+            if not chat and role != "user":
+                continue                                        # a conversation must open with the owner
+            if chat and chat[-1]["role"] == role:
+                continue
+            chat.append({"role": role, "content": text})
+        for chat in session.history.values():
+            if chat and chat[-1]["role"] == "user":
+                chat.pop()                                      # an unanswered question: the owner asks again
+
+    def _save_turn(self, session_id: str, provider: str, session: _Session, text: str, answer: str, tools: list[str]) -> None:
+        store = self._chat_store()
+        if store is None or not answer.strip():
+            return
+        if session.tainted:                                     # it read untrusted content: keep the question, not the words
+            answer, tools = "(This answer used content from outside and was not saved.)", []
+        key = provider if (provider in session.history or provider in TEXT_PROVIDERS or str(provider).startswith("cli:")) else "claude"
+        task = asyncio.ensure_future(asyncio.to_thread(store.save_turn, session_id, key, text, answer, tools))
+        self._bg.add(task)
+        task.add_done_callback(self._bg.discard)
+
     async def run(self, session_id: str, text: str, provider: str, auto_approve: bool, *,
                   persona: str = "", voice: bool = False):
         if panic_mod.matches_phrase(text, self.config):
@@ -940,10 +987,13 @@ class AssistantService:
         session.persona, session.voice = clean_persona(persona, roster), bool(voice)
         ACTIVE_PERSONA.set(session.persona or "jarvis")
         started = time.monotonic()
+        said, used = [], []         # this turn's visible answer and tool names, for the saved conversation
         span: dict[str, Any] = {"provider": provider, "voice": bool(voice), "persona": session.persona or "jarvis",
                                 "stt_ms": self.latency.take_stt() if voice else None,
                                 "first_token_ms": None, "tools": 0, "fast": False, "ok": True}
         try:
+            if not session.loaded:
+                await self._restore(session_id, session)
             hello = greeting_reply(text, session.persona, getattr(self.config, "display_name", "Chief"),
                                    getattr(self.config, "jarvis_name", "Jarvis"), assistants=roster)
             fast = None if hello else self._fast_match(text)
@@ -953,11 +1003,13 @@ class AssistantService:
                 span["fast"] = True
                 span["first_token_ms"] = 0
                 yield {"type": "text", "t": hello}
+                said.append(hello)
                 turns = None
             elif saved:
                 span["fast"] = True
                 span["first_token_ms"] = 0
                 yield {"type": "text", "t": saved}
+                said.append(saved)
                 session.history.get(provider if provider in session.history else "claude", []).extend(
                     [{"role": "user", "content": text}, {"role": "assistant", "content": saved}])
                 turns = None
@@ -998,10 +1050,13 @@ class AssistantService:
                             finished = True
                             break
                         kind = event.get("type")
-                        if kind == "text" and span["first_token_ms"] is None:
-                            span["first_token_ms"] = int((time.monotonic() - started) * 1000)
+                        if kind == "text":
+                            said.append(str(event.get("t") or ""))
+                            if span["first_token_ms"] is None:
+                                span["first_token_ms"] = int((time.monotonic() - started) * 1000)
                         elif kind == "tool_start":
                             span["tools"] += 1
+                            used.append(str(event.get("name") or ""))
                         elif kind == "error":
                             span["ok"] = False
                         yield event
@@ -1017,6 +1072,8 @@ class AssistantService:
                     # which AI really answered (a not-ready pick falls back down the chain): shown under the reply
                     who = session.answered_by or str(provider)
                     yield {"type": "answered_by", "provider": who, "label": self._provider_label(who)}
+                if finished and span["ok"]:
+                    self._save_turn(session_id, provider, session, text, "".join(said), used)   # after the turn, never while streaming
         except Exception as exc:  # noqa: BLE001  a failing turn ends as a message, never as a dead stream
             span["ok"] = False
             yield {"type": "error", "message": f"Assistant failed: {exc}"}
@@ -1187,6 +1244,9 @@ class AssistantService:
         return {"detail": ", ".join(parts)} if parts else None
 
     def reset(self, session_id: str) -> None:
+        store = self._chat_store()
+        if store is not None:
+            store.clear(session_id)         # also when the hub restarted and the conversation is only on disk
         session = self._sessions.get(session_id)
         if session is None:
             return
