@@ -192,6 +192,7 @@ class GenerateBody(BaseModel):
     count: int = Field(default=10)
     model: Provider = "local"
     style: Literal["qa", "cloze", "definition"] = "qa"
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
 
 
 class ReviewBody(BaseModel):
@@ -1012,6 +1013,9 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
             if not src.root or src.path is None:
                 raise study.SourceError(400, "Choose a file.")
             return await asyncio.to_thread(study.read_file_source, ctx.config.roots, src.root, src.path)
+        if src.type == "library":
+            from . import studylib
+            return await asyncio.to_thread(studylib.get_library(ctx).source, src.ids or [], src.page_from, src.page_to)
         if src.type == "text":
             text = study._clip(src.text or "").strip()
             if not text:
@@ -1033,7 +1037,8 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
             raise study.SourceError(400, "Enter a topic.")
         return study.Loaded("topic", topic, "", f"Topic: {topic}", topic=topic)
 
-    async def propose(loaded: study.Loaded, count: int, style: str, choice: str, existing: set[str]) -> dict:
+    async def propose(loaded: study.Loaded, count: int, style: str, choice: str, existing: set[str],
+                      difficulty: str = "medium") -> dict:
         """Ask the model for cards from `loaded`; nothing is saved."""
         if loaded.kind != "topic" and len(loaded.text) < 40:
             raise HTTPException(422, "There is too little text there to make cards from.")
@@ -1041,7 +1046,7 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
         model = model_for(choice)
         part = study.fence_topic(loaded.topic) if loaded.kind == "topic" \
             else study.fence(loaded.title, study.quiz_material(loaded.text))
-        user = f"Write {count} flashcards. {STYLE_RULES[style]}\n\n{part}"
+        user = f"Write {count} flashcards. {STYLE_RULES[style]} Difficulty: {difficulty}.\n\n{part}"
         try:
             raw = await ask_json(model, CARDS_SYSTEM, user)
         except LLMError as exc:
@@ -1065,7 +1070,7 @@ def make_router(ctx: Ctx, *, fetcher=None, now: Optional[Callable[[], datetime]]
         find_deck(data, deck_id)
         loaded = await load_source(body.source)
         existing = {front_key(str(c.get("front", ""))) for c in data["cards"] if c.get("deck_id") == deck_id}
-        result = await propose(loaded, body.count, body.style, body.model, existing)
+        result = await propose(loaded, body.count, body.style, body.model, existing, body.difficulty)
         ctx.audit("cards_generate", deck=deck_id, source=loaded.label, count=len(result["cards"]),
                   provider=body.model)
         return {**result, "saved": False}

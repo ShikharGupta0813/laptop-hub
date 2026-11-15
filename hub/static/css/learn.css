@@ -211,3 +211,29 @@
   #view-learn .sc-starters::-webkit-scrollbar { display: none; }
   #view-learn .sc-starters > * { flex: none; }
 }
+
+/* ---- study library: Add material sheet, library list (studylib.js) ---- */
+.sp-addrow { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; min-width: 0; }
+.sl-add, .sl-lib { min-width: 0; }
+.sl-panel[hidden] { display: none; }
+.sl-small { font-size: var(--fs-sm); color: var(--c-text-2); margin: 0; }
+.sl-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.sl-drop { display: grid; gap: var(--sp-2); justify-items: start; padding: var(--sp-4); border: 2px dashed var(--c-border); border-radius: var(--r-lg, 14px); }
+.sl-drop.is-over { border-color: var(--c-accent); background: var(--c-accent-soft); }
+.sl-drop-title { margin: 0; font-weight: var(--fw-semibold); }
+.sl-queue, .sl-result { display: grid; gap: var(--sp-2); min-width: 0; }
+.sl-row { display: grid; gap: var(--sp-1, 4px); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-border); border-radius: var(--r-md, 10px); min-width: 0; }
+.sl-row-main { display: flex; justify-content: space-between; gap: var(--sp-2); min-width: 0; }
+.sl-row-name { min-width: 0; font-weight: var(--fw-medium); }
+.sl-row-status { font-size: var(--fs-sm); color: var(--c-text-2); overflow-wrap: anywhere; }
+.sl-row-status[data-tone="bad"], .sl-err { color: var(--c-bad, #c0392b); }
+.sl-row-status[data-tone="good"] { color: var(--c-good, #1e8e5a); }
+.sl-err { display: block; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.sl-bar, .sl-head, .sl-range { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; min-width: 0; }
+.sl-head input[type="search"] { flex: 1; min-width: 0; }
+.sl-range input { width: 5.5em; }
+.sl-summary { flex: 1; font-size: var(--fs-sm); color: var(--c-text-2); min-width: 0; }
+.sl-doc { display: grid; grid-template-columns: 1fr auto; gap: var(--sp-1, 4px) var(--sp-2); align-items: center; min-width: 0; }
+.sl-doc > .sp-item { grid-column: 1; min-width: 0; }
+.sl-doc > .ui-bar { grid-column: 1 / -1; }
+.sl-docs, .sl-files { max-height: 42vh; }

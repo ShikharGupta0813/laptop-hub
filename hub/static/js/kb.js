@@ -3,6 +3,7 @@
 // File text, snippets and model output are shown with textContent or renderMarkdown (sanitised) only.
 import { api, sse, renderMarkdown, el } from "./api.js";
 import * as ui from "./ui.js";
+import { createLibraryPicker } from "./studylib.js";
 import { createProviderSwitch, ensureCss, store, clip } from "./sourcepicker.js";
 
 const EMBED_CMD = "ollama pull nomic-embed-text";
@@ -87,6 +88,11 @@ export function init(container, ctx) {
   const seg = ui.segmented({ options: [{ value: "search", label: "Search", icon: "search" }, { value: "ask", label: "Ask", icon: "sparkles" }],
     value: mode, label: "Ask my files mode", block: true, onChange(v) { mode = v; store.set("sessionStorage", "hub.kb.mode", v); paintBody(); } });
 
+  // Ask can answer from the shared folders (default) or from chosen documents of the study library.
+  let scope = store.get("sessionStorage", "hub.kb.scope", "files") === "library" ? "library" : "files";
+  const libPick = createLibraryPicker(ctx, { onChange() {} });
+  const scopeSeg = ui.segmented({ options: [{ value: "files", label: "Shared folders" }, { value: "library", label: "Study library" }],
+    value: scope, label: "Answer from", block: true, onChange(v) { scope = v; store.set("sessionStorage", "hub.kb.scope", v); paintBody(); } });
   const body = el("div", { class: "kb-body ui-stack ui-stack--lg" });
   root.append(seg, body, statusHost);
 
@@ -127,6 +133,7 @@ export function init(container, ctx) {
   }
 
   function openHit(rootName, rel) {
+    if (rootName === "library") { ctx.toast("This came from your study library.", { kind: "info" }); return; }
     try { ctx.openFile(rootName, rel); } catch (error) { ctx.toast(error.message, { kind: "bad" }); }
   }
   function hitCard(h) {
@@ -180,7 +187,9 @@ export function init(container, ctx) {
   async function ask() {
     const question = askInput.value.trim();
     if (!question || askController) return;
-    if (emptyIndex()) { ctx.toast("Nothing is indexed yet. Tap Re-scan first.", { kind: "warn" }); return; }
+    const libIds = scope === "library" ? libPick.getIds() : [];
+    if (scope === "library" && !libIds.length) { ctx.toast("Tick at least one document from your study library.", { kind: "warn" }); return; }
+    if (scope === "files" && emptyIndex()) { ctx.toast("Nothing is indexed yet. Tap Re-scan first.", { kind: "warn" }); return; }
     askController = new AbortController();
     const signal = askController.signal;
     askBtn.hidden = true; stopBtn.hidden = false; askEmpty.hidden = true;
@@ -198,7 +207,7 @@ export function init(container, ctx) {
       linkCitations(answerBody, sources);
     };
     try {
-      for await (const ev of sse("/api/kb/ask", { question, model: provider.get(), limit: 6 }, signal)) {
+      for await (const ev of sse("/api/kb/ask", { question, model: provider.get(), limit: 6, ...(scope === "library" ? { library: libIds } : {}) }, signal)) {
         if (ev.type === "sources") {
           sources = ev.sources || [];
           paintSources(sourcesHost, sources);
@@ -228,8 +237,8 @@ export function init(container, ctx) {
 
   // ------------------------------------------------------------ body paint
   function paintBody() {
-    if (status && !status.files && !status.indexing) {
-      body.replaceChildren(ui.emptyState({ icon: "book-open", title: "Nothing indexed yet",
+    if (status && !status.files && !status.indexing && !(mode === "ask" && scope === "library")) {
+      body.replaceChildren(ui.button({ label: "Use my study library instead", icon: "book-open", variant: "tonal", onClick: () => { mode = "ask"; scope = "library"; scopeSeg.value = "library"; seg.value = "ask"; paintBody(); } }), ui.emptyState({ icon: "book-open", title: "Nothing indexed yet",
         body: "Ask my files reads the folders you share on the laptop (notes, PDFs, Word and text files) and builds a private index on that laptop. Tap Re-scan to start.",
         action: { label: "Re-scan now", icon: "refresh", onClick: () => reindex(null) } }));
       return;
@@ -238,7 +247,7 @@ export function init(container, ctx) {
       body.replaceChildren(el("div", { class: "ui-input-wrap" }, ui.icon("search"), searchInput), searchResults);
       if (!searchInput.value.trim()) paintSearchIdle();
     } else {
-      body.replaceChildren(el("section", { class: "ui-card kb-askcard ui-stack" }, askInput, el("div", { class: "kb-askrow" }, providerHost, el("div", { class: "kb-askbtns" }, stopBtn, askBtn))),
+      body.replaceChildren(scopeSeg, ...(scope === "library" ? [libPick.root] : []), el("section", { class: "ui-card kb-askcard ui-stack" }, askInput, el("div", { class: "kb-askrow" }, providerHost, el("div", { class: "kb-askbtns" }, stopBtn, askBtn))),
         askOut, askEmpty);
       askEmpty.hidden = askOut.childNodes.length > 0;
     }

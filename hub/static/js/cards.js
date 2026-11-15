@@ -367,7 +367,7 @@ export function init(container, ctx) {
 
   // ---------------------------------------------------------------- AI generate sheet
   function generateSheet(deck) {
-    const picker = createSourcePicker(null, ctx, { type: "note" });
+    const picker = createSourcePicker(null, ctx, { type: "library" });
     const providerHost = el("div", {});
     const provider = createProviderSwitch(providerHost, "Model for generating cards");
     let count = 10;

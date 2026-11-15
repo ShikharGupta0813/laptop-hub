@@ -248,6 +248,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "tailor": ({"tailor_preview", "answerbank_list", "answerbank_add"},
                re.compile(r"\btailor(?:ed|ing)?\b|\b(?:custom|customi[sz]e|adapt)\w* (?:my |the )?(?:resume|cv|cover (?:letter|note))\b|\bcover (?:letter|note)\b|\bproposal for\b|"
                           r"\banswer bank\b|\bsaved answers?\b|\bfit (?:check|score)\b|\bhow (?:well )?do i (?:fit|match)\b|\bam i (?:a good fit|qualified)\b|\bsalary expectation\b|\bnotice period\b", re.I)),
+    "study": ({"study_library_list", "study_import_path"},
+              re.compile(r"\bstudy library\b|\b(?:add|import|put|save|upload)\b.{0,40}\b(?:to|into|in) (?:my )?(?:study|learn|library)\b|\bstudy (?:material|materials|notes|files?)\b|\bmy library\b", re.I)),
     "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},
               re.compile(r"\bdev\.?to\b|\bblog\b|\bpost ideas?\b|\blinkedin\b|\bpost pack\b|\barticles?\b|\bwrite (?:a )?post\b|\bposting\b|\bpublish\b|\bhashnode\b|"
                          r"\bwordpress\b|\bghost\b|\bmedium\b|\bdestinations?\b|\bpost (?:it|this|that)\b", re.I)),

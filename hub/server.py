@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant_tools, assistant_tools_more, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor
+from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor
 from . import models as models_mod
 from . import llm as llm_mod
 from . import updater as updater_mod
@@ -60,6 +60,7 @@ VERSION = "1.0"
 FEATURE_MODULES = ("work", "study", "english", "laptop", "jarvis", "kb", "fileops", "notify", "reminders", "inbox",
                    "screen", "productivity", "life", "automations", "watch", "friday", "workspaces", "cards", "settings", "search", "council", "autopilot", "today", "skills", "research", "brain", "proactive", "vision", "ccsessions", "buildflow", "wakeword", "privacy", "profile", "opps", "applyq", "gmailx", "devto", "alerts", "asana", "tasksources", "calendars", "sources", "posts", "assistants", "rules")
 FEATURE_MODULES = FEATURE_MODULES + ("endpoints", "searchprov", "cliprov")   # owner-editable provider lists (docs/api/endpoints.md, searchprov.md)
+FEATURE_MODULES = FEATURE_MODULES + ("studylib",)   # study library: upload / pick laptop files / paste for Learn (docs/api/studylib.md)
 FEATURE_MODULES = FEATURE_MODULES + ("formfill",)   # browser form pre-fill for the application queue (docs/api/formfill.md)
 FEATURE_MODULES = FEATURE_MODULES + ("models",)   # local model catalogue, pull, deep thinking, bench (docs/api/models.md)
 FEATURE_MODULES = FEATURE_MODULES + ("dictation",)   # laptop dictation hotkey (docs/api/dictation.md)
@@ -209,6 +210,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     assistant = deps.assistant or AssistantService(
         config, audit=audit, protected_paths=[p for p in (audit_file, config_path) if p], dynamic=mcp_manager,
         extra_tools=assistant_tools.build(lambda: app, config) + assistant_tools_more.build(lambda: app, config)
+        + studylib.build(lambda: app, config)
         + friday_tools.build(lambda: app, config) + council_tools.build(lambda: app, config)
         + skills_tools.build(lambda: app, config)
         + research.build(lambda: app, config)

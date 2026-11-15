@@ -3,6 +3,7 @@
 // Everything that comes from the transcriber or a model is put on the page with textContent only.
 import { api, sse, el } from "./api.js";
 import * as ui from "./ui.js";
+import { createLibraryPicker } from "./studylib.js";
 import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 const MAX_SPEAK_SECONDS = 180;
@@ -1170,8 +1171,24 @@ export function init(container, ctx) {
       el("div", { class: "ui-card eng-setup" },
         el("div", { class: "eng-field-head" }, el("label", { for: "eng-correct-text", class: "ui-caps" }, "Your text"), counter),
         input,
-        button, el("div", { class: "eng-center" }, clear)),
+        button, el("div", { class: "eng-center" }, clear, ui.button({ label: "Add material", icon: "upload", variant: "ghost", onClick: pickMaterial }))),
       result);
+    // Reading material: pull a passage of a library document (added from this device, the laptop or pasted) into the box.
+    function pickMaterial() {
+      const picker = createLibraryPicker(ctx, { single: true });
+      ui.sheet({ title: "Reading material", content: picker.root, class: "sp-sheet", actions: [
+        { label: "Use this text", variant: "primary", icon: "check", async onClick() {
+          const [id] = picker.getIds();
+          if (!id) { ctx.toast("Tick a document first.", { kind: "warn" }); return false; }
+          const { page_from, page_to } = picker.getRange();
+          try {
+            const q = new URLSearchParams({ max_chars: "4000", page_from: String(page_from || 1), page_to: String(page_to || 0) });
+            const data = await api(`/api/learn/library/${encodeURIComponent(id)}/text?${q}`);
+            input.value = String(data.text || "").slice(0, 4000);
+            counter.textContent = `${input.value.length} / 4000`;
+          } catch (error) { ctx.toast(error.message, { kind: "bad" }); return false; }
+        } }] });
+    }
     return { node: pane };
   }
 

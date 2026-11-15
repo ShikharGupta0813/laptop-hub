@@ -17,6 +17,7 @@ The sections below are the original core routes. Each newer module has its own f
 - [productivity.md](api/productivity.md): to-dos, focus timer, habits, journal
 - [reminders.md](api/reminders.md): reminders, alarms and timers
 - [screen.md](api/screen.md): remote screen view and opt-in control
+- [studylib.md](api/studylib.md): the study library for Learn (upload, pick laptop files, paste; select documents as a source)
 - [search.md](api/search.md): global search (`/api/search`) and the Home dashboard data
 - [settings.md](api/settings.md): settings, models, diagnostics, audit viewer, backups
 - [watch.md](api/watch.md): urgent-mail and Google Chat alerts
@@ -127,7 +128,7 @@ developed without a real model.
 
 A **source** is one of: `{type:"note", id}`, `{type:"file", root, path}`, `{type:"text", text}`,
 `{type:"url", url}` (public http/https only; private and loopback addresses are refused),
-`{type:"topic", topic}` (the model's own knowledge).
+`{type:"topic", topic}` (the model's own knowledge), or `{type:"library", ids:[...], page_from?, page_to?}` (documents of the study library, see [studylib.md](api/studylib.md)).
 
 - `GET /api/learn/topics` → `{topics:[{id,title}]}` suggested generic topics
 - `POST /api/learn/source/preview` `{source}` → `{title, chars, excerpt}`

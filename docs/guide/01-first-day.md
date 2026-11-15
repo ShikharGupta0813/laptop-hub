@@ -161,6 +161,18 @@ Also in Apps: To-do, Habits, Journal, Focus timer, Reminders, Tools, Read later,
 
 > ✅ **Check:** Lost? Tap the search icon. One box searches notes, files, tasks and apps.
 
+### Learn: study from your own PDFs and documents
+
+Every Learn screen that needs material (Chat, Quiz, Flashcards, roadmaps, Ask files, and the English "Fix writing" box) has an **Add material** button. It has three ways in:
+
+1. **This device.** Tap **Choose files** and pick as many as you like (PDF, Word, PowerPoint, EPUB, text, Markdown, web pages, screenshots). On a computer you can also drag files in. Each file shows its own progress, and a failed one has a **Retry** button. The limit is 100 MB per file (15 MB for images, which need an OCR tool or a vision provider).
+2. **Laptop files.** Browse the folders you share in Files, tick one or many files (the type chips narrow the list) and tap **Add selected**. The hub reads them on the laptop; nothing is uploaded anywhere. Whole folders are not imported: you choose the files.
+3. **Paste or link.** Paste text or a public web address.
+
+Everything lands in your **Study library** (the **Library** tab of the source picker). Tick one or more documents to use them as the source for a quiz, flashcards, a roadmap or chat. With one document selected you can narrow it to a page, slide or chapter range. Big PDFs are read in the background with a progress bar and a **Cancel** button; each document has a menu to rename it, give it a subject and tags, re-index it, or delete it. In **Ask files** switch **Answer from** to *Study library* to ask questions of only the documents you tick. Searching uses meaning when the Ollama embedding model is running and plain keywords otherwise.
+
+Voice or text with the assistant: "add D:\Study\networks.pdf to my study library" (a file inside a shared folder is added directly; anywhere else you are asked first) and "what is in my study library?".
+
 ## Your daily routine
 
 Keep it small. This is enough.

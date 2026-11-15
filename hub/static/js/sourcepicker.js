@@ -4,6 +4,7 @@
 // Everything that comes from notes, files, the web or the model is put on screen with textContent, never innerHTML.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { createLibraryPicker, openAddMaterial } from "./studylib.js";
 import { providerSegmented, normalizeProvider, defaultProvider, providerLabel } from "./providers.js";
 
 // Load a stylesheet once (index.html already links learn.css; new screens link their own).
@@ -45,6 +46,7 @@ export function createProviderSwitch(container, labelText = "Model") {
 }
 
 const TYPES = [
+  { value: "library", label: "Library" },
   { value: "note", label: "Note" },
   { value: "file", label: "File" },
   { value: "url", label: "Web page" },
@@ -84,8 +86,8 @@ export function createSourcePicker(container, ctx, options = {}) {
   const id = `sp${++uid}`;
   const listeners = [];
   const s = {
-    type: allowNone ? "none" : (options.type || "note"),
-    topic: "", note: null, file: null, url: "", text: "",
+    type: allowNone ? "none" : (options.type || "library"),
+    topic: "", note: null, file: null, url: "", text: "", lib: { ids: [], range: {} },
     browse: { root: "", path: "" },
   };
 
@@ -100,11 +102,19 @@ export function createSourcePicker(container, ctx, options = {}) {
   const checkButton = ui.button({ label: "Preview what the model reads", icon: "eye", variant: "tonal", size: "sm", onClick: () => check() });
   const checkRow = el("div", { class: "sp-checkrow" }, checkButton);
   const preview = el("div", { class: "sp-preview", "aria-live": "polite" });
-  root.append(seg, body, checkRow, status, preview);
+  // One clear way in for new material, on every tab: upload, pick laptop files, or paste (lands in the Library tab).
+  const addRow = el("div", { class: "sp-addrow" }, ui.button({ label: "Add material", icon: "upload", variant: "tonal", size: "sm",
+    onClick: () => openAddMaterial(ctx, { onDone: () => { selectType("library"); libPicker.refresh(); } }) }),
+  el("span", { class: "sp-small" }, "PDFs, documents and screenshots from this device or the laptop"));
+  root.append(addRow, seg, body, checkRow, status, preview);
 
   const panels = {};
   const msg = (text, cls = "") => el("div", { class: `sp-msg ${cls}`.trim() }, text);
   const retry = (fn) => ui.button({ label: "Try again", icon: "refresh", variant: "tonal", size: "sm", onClick: fn });
+
+  // ---- library (documents added with "Add material"; tick one or many)
+  const libPicker = createLibraryPicker(ctx, { onChange(ids, range) { s.lib = { ids, range }; changed(); } });
+  panels.library = el("div", { class: "sp-panel ui-stack" }, libPicker.root);
 
   // ---- topic
   const topicInput = el("input", { id: `${id}-topic`, type: "text", maxlength: "300", autocomplete: "off",
@@ -303,6 +313,7 @@ export function createSourcePicker(container, ctx, options = {}) {
   };
   function getSource() {
     switch (s.type) {
+      case "library": return s.lib.ids.length ? { type: "library", ids: s.lib.ids, ...s.lib.range } : null;
       case "topic": { const t = s.topic.trim(); return t ? { type: "topic", topic: t } : null; }
       case "note": return s.note ? { type: "note", id: s.note.id } : null;
       case "file": return s.file ? { type: "file", root: s.file.root, path: s.file.path } : null;
@@ -313,6 +324,7 @@ export function createSourcePicker(container, ctx, options = {}) {
   }
   function label() {
     switch (s.type) {
+      case "library": return s.lib.ids.length ? `Library: ${s.lib.ids.length} document${s.lib.ids.length === 1 ? "" : "s"}` : "";
       case "topic": return s.topic.trim() ? `Topic: ${clip(s.topic, 40)}` : "";
       case "note": return s.note ? `Note: ${clip(s.note.title, 40)}` : "";
       case "file": return s.file ? `File: ${baseName(s.file.path)}` : "";
@@ -382,7 +394,8 @@ export function createSourcePicker(container, ctx, options = {}) {
       return;
     }
     s.type = source.type in panels ? source.type : s.type;
-    if (source.type === "topic") { s.topic = source.topic || ""; topicInput.value = s.topic; loadTopics(); }
+    if (source.type === "library") { s.lib = { ids: source.ids || [], range: {} }; libPicker.select(s.lib.ids); }
+    else if (source.type === "topic") { s.topic = source.topic || ""; topicInput.value = s.topic; loadTopics(); }
     else if (source.type === "note") { s.note = { id: source.id, title: hint || "Note" }; if (!notesLoaded) loadNotes(); }
     else if (source.type === "file") {
       s.file = { root: source.root, path: source.path };
@@ -400,6 +413,7 @@ export function createSourcePicker(container, ctx, options = {}) {
   if (s.type === "topic") loadTopics();
 
   return {
+    refreshLibrary: () => libPicker.refresh(),
     root, getSource, setSource, label,
     onChange(fn) { listeners.push(fn); },
     focus() { seg.querySelector('[aria-checked="true"]')?.focus({ preventScroll: true }); },

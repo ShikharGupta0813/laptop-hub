@@ -154,13 +154,16 @@ Provider = ProviderName
 
 
 class SourceBody(BaseModel):
-    type: Literal["note", "file", "text", "url", "topic"]
+    type: Literal["note", "file", "text", "url", "topic", "library"]
     id: Optional[str] = Field(default=None, max_length=200)
     root: Optional[str] = Field(default=None, max_length=100)
     path: Optional[str] = Field(default=None, max_length=1000)
     text: Optional[str] = Field(default=None, max_length=2_000_000)
     url: Optional[str] = Field(default=None, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
+    ids: Optional[list[str]] = Field(default=None, max_length=50)       # type "library": documents of the study library
+    page_from: Optional[int] = Field(default=None, ge=1, le=100_000)    # ... and an optional page / slide / chapter range
+    page_to: Optional[int] = Field(default=None, ge=1, le=100_000)
 
 
 class PreviewBody(BaseModel):
@@ -208,6 +211,9 @@ class Loaded:
     text: str          # empty for a topic
     label: str         # short description kept in the quiz history
     topic: str = ""
+    ids: tuple = ()    # library documents this came from (chat searches them whole)
+    page_from: Optional[int] = None
+    page_to: Optional[int] = None
 
 
 @dataclass
@@ -796,6 +802,9 @@ def make_router(ctx, *, fetcher=None, now=None, rng=None) -> APIRouter:
             if not src.root or src.path is None:
                 raise SourceError(400, "Choose a file.")
             return await asyncio.to_thread(read_file_source, ctx.config.roots, src.root, src.path)
+        if src.type == "library":
+            from . import studylib
+            return await asyncio.to_thread(studylib.get_library(ctx).source, src.ids or [], src.page_from, src.page_to)
         if src.type == "text":
             text = _clip(src.text or "").strip()
             if not text:
@@ -845,7 +854,12 @@ def make_router(ctx, *, fetcher=None, now=None, rng=None) -> APIRouter:
             system, head = CHAT_PLAIN_SYSTEM, ""
         else:
             lastq = next((t for r, t in reversed(turns) if r == "user"), "")
-            material = chat_material(loaded.text, f"{body.message} {lastq}")
+            if loaded.kind == "library":
+                from . import studylib
+                material = await asyncio.to_thread(studylib.chat_material, studylib.get_library(ctx), loaded,
+                                                   f"{body.message} {lastq}")
+            else:
+                material = chat_material(loaded.text, f"{body.message} {lastq}")
             system, head = CHAT_SYSTEM, user_part(loaded, material) + "\n\n"
         talk = "".join(f"{'Student' if r == 'user' else 'Tutor'}: {t}\n\n" for r, t in turns)
         earlier = f"Conversation so far:\n{talk}" if talk else ""

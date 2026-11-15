@@ -782,6 +782,7 @@ class AskBody(BaseModel):
     question: str
     model: ProviderName = "local"
     limit: int = 6
+    library: list[str] = []      # study library document ids: answer from just these instead of the shared folders
 
 
 _registry: dict[int, tuple[object, KB]] = {}
@@ -838,10 +839,17 @@ def make_router(ctx: Ctx) -> APIRouter:
             raise HTTPException(400, f"Keep the question under {MAX_QUESTION_CHARS} characters.")
         limit = max(1, min(body.limit, 10))
         model = ctx.model_for(body.model)
-        hits = await asyncio.to_thread(kb.search, question, limit)
+        if body.library:
+            from . import studylib
+            found = await asyncio.to_thread(studylib.get_library(ctx).search, body.library[:50], question, limit)
+            hits = [{"path": f"library:{h['doc']}", "root": "library", "rel": f"{h['title']}, p. {h['p']}",
+                     "snippet": h["t"][:240], "score": 0, "chunk_id": None, "line": None, "heading": "",
+                     "text": h["t"]} for h in found]
+        else:
+            hits = await asyncio.to_thread(kb.search, question, limit)
         ctx.audit("kb_ask", model=body.model, sources=len(hits), question_chars=len(question))
         empty_msg = NO_RESULTS
-        if not hits and not await asyncio.to_thread(kb.count_chunks):
+        if not hits and not body.library and not await asyncio.to_thread(kb.count_chunks):
             empty_msg = NO_INDEX
 
         def sse(obj) -> str:
