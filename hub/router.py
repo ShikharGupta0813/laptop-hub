@@ -1,7 +1,7 @@
 """The "auto" router: picks a provider for one request with a cheap word check (no AI call).
 
 Only used when the request (and `default_provider` in hub.json) say "auto". Explicit picks are never touched.
-  trivial  (short chit-chat, no tool intent)                  -> local model, if Ollama is up
+  trivial  (short chit-chat, no tool intent)                  -> local model, only if router_local_chat is on and Ollama is up
   heavy    (tools, code, multi-step, long)                    -> duo (Gemini works), if Gemini is usable
   normal   (everything else)                                  -> the usual default (providers.resolve_default)
 Whenever the preferred provider is not ready the usual default is used, so the router can only help.
@@ -92,7 +92,7 @@ class Router:
         kind, why = classify(text)
         avail = providers.availability(config, ollama_up)
         target = fallback
-        if kind == "trivial" and avail["local"]["ready"]:
+        if kind == "trivial" and avail["local"]["ready"] and getattr(config, "router_local_chat", False):
             target = "local"
         elif kind == "heavy" and avail["duo"]["ready"]:
             target = "duo"

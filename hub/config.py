@@ -47,6 +47,7 @@ class Config:
     duo_verify: bool = True                # "Claude + Gemini": after tools ran, Claude checks the work was really done (one more Claude call)
     duo_max_claude_per_hour: int = 20      # hard cap on Claude supervisor calls per hour (0 = never ask Claude)
     router_enabled: bool = True            # "auto" looks at each message: chit-chat -> local, tool/code/long -> duo (Gemini)
+    router_local_chat: bool = False        # "auto": send short chit-chat to the local model (only worth it on a fast GPU; off = default provider)
     tool_failover: bool = True             # the local model fumbled a tool call twice: Gemini does that one step
     local_tool_model: str = ""             # optional sharper Ollama model for tool turns only (empty = chat_model does both)
     allowed_origins: list[str] = field(default_factory=list)
@@ -299,7 +300,7 @@ def save(config: Config, path: Path) -> None:
         "default_provider": config.default_provider, "claude_cli_model": config.claude_cli_model,
         "claude_cli_path": config.claude_cli_path, "gemini_model": config.gemini_model,
         "duo_verify": bool(config.duo_verify), "duo_max_claude_per_hour": int(config.duo_max_claude_per_hour),
-        "router_enabled": bool(config.router_enabled), "tool_failover": bool(config.tool_failover),
+        "router_enabled": bool(config.router_enabled), "router_local_chat": bool(config.router_local_chat), "tool_failover": bool(config.tool_failover),
         "local_tool_model": config.local_tool_model,
         "allowed_origins": config.allowed_origins, "allowed_hosts": config.allowed_hosts, "shells": config.shells,
         "scripts": config.scripts, "apps": config.apps, "embed_model": config.embed_model,
