@@ -220,6 +220,12 @@ class Config:
     # Playbooks (hub/playbooks.py): "when X happens, do Y" rules. The feature is on but there are no playbooks until the owner writes one.
     playbooks_enabled: bool = True          # False: no playbook runs (the list stays); Panic pauses them too
     playbooks_max_concurrent: int = 3       # playbook runs at the same time, across all playbooks (1 to 20)
+    # Tailoring + answer bank (hub/tailor.py, hub/answerbank.py, hub/fitcheck.py, hub/factbase.py): per-job resume and cover note from the owner's own facts.
+    tailor_enabled: bool = True
+    tailor_ai: bool = False                 # True: cover notes are rewritten by the owner's chosen AI (still checked against the facts)
+    answerbank_enabled: bool = True
+    answerbank_min_confidence: int = 75     # an approved answer at or above this (0-100) may be pre-filled; below it is only suggested
+    answerbank_embeddings: bool = False     # True: blend local-model embeddings into question matching (words only otherwise)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -353,6 +359,9 @@ def save(config: Config, path: Path) -> None:
         "computeruse_keep_shots": config.computeruse_keep_shots is True, "computeruse_max_steps": int(config.computeruse_max_steps or 25),
         "computeruse_blocklist": config.computeruse_blocklist, "computeruse_allow_chords": config.computeruse_allow_chords,
         "playbooks_enabled": config.playbooks_enabled is not False, "playbooks_max_concurrent": int(config.playbooks_max_concurrent or 3),
+        "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
+        "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": int(config.answerbank_min_confidence or 75),
+        "answerbank_embeddings": config.answerbank_embeddings is True,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

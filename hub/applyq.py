@@ -426,6 +426,12 @@ class Applyq:
                             base[key] = clean(extra[key], limit, key != "subject")
                     base["generator"] = "ai"
                     base["missing"] = list(dict.fromkeys([*base["missing"], *unresolved(base)]))
+            try:                                         # answer bank (hub/answerbank.py): extra answers for topics the posting mentions
+                from . import answerbank
+                for label, text in answerbank.draft_answers(self.ctx, item, profile).items():
+                    base.setdefault("answers", {}).setdefault(label, text)
+            except Exception:  # noqa: BLE001 - the bank is an extra
+                pass
             item["draft"] = base
             item["state"] = "ready"
             item["error"] = ""

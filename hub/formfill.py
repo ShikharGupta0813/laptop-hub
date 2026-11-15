@@ -1267,6 +1267,13 @@ class Formfill:
                 profile = self.svc.profile_fn(self.ctx) or {}
                 item = self.svc.get(run.item_id)
                 facts = build_facts(profile, item.get("draft"), this_year=self.svc.clock().year, resume=self._resume_fact(run, profile))
+                try:                                     # answer bank (hub/answerbank.py): approved, high-confidence answers join the standard answers
+                    from . import answerbank
+                    bank = answerbank.formfill_answers(self.ctx)
+                    if bank:
+                        facts["_answers"]["value"] = {**facts["_answers"]["value"], **{k: v for k, v in bank.items() if k not in facts["_answers"]["value"]}}
+                except Exception:  # noqa: BLE001
+                    pass
                 run.plans = plan_form(fields, facts)
                 self._execute(run)
         values = drv.values()

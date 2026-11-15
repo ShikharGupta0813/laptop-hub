@@ -57,6 +57,7 @@ export const VIEWS = [
   { id: "meetings", label: "Meetings", icon: "mic", path: "./meetings.js", under: "apps" },
   { id: "computer", label: "Computer", icon: "monitor", path: "./computeruse.js", under: "apps" },
   { id: "playbooks", label: "Playbooks", icon: "zap", path: "./playbooks.js", under: "apps" },
+  { id: "tailor", label: "Tailor", icon: "wand", path: "./tailor.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
