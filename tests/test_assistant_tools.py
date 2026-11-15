@@ -120,5 +120,17 @@ class ToolsTest(Base):
         self.assertIn("Apps", text)
 
 
+class EmptyTaskList(unittest.TestCase):
+    def test_empty_today_list_points_to_the_other_filters(self):
+        from hub import assistant_tools as at
+        out = at.fmt_tasks({"counts": {"overdue": 10, "today": 0, "upcoming": 14}, "tasks": []})
+        self.assertIn("filter overdue", out)
+
+    def test_nothing_anywhere_has_no_hint(self):
+        from hub import assistant_tools as at
+        out = at.fmt_tasks({"counts": {}, "tasks": []})
+        self.assertNotIn("filter", out)
+
+
 if __name__ == "__main__":
     unittest.main()
