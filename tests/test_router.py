@@ -40,6 +40,10 @@ class RouterTest(unittest.TestCase):
         self.gem = mock.patch.object(providers, "gemini_key", return_value="k")
         self.cli = mock.patch.object(providers, "find_claude_cli", return_value=None)
         self.gem_m, _ = self.gem.start(), self.cli.start()
+        # a real logged-in CLI AI on this machine (agy, Gemini CLI) must not change the default
+        self.ready_cli = mock.patch.object(providers, "_ready_cli_entries", return_value=[])
+        self.ready_cli.start()
+        self.addCleanup(self.ready_cli.stop)
         self.addCleanup(self.gem.stop)
         self.addCleanup(self.cli.stop)
         self.router = Router(self.config)
