@@ -32,7 +32,7 @@ class ClassifyTest(unittest.TestCase):
 
 class RouterTest(unittest.TestCase):
     def setUp(self):
-        self.config, _ = make_config(default_provider="auto")
+        self.config, _ = make_config(default_provider="auto", router_local_chat=True)
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         p = mock.patch.dict(os.environ, env, clear=True)
         p.start()
@@ -55,6 +55,12 @@ class RouterTest(unittest.TestCase):
         self.assertEqual((provider, decision["routed_to"]), ("duo", "duo"))
         self.assertEqual(self.router.route("auto", "why is the sky blue during the day but red at sunset")[0], "gemini")
 
+    def test_chit_chat_uses_the_default_provider_unless_local_chat_is_on(self):
+        self.config.router_local_chat = False          # the default: a CPU-only local model is too slow for chat
+        self.assertEqual(self.router.route("auto", "hello!")[0], "gemini")
+        self.assertEqual(self.router.last["kind"], "trivial")
+        self.assertEqual(self.router.last["routed_to"], "gemini")
+
     def test_explicit_pick_is_untouched(self):
         self.assertEqual(self.router.route("claude-login", "hello!"), ("claude-login", None))
         self.assertEqual(self.router.route("local", "find my files")[1], None)
@@ -75,7 +81,7 @@ class RouterTest(unittest.TestCase):
 
 class RouterServerTest(unittest.TestCase):
     def setUp(self):
-        self.config, self.root = make_config(default_provider="auto")
+        self.config, self.root = make_config(default_provider="auto", router_local_chat=True)
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         p = mock.patch.dict(os.environ, env, clear=True)
         p.start()

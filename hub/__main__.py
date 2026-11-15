@@ -172,7 +172,7 @@ def cmd_doctor(args) -> int:
              + f" (default: {providers_mod.LABELS.get(providers_mod.resolve_default(config), 'local')})")
     else:
         line(None, "AI: only the local model. Optional: python -m hub setup --only ai (Gemini key or Claude login)")
-    line(None, f"router: {'on' if config.router_enabled else 'off'} (auto: chit-chat local, tools via Gemini); "
+    line(None, f"router: {'on' if config.router_enabled else 'off'} (auto: tools via Gemini; chit-chat local only if router_local_chat); "
                f"tool failover to Gemini: {'on' if config.tool_failover else 'off'}")
     for name, argv in config.shell_table().items():
         found = shutil.which(argv[0]) is not None
