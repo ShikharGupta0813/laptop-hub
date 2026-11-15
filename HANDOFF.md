@@ -1,5 +1,7 @@
 # Laptop Hub: handoff
 
+> **Debugging on the laptop? Start with `docs/HANDOFF-LOCAL-DEBUG.md`** (full context, known real-device bugs, how to run and fix them).
+
 **This project lives at https://github.com/ShikharGupta0813/laptop-hub (branch `main`).** (It was first built inside
 `ShikharGupta0813/AI-Task-Agent`, folder `laptop-hub/`, branch `claude/clever-dirac-r85yh2`, and split out with its history.
 Use the new repo from now on.)
