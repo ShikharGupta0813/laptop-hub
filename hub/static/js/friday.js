@@ -34,8 +34,13 @@ function emit(what) { for (const fn of listeners) { try { fn(what); } catch (_) 
 const DEFAULTS = { name: "Friday", address_as: "sir", spoken_alerts: false, proactive: false, brief_model: "local" };
 export const isMissing = (e) => e instanceof ApiError && (e.status === 404 || e.status === 405);
 
-export async function loadSettings(ctx = null, force = false) {
-  if (FR.settings && !force) return FR.settings;
+let settingsLoad = null;   // callers that ask while one load is running (shell + a screen at start-up) share it
+export function loadSettings(ctx = null, force = false) {
+  if (FR.settings && !force) return Promise.resolve(FR.settings);
+  if (!settingsLoad) settingsLoad = fetchSettings().finally(() => { settingsLoad = null; });
+  return settingsLoad;
+}
+async function fetchSettings() {
   try {
     const s = await api("/api/friday/settings");
     FR.settings = { ...DEFAULTS, ...(s || {}) };

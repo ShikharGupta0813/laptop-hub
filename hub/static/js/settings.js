@@ -318,7 +318,10 @@ export function init(container, ctx) {
     searchNone.hidden = !words.length || shown > 0;
   }
 
-  async function load() {
+  // show() runs right after init(), while the first load is still in flight: that second call joins it instead of repeating every request.
+  let loading = null;
+  function load() { return loading || (loading = loadNow().finally(() => { loading = null; })); }
+  async function loadNow() {
     if (!S) root.replaceChildren(appearanceCard = appearanceCard || appearance(), ui.skeleton("list", 5));
     try {
       S = await api("/api/settings");

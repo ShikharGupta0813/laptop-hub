@@ -127,7 +127,7 @@ export function init(container, ctx) {
   function loadStatus(force = false) {
     if (!force && status && Date.now() - statusAt < STATUS_TTL_MS) return Promise.resolve(status);
     if (statusPromise) return statusPromise;
-    statusPromise = api("/api/work/status").then((s) => {
+    statusPromise = api("/api/work/status", { share: true }).then((s) => {
       status = s; statusAt = Date.now(); return s;
     }).finally(() => { statusPromise = null; });
     return statusPromise;

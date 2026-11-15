@@ -21,7 +21,7 @@ export const normalizeProvider = (v) => (isProvider(v) ? v : "local");
 export function loadProviders(force = false) {
   if (!force && info && Date.now() - loadedAt < 60000) return Promise.resolve(info);
   if (!pending) {
-    pending = api("/api/status").then((s) => {
+    pending = api("/api/status", { share: true }).then((s) => {
       info = { providers: s?.providers || null, default: s?.default_provider || "local", cli: Array.isArray(s?.cli) ? s.cli : [] };
       loadedAt = Date.now();
       listeners.forEach((fn) => { try { fn(); } catch (_) { /* a closed screen */ } });
