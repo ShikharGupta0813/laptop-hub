@@ -55,7 +55,7 @@ const out = [
  backAction({current:'home', armed:true}),
  shouldReplace(top, {id:'work', nav:true}), shouldReplace({id:'home', nav:true}, top), shouldReplace(sub, top)];
 console.log(JSON.stringify(out));
-""" % (ROOT / "hub/static/js/navstack.js").as_posix()
+""" % (ROOT / "hub/static/js/navstack.js").as_uri()
         r = subprocess.run([NODE, "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.stdout.strip(), '["layer","history","home","arm","exit",true,false,false]', r.stderr)
 
