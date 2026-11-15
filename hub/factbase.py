@@ -232,6 +232,13 @@ def save(ctx: Ctx, data: dict) -> None:
         os.replace(tmp, path)
 
 
+def _tag_list(tags) -> list[str]:
+    """Up to 8 short tags. Anything that is not a list of text (a number, an object) means no tags, not a crash."""
+    if not isinstance(tags, (list, tuple)):
+        return []
+    return [t for t in (clean(x, 30) for x in tags[:8] if isinstance(x, str)) if t]
+
+
 def add_confirmed(ctx: Ctx, text: str, tags: Iterable[str] = (), *, clock=None) -> dict:
     """Owner-confirmed extra fact. The text is exactly what the owner typed or approved."""
     text = clean(text, MAX_TEXT)
@@ -245,7 +252,7 @@ def add_confirmed(ctx: Ctx, text: str, tags: Iterable[str] = (), *, clock=None) 
             return next(c for c in data["confirmed"] if c["id"] == fact_id)
         if len(data["confirmed"]) >= MAX_CONFIRMED:
             raise ValueError(f"You can keep up to {MAX_CONFIRMED} confirmed facts. Delete some first.")
-        entry = {"id": fact_id, "text": text, "tags": [t for t in (clean(x, 30) for x in list(tags)[:8]) if t], "created": now}
+        entry = {"id": fact_id, "text": text, "tags": _tag_list(tags), "created": now}
         data["confirmed"].append(entry)
         if fact_id in data["hidden"]:
             data["hidden"].remove(fact_id)
@@ -265,7 +272,7 @@ def update_confirmed(ctx: Ctx, fact_id: str, text: str | None = None, tags: Iter
                 raise ValueError("A fact needs a sentence of at least a few words.")
             entry["text"] = text      # the id stays, so drafts that cite it keep pointing at the owner's current wording
         if tags is not None:
-            entry["tags"] = [t for t in (clean(x, 30) for x in list(tags)[:8]) if t]
+            entry["tags"] = _tag_list(tags)
         save(ctx, data)
     return entry
 

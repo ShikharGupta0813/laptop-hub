@@ -931,7 +931,7 @@ class Destinations:
         if not isinstance(body, dict):
             raise DestinationError("Send the kind and the name of the destination.", 400)
         kind = body.get("kind")
-        if kind not in ADAPTERS:
+        if not isinstance(kind, str) or kind not in ADAPTERS:
             raise DestinationError("kind must be one of: " + ", ".join(ADAPTERS) + ".", 400)
         a = ADAPTERS[kind]
         with self.lock:

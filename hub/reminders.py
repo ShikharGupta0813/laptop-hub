@@ -94,7 +94,12 @@ def parse_iso(value: Any, tz: tzinfo) -> datetime:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("empty")
     dt = datetime.fromisoformat(value.strip())
-    dt = localize(dt, tz) if dt.tzinfo is None else dt.astimezone(tz)
+    if not 1999 <= dt.year <= 2101:      # checked before the zone maths: years like 0001 or 9999 crash it on Windows
+        raise ValueError("range")
+    try:
+        dt = localize(dt, tz) if dt.tzinfo is None else dt.astimezone(tz)
+    except (OSError, OverflowError) as exc:
+        raise ValueError("range") from exc
     if not 2000 <= dt.year <= 2100:
         raise ValueError("range")
     return dt

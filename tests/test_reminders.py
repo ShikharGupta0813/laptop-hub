@@ -799,5 +799,20 @@ class CallReminderTest(Base):
         self.assertEqual(len(eng.pending()), 1)
 
 
+class ExtremeDateTest(unittest.TestCase):
+    """Years like 0001 or 9999 used to crash the computer's own zone (OSError) and came back as a 500."""
+
+    def test_parse_iso_refuses_extreme_years_with_a_value_error(self):
+        for tz in (reminders.LocalTZ(), ZoneInfo("America/New_York")):
+            for text in ("0001-01-01T00:00:00", "0000-01-01", "9999-12-31T23:59:59", "9999-12-31T23:59:59Z",
+                         "0001-01-01T00:00:00+05:00", "1969-12-31T23:00:00", "2500-01-01T09:00:00"):
+                with self.subTest(tz=repr(tz), text=text):
+                    with self.assertRaises(ValueError):
+                        reminders.parse_iso(text, tz)
+
+    def test_parse_iso_still_accepts_a_normal_time(self):
+        self.assertEqual(reminders.parse_iso("2026-11-05T09:00", ZoneInfo("America/New_York")).hour, 9)
+
+
 if __name__ == "__main__":
     unittest.main()
