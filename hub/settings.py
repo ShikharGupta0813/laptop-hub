@@ -51,6 +51,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
 ALLOWED_KEYS = (*ALLOWED_KEYS, "panic_confirm", "panic_phrases", "trust_enabled", "trust_threshold")   # hub/panic.py, hub/trust.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "oppsources_enabled", "oppsources_interval_min", "oppsources_watch_interval_min", "oppsources_stale_days", "oppsources_ghost_days")   # hub/oppsources.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
@@ -203,7 +204,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed"):
+        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -221,6 +222,12 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             changes[key] = [v.strip() for v in value]
         elif key in ("opps_interval_min", "opps_min_score"):
             low, high = (15, 1440) if key == "opps_interval_min" else (0, 100)
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                raise HTTPException(400, f"{key} must be a whole number from {low} to {high}.")
+            changes[key] = value
+        elif key in ("oppsources_interval_min", "oppsources_watch_interval_min", "oppsources_stale_days", "oppsources_ghost_days"):
+            low, high = {"oppsources_interval_min": (5, 1440), "oppsources_watch_interval_min": (2, 120),
+                         "oppsources_stale_days": (7, 365), "oppsources_ghost_days": (14, 730)}[key]
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise HTTPException(400, f"{key} must be a whole number from {low} to {high}.")
             changes[key] = value
@@ -579,6 +586,9 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "buildflow_enabled": config.buildflow_enabled,
             "opps_enabled": config.opps_enabled is True, "opps_interval_min": config.opps_interval_min,
             "opps_min_score": config.opps_min_score,
+            "oppsources_enabled": config.oppsources_enabled is True, "oppsources_interval_min": config.oppsources_interval_min,
+            "oppsources_watch_interval_min": config.oppsources_watch_interval_min,
+            "oppsources_stale_days": config.oppsources_stale_days, "oppsources_ghost_days": config.oppsources_ghost_days,
             "applyq_enabled": config.applyq_enabled, "applyq_daily_cap": config.applyq_daily_cap,
             "wake_laptop_enabled": config.wake_laptop_enabled, "wake_laptop_device": config.wake_laptop_device,
             "redact_enabled": config.redact_enabled is not False, "redact_kinds": list(config.redact_kinds),

@@ -260,4 +260,5 @@ export async function openLanes() {
 
 export const OWNER_SECTIONS = { assistants: openAssistants, notifyprefs: openNotifyPrefs, safetyrules: openSafetyRules,
   redactrules: openRedactRules, memorykinds: openMemoryKinds, lanes: openLanes, voices: openVoices,
-  deliveryrules: () => import("./presence.js").then((m) => m.openDeliveryRules()) };
+  deliveryrules: () => import("./presence.js").then((m) => m.openDeliveryRules()),
+  oppsources: () => import("./oppsources.js").then((m) => m.openSources()) };

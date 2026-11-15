@@ -712,13 +712,15 @@ class Opps:
                         "found_ts": now, "found_at": _now_iso(now), "status": "new"}
                 vet = opps_vet.vet(title, company, url, desc, contact=row.get("contact") or contact, sender=sender,
                                    now=dt.datetime.fromtimestamp(now).date())
+                if isinstance(row.get("meta"), dict):          # from hub/oppsources.py: work mode, pay, early-bird flag
+                    find["meta"] = row["meta"]
                 find["flags"] = vet["flags"]
                 find["severity"] = vet["severity"]
                 find["score"], find["reason"] = score_find(find, prof, dt.datetime.fromtimestamp(now).date())
                 if opps_vet.blocked(vet):
                     find["status"], find["blocked_reason"] = "blocked", opps_vet.reason_text(vet)
                     counts["blocked"] += 1
-                elif find["score"] >= self.min_score:
+                elif find["score"] >= self.min_score or (find.get("meta") or {}).get("early"):   # watch-list companies always reach the queue
                     if self.push_to_queue(find):
                         find["status"] = "queued"
                         counts["queued"] += 1

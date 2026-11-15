@@ -12,7 +12,7 @@ const SHELL = [
   "/css/settings.css", "/css/shell.css", "/css/terminal.css", "/css/todos.css", "/css/tools.css",
   "/css/voicemode.css", "/css/watch.css", "/css/work.css", "/css/council.css", "/js/council.js",
   "/css/autopilot.css", "/js/autopilot.js", "/css/ccsessions.css", "/js/ccsessions.js", "/js/today.js",
-  "/css/research.css", "/js/research.js", "/css/opps.css", "/js/opps.js", "/css/skills.css", "/js/skills.js",
+  "/css/research.css", "/js/research.js", "/css/opps.css", "/js/opps.js", "/js/oppsources.js", "/css/skills.css", "/js/skills.js",
   "/css/brain.css", "/js/brain.js", "/css/buildflow.css", "/js/buildflow.js", "/css/applyq.css", "/js/applyq.js",
   "/js/privacy.js", "/css/privacy.css", "/js/fullcontrol.js", "/js/wheel.js", "/css/wheel.css",
   "/vendor/fonts/orbitron-var-latin.woff2", "/js/gmailx.js", "/js/speechchunk.js", "/js/speechqueue.js",

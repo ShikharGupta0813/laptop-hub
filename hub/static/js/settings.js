@@ -173,6 +173,7 @@ export function init(container, ctx) {
       ui.listRow({ icon: "shield", tone: "bad", title: "My safety rules", sub: "Make anything touching a path or command stricter", chevron: true, onClick: () => openSection("safetyrules") }),
       ui.listRow({ icon: "eye-off", tone: "good", title: "My redaction rules", sub: "Words and patterns cloud AI must never see", chevron: true, onClick: () => openSection("redactrules") }),
       ui.listRow({ icon: "tag", tone: "info", title: "Memory kinds", sub: "What kinds of memory exist and who sees them", chevron: true, onClick: () => openSection("memorykinds") }),
+      ui.listRow({ icon: "target", tone: "accent", title: "Job and gig sources", sub: "Company job boards, remote boards, freelance email alerts, company watch list", chevron: true, onClick: () => openSection("oppsources") }),
       ui.listRow({ icon: "users", tone: "good", title: "Work lanes", sub: "Where routine work goes first: free Council and local models before Gemini or Claude", chevron: true, onClick: () => openSection("lanes") })));
     rows.push(group("Dictation", dictationRow()));
     rows.push(group("Alerts",
