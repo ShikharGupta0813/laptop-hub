@@ -176,6 +176,7 @@ export function init(container) {
     root.replaceChildren(el("h2", { class: "ui-title" }, "Job tracker"),
       el("div", { class: "jt-stats" }, stat(data.records.length, "tracked"), stat(c.applied + c.viewed, "waiting"), stat(c.replied + c.interview, "replies"), stat(c.offer, "offers")),
       seg, ...(tab === "tracker" ? trackerTab() : tab === "follow" ? followTab() : statsTab()));
+    ui.renumberEyebrows(root);
   }
 
   paint();

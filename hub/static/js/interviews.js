@@ -44,6 +44,7 @@ export function init(container) {
     root.append(ui.notice("Practice material only. Nothing is sent. Answers you practise stay on this laptop; you can delete them any time.", { tone: "info" }),
       jobPicker(), ui.segmented({ options: TABS.map(([value, label]) => ({ value, label })), value: tab, label: "Interview coach sections", onChange: (v) => { tab = v; paint(); } }),
       { questions: questionsTab, practice: practiceTab, stories: storiesTab, about: aboutTab, brief: briefTab, pay: payTab }[tab]());
+    ui.renumberEyebrows(root);
   }
 
   // ---- the posting ----

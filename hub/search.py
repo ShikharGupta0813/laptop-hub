@@ -92,15 +92,56 @@ def _clip(value: Any, limit: int) -> str:
     return str(value if value is not None else "")[:limit]
 
 
-def clean_result(item: Any, default_kind: str) -> dict | None:
+_ISO_WHEN = re.compile(r"\b(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)?(?![\d:])")
+_FRONT_KEY = re.compile(r"(?:\A|\s)[A-Za-z_][\w-]*:\s")
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def friendly_when(when: datetime, now: datetime) -> str:
+    """'Today, 5:00 pm' when it is near, otherwise 'Wed 18 Nov, 5:00 pm' (the year only if it differs)."""
+    hour = when.hour % 12 or 12
+    clock = f"{hour}:{when.minute:02d} {'am' if when.hour < 12 else 'pm'}"
+    gap = (when.date() - now.date()).days
+    near = {0: "Today", 1: "Tomorrow", -1: "Yesterday"}.get(gap)
+    if near:
+        return f"{near}, {clock}"
+    year = f" {when.year}" if when.year != now.year else ""
+    return f"{DAYS[when.weekday()]} {when.day} {MONTHS[when.month - 1]}{year}, {clock}"
+
+
+def friendly_text(text: str, now: datetime) -> str:
+    """Replace raw ISO timestamps in a line of text with readable ones."""
+    def swap(m: re.Match) -> str:
+        try:
+            return friendly_when(datetime(*(int(g) for g in m.groups())), now)
+        except ValueError:
+            return m.group(0)
+    return _ISO_WHEN.sub(swap, text)
+
+
+def strip_frontmatter(text: str) -> str:
+    """Drop a leading `--- key: value ... ---` header (a note file's own metadata) from a snippet."""
+    if not text.lstrip().startswith("---"):
+        return text
+    body = text.lstrip()[3:]
+    end = re.search(r"(?:\A|\s)---(?:\s|\Z)", body)
+    if end and _FRONT_KEY.search(body[:end.start()]):
+        return body[end.end():].strip()
+    return text
+
+
+def clean_result(item: Any, default_kind: str, now: datetime | None = None) -> dict | None:
     if not isinstance(item, dict) or not str(item.get("title") or "").strip():
         return None
+    now = now or datetime.now()
     kind = item.get("kind")
     kind = kind if isinstance(kind, str) and KIND_OK.match(kind) else default_kind
     opened = item.get("open")
     opened = ({k: _clip(opened[k], 200) for k in ("view", "section", "id") if opened.get(k) not in (None, "")}
               if isinstance(opened, dict) else {})
-    return {"title": _clip(item["title"], 200).strip(), "snippet": _clip(item.get("snippet"), 300),
+    snippet = friendly_text(strip_frontmatter(_clip(item.get("snippet"), 600)), now)[:300]
+    return {"title": friendly_text(_clip(item["title"], 200).strip(), now), "snippet": snippet,
             "kind": kind, "open": opened}
 
 
@@ -113,11 +154,23 @@ def _snippet_around(text: str, needle: str, width: int = 140) -> str:
     return ("..." if start else "") + flat[start:start + width]
 
 
-def merge_results(query: str, groups: list[tuple[int, list[dict]]]) -> list[dict]:
-    """groups: (source order, cleaned results in the source's own order). Ranked, deduped, stable."""
+def has_word_overlap(query: str, *texts: str) -> bool:
+    """True when the query, or one of its words (3+ letters), appears in the text."""
+    hay = " ".join(texts).lower()
+    q = query.lower().strip()
+    return q in hay or any(len(w) >= 3 and w in hay for w in _words(q))
+
+
+def merge_results(query: str, groups: list[tuple[int, list[dict]]], lexical_only: frozenset = frozenset()) -> list[dict]:
+    """groups: (source order, cleaned results in the source's own order). Ranked, deduped, stable.
+
+    Sources in `lexical_only` (the file-meaning search) can return their nearest neighbours even when nothing
+    really matches; their results must share a word with the query, or they are dropped."""
     ranked: dict[tuple, tuple] = {}
     for order, items in groups:
         for idx, item in enumerate(items):
+            if order in lexical_only and not has_word_overlap(query, item["title"], item.get("snippet", "")):
+                continue
             match = title_score(query, item["title"])
             if match == 0 and query.lower() in item.get("snippet", "").lower():
                 match = 12.0
@@ -168,7 +221,7 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
         raw = data.get("results") if ok and isinstance(data, dict) else None
         if not isinstance(raw, list):
             return [], False
-        cleaned = [r for r in (clean_result(item, kind) for item in raw[:PER_SOURCE_MAX]) if r]
+        cleaned = [r for r in (clean_result(item, kind, now()) for item in raw[:PER_SOURCE_MAX]) if r]
         return cleaned, False
 
     async def search_notes(q: str) -> list[dict]:
@@ -185,9 +238,10 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             if q.lower() not in hay and not (len(words) > 1 and all(w in hay for w in words)):
                 continue
             tag_hit = any(q.lower() == t for t in note.tags)
-            out.append({"title": note.title, "kind": "note", "open": {"view": "notes", "id": note.id},
-                        "snippet": _snippet_around(note.body or note.title, q) if q.lower() in note.body.lower()
-                        else (" ".join(f"#{t}" for t in note.tags) or note.body[:140]),
+            snippet = (_snippet_around(note.body or note.title, q) if q.lower() in note.body.lower()
+                       else (" ".join(f"#{t}" for t in note.tags) or note.body[:140]))
+            out.append({"title": friendly_text(note.title, now()), "kind": "note", "open": {"view": "notes", "id": note.id},
+                        "snippet": friendly_text(strip_frontmatter(snippet), now()),
                         "_bonus": 25.0 if tag_hit else 0.0})
             if len(out) >= PER_SOURCE_MAX:
                 break
@@ -254,7 +308,7 @@ def make_router(ctx: Ctx, *, client: Any = None, timeout: float = 2.5, section_t
             groups.append((base + 1, search_apps(q)))
         if use("settings", "setting"):
             groups.append((base + 2, search_settings(q)))
-        merged = merge_results(q, groups)
+        merged = merge_results(q, groups, frozenset({0}))   # 0 = the file-meaning source (kb)
         if wanted:
             merged = [r for r in merged if r["kind"] in wanted or _source_of(r["kind"]) in wanted]
         counts: dict[str, int] = {}

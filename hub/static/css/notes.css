@@ -73,4 +73,8 @@ body .ui-sheet .nt-hint { margin: var(--sp-2) 0 0; }
 #view-notes .nt-tagfield { padding-top: var(--sp-3); border-top: 1px solid var(--c-line); }
 #view-notes .nt-actions { display: flex; gap: var(--sp-2); }
 #view-notes .nt-actions .ui-btn { flex: 1; }
+#view-notes .nt-actions-wrap { flex-wrap: wrap; }
+#view-notes .nt-actions-wrap .ui-btn { flex: 1 1 40%; }
+#view-notes .nt-edit { display: grid; gap: var(--sp-2); }
+#view-notes .nt-textarea { width: 100%; box-sizing: border-box; min-height: 160px; padding: 10px 12px; font: inherit; line-height: 1.45; color: var(--c-text); background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-md); resize: vertical; }
 body .nt-offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }

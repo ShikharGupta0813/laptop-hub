@@ -36,6 +36,7 @@ export function init(container) {
     if (!data) { root.append(ui.skeleton("list", 3)); return; }
     root.append(ui.notice("Drafts only. Nothing is sent from here: you copy a draft and send it yourself. LinkedIn and Indeed are never opened or automated.", { tone: "info" }),
       nudgeSection(), makeSection(), current ? draftCard(current, true) : null, draftsSection(), contactsSection());
+    ui.renumberEyebrows(root);   // a hidden section must not leave a gap (01, 02, 04)
   }
 
   // ---- nudges (suggestions only) ----
