@@ -54,6 +54,15 @@ class MoreToolsTest(Base):
         self.assertIn("Saved", outputs[0])
         self.assertIn("check the oven", outputs[1])
 
+    async def test_a_call_reminder_keeps_the_flag_and_the_full_details(self):
+        details = "open the board, check the three failing jobs, tell Asha the result before the meeting " * 4
+        ok, text = await self.by_name("reminder_add").run({"text": "in 30 minutes " + details.strip(), "call": True})
+        self.assertTrue(ok, text)
+        ok, listing = await self.by_name("reminders_list").run({})
+        self.assertIn("tell Asha the result before the meeting", listing)
+        spec = self.by_name("reminder_add").spec["input_schema"]["properties"]
+        self.assertEqual(spec["call"]["type"], "boolean")
+
     async def test_declining_a_todo_adds_nothing(self):
         svc = self.service([self.call("todo_add", text="buy milk tomorrow"), self.call("todos_list"), reply("OK.")],
                            extra_tools=self.tools)

@@ -179,7 +179,7 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "notes": ({"search_notes", "read_note", "add_note"},
               re.compile(r"\bnotes?\b|\btags?\b|\bjot\b|\bwrite (?:this|that) down\b", re.I)),
     "reminders": ({"reminder_add", "reminders_list"},
-                  re.compile(r"\bremind|\breminders?\b|\balarm|\bdon'?t let me forget\b", re.I)),
+                  re.compile(r"\bremind|\breminders?\b|\balarm|\bdon'?t let me forget\b|\b(?:call|ring) me\b|\bby call\b", re.I)),
     "todos": ({"todo_add", "todo_done", "todos_list"},
               re.compile(r"\bto-?dos?\b|\btasks? list\b|\bchecklist\b|\bto do\b", re.I)),
     "habits": ({"habit_check", "habits_today"}, re.compile(r"\bhabits?\b|\bstreak", re.I)),

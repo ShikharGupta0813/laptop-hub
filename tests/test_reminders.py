@@ -699,5 +699,105 @@ class FullAppTest(unittest.TestCase):
         self.assertEqual(found[0]["link"], "reminders")
 
 
+class CallReminderTest(Base):
+    def pending(self):
+        from hub import alerts
+        return alerts.engine_for(self.ctx).pending()
+
+    def test_call_phrases_set_the_flag_and_keep_the_task(self):
+        for phrase in ("call me at 5pm to join the release check", "remind me at 5pm to join the release check by call",
+                       "ring me at 5pm to join the release check", "remind me at 5pm to join the release check via a phone call"):
+            p = parse_quick(phrase, NOW, NY)
+            self.assertTrue(p.call, phrase)
+            self.assertEqual(p.text, "join the release check", phrase)
+            self.assertEqual(local(p.due), "2026-11-04 17:00", phrase)
+
+    def test_ordinary_call_reminders_are_not_call_mode(self):
+        for phrase in ("remind me at 5pm to call mom", "call bob at 9", "remind me to call me back tomorrow 9am".replace(" me back", " back")):
+            self.assertFalse(parse_quick(phrase, NOW, NY).call, phrase)
+
+    def test_full_details_up_to_500_chars_are_kept_for_a_call(self):
+        details = "check the dashboard, restart the worker, then tell Asha. " * 8
+        p = parse_quick("call me at 5pm to deploy with these details: " + details.strip(), NOW, NY)
+        self.assertTrue(p.call)
+        self.assertGreater(len(p.text), 300)
+        self.assertTrue(p.text.endswith("tell Asha"))
+        with self.assertRaises(ParseError):
+            parse_quick("call me at 5pm to " + "x " * 300, NOW, NY)
+        with self.assertRaises(ParseError):
+            parse_quick("remind me at 5pm to " + "word " * 80, NOW, NY)     # not a call: the old 300 limit holds
+
+    def test_quick_route_saves_call_and_returns_it(self):
+        r = self.client.post("/api/reminders/quick", json={"text": "call me in 10 minutes to send the invoice to Asha"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["reminder"]["call"])
+        self.assertIn("(by call)", r.json()["echo"])
+        self.assertTrue(self.client.get("/api/reminders").json()["reminders"][0]["call"])
+        plain = self.client.post("/api/reminders/quick", json={"text": "in 10 minutes check oven"}).json()["reminder"]
+        self.assertFalse(plain["call"])
+
+    def test_explicit_flag_from_the_tool_and_preview(self):
+        r = self.client.post("/api/reminders/quick", json={"text": "in 10 minutes check oven", "call": True, "preview": True})
+        self.assertTrue(r.json()["reminder"]["call"])
+        bad = self.client.post("/api/reminders/quick", json={"text": "in 10 minutes check oven", "call": "yes"})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_create_and_patch_validate_call(self):
+        made = self.add("Ring test", call=True)
+        self.assertTrue(made["call"])
+        self.assertEqual(self.client.post("/api/reminders", json={"text": "x", "due": "2026-11-04T10:05:00-05:00",
+                                                                   "call": "maybe"}).status_code, 400)
+        self.assertFalse(self.client.patch(f"/api/reminders/{made['id']}", json={"call": False}).json()["call"])
+        self.assertEqual(self.client.patch(f"/api/reminders/{made['id']}", json={"call": 3}).status_code, 400)
+        self.assertFalse(self.add("Plain")["call"])
+        self.assertEqual(self.client.post("/api/reminders", json={"text": "y" * 400, "due": "2026-11-04T10:05:00-05:00"}).status_code, 400)
+        self.assertEqual(self.add("y" * 450, call=True)["text"], "y" * 450)
+
+    def test_due_call_reminder_rings_once_and_ack_clears_it(self):
+        made = self.add("Send the invoice to Asha, then update the sheet", "2026-11-04T10:05:00-05:00", call=True)
+        self.clock.advance(minutes=4)
+        self.service.tick()
+        self.assertEqual(self.pending(), [])
+        self.clock.advance(minutes=1, seconds=5)
+        self.service.tick()
+        p = self.pending()
+        self.assertEqual(len(self.sent), 1)                              # the normal notification still goes out
+        self.assertEqual(len(p), 1)
+        self.assertEqual((p[0]["urgency"], p[0]["kind"], p[0]["source"], p[0]["call"]), (3, "reminder", "reminder", True))
+        self.assertEqual(p[0]["preview"], "Send the invoice to Asha, then update the sheet")
+        self.assertIn("Send the invoice to Asha, then update the sheet", p[0]["speech"])
+        from hub import alerts
+        alerts.engine_for(self.ctx).ack([p[0]["id"]])
+        for _ in range(4):
+            self.clock.advance(seconds=15)
+            self.service.tick()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(made["call"], True)
+
+    def test_plain_reminder_never_reaches_the_phone_queue(self):
+        self.add("Water plants", "2026-11-04T10:05:00-05:00")
+        self.clock.advance(minutes=6)
+        self.service.tick()
+        self.assertEqual(self.pending(), [])
+
+    def test_call_reminder_in_quiet_hours_still_rings(self):
+        self.clock.set("2026-11-04 23:30")
+        self.add("Night call", "2026-11-04T23:45:00-05:00", call=True)
+        self.clock.advance(minutes=16)
+        self.service.tick()
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_repeating_call_reminder_rings_each_time(self):
+        self.add("Stand-up", "2026-11-04T10:05:00-05:00", repeat="daily", call=True)
+        self.clock.advance(minutes=6)
+        self.service.tick()
+        from hub import alerts
+        eng = alerts.engine_for(self.ctx)
+        eng.ack([p["id"] for p in eng.pending()])
+        self.clock.advance(days=1)
+        self.service.tick()
+        self.assertEqual(len(eng.pending()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

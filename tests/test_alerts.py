@@ -505,5 +505,102 @@ class Email(Base):
         self.assertTrue(a["actions"]["open"]["url"].startswith("mailto:ravi@example.com"))
 
 
+class UrgentDefaults(Base):
+    """What counts as a NOW alert (urgency 2 or more, spoken by the phone) with no settings saved at all."""
+
+    def test_new_default_urgent_words(self):
+        for text in ("prod issue on checkout", "Production issue: orders failing", "payment failed for customer 12",
+                     "server down in the east region", "Deployment failed on main", "need a hotfix today", "P1 ticket raised",
+                     "possible data loss on the db", "security incident reported"):
+            c = alerts.classify(text, "Dev", "slack", rules=alerts.DEFAULT_RULES)
+            self.assertGreaterEqual(c["urgency"], 2, text)
+            self.assertTrue(c["raise"], text)
+
+    def test_no_false_positives_on_near_misses(self):
+        for text in ("The server downtime is planned for Sunday", "hotfixes are listed in the notes", "my P10 form is ready",
+                     "emergency room visit went fine", "Walk-in urgent care is open late"):
+            c = alerts.classify(text, "Friend", "whatsapp", rules=alerts.DEFAULT_RULES)
+            self.assertLess(c["urgency"], 2, text)
+
+    def test_owner_rules_override_the_defaults(self):
+        self.config.alerts_rules = {"urgent_words": ["fire drill"]}
+        a = self.eng.ingest(self.ev("prod issue on checkout", "Dev", "slack"))
+        self.assertTrue(a is None or a["urgency"] < 2)
+        b = self.eng.ingest(self.ev("fire drill at the office", "Dev", "slack"))
+        self.assertGreaterEqual(b["urgency"], 2)
+
+    def test_owner_ignore_word_silences_a_default(self):
+        self.config.alerts_rules = {"ignore_words": ["prod issue"]}
+        a = self.eng.ingest(self.ev("prod issue on checkout", "Dev", "whatsapp"))
+        self.assertTrue(a is None or a["urgency"] == 0)
+
+    def test_asana_task_due_today_is_now(self):
+        a = self.eng.ingest(self.ev("Update the runbook", "Asana", "asana", title="Runbook", due_on=NOON.date().isoformat()),
+                            trusted=True)
+        self.assertGreaterEqual(a["urgency"], 2)
+        self.assertEqual(a["delivery"], "now")
+        self.assertTrue(a["speak_phone"])
+
+    def test_asana_task_overdue_is_now_but_future_is_not(self):
+        late = self.eng.ingest(self.ev("Old thing", "Asana", "asana", title="Old", due_on="2026-11-01"), trusted=True)
+        self.assertGreaterEqual(late["urgency"], 2)
+        soon = self.eng.ingest(self.ev("Later thing", "Asana", "asana", title="Later", due_on="2026-11-20"), trusted=True)
+        self.assertLess(soon["urgency"], 2)
+
+    def test_asana_task_with_urgent_wording_is_now(self):
+        a = self.eng.ingest(self.ev("Urgent: fix the login bug", "Asana", "asana", title="Login"), trusted=True)
+        self.assertGreaterEqual(a["urgency"], 2)
+
+    def test_payment_debit_alert_from_the_phone_is_spoken(self):
+        a = self.eng.ingest(self.ev("Rs 4,500 debited from A/c XX1234 on 09-Nov. Not you? Call the bank.", "BANK", "sms"))
+        self.assertGreaterEqual(a["urgency"], 2)
+        self.assertEqual(a["delivery"], "now")
+        self.assertEqual(len(self.client.get("/api/alerts/pending").json()["alerts"]), 1)
+
+    def test_otp_message_stays_silent(self):
+        a = self.eng.ingest(self.ev("123456 is your OTP. Amount debited if you share it.", "BANK", "sms"))
+        self.assertTrue(a is None or a["urgency"] == 0)
+
+
+class PhoneQueue(Base):
+    def test_item_shape_and_ack_never_repeats(self):
+        item = self.eng.push_phone("rem:abc:1", "Reminder: send the invoice", title="Call reminder", kind="reminder",
+                                   source="reminder", urgency=3, preview="send the invoice", call=True)
+        self.assertTrue(item["id"].startswith("c"))
+        p = self.client.get("/api/alerts/pending").json()["alerts"]
+        self.assertEqual(p, [{"id": item["id"], "urgency": 3, "speech": "Reminder: send the invoice",
+                              "title": "Call reminder", "kind": "reminder", "source": "reminder",
+                              "preview": "send the invoice", "call": True}])
+        self.assertEqual(self.client.post("/api/alerts/pending/ack", json={"ids": [item["id"]]}).json(), {"acked": 1})
+        self.assertEqual(self.client.get("/api/alerts/pending").json()["alerts"], [])
+        self.assertIsNone(self.eng.push_phone("rem:abc:1", "Reminder: send the invoice", call=True))   # same key, no repeat
+        self.assertEqual(self.client.get("/api/alerts/pending").json()["alerts"], [])
+
+    def test_call_waits_hours_but_a_plain_item_expires_in_minutes(self):
+        self.eng.push_phone("a", "Call me item", call=True, urgency=3)
+        self.eng.push_phone("b", "Plain item", urgency=2)
+        self.clock.now = NOON + dt.timedelta(hours=2)
+        self.assertEqual([p["speech"] for p in self.eng.pending()], ["Call me item"])
+        self.clock.now = NOON + dt.timedelta(hours=13)
+        self.assertEqual(self.eng.pending(), [])
+
+    def test_call_item_is_queued_even_when_alerts_are_switched_off(self):
+        self.config.alerts_enabled = False
+        self.assertIsNone(self.eng.push_phone("x", "plain"))
+        self.assertIsNotNone(self.eng.push_phone("y", "ring", call=True, urgency=3))
+
+    def test_normal_alert_in_pending_has_call_false_and_new_fields(self):
+        self.eng.ingest(self.ev("URGENT P0: checkout is down", "Dev"))
+        p = self.client.get("/api/alerts/pending").json()["alerts"][0]
+        self.assertEqual((p["call"], p["kind"], p["source"]), (False, "other", "whatsapp"))
+
+    def test_hub_backup_failure_reaches_the_phone(self):
+        from hub import backup
+        self.ctx.alerts = self.eng
+        self.assertEqual(self.ctx.proactive.submit(backup.proactive_event(False)), "now")
+        p = self.eng.pending()
+        self.assertEqual((len(p), p[0]["source"], p[0]["urgency"], p[0]["call"]), (1, "hub", 2, False))
+
+
 if __name__ == "__main__":
     unittest.main()

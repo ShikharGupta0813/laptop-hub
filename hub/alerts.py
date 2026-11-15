@@ -68,6 +68,9 @@ SPEECH_CHARS = 150
 PENDING_MINUTES = 10           # the phone only reads out alerts younger than this
 BODY_QUOTE_CHARS = 1800
 MAX_VIPS = 50
+MAX_CALLS = 100
+CALL_PENDING_HOURS = 12        # a ringing "call" reminder waits this long for the phone to collect it
+CALL_TEXT_CHARS = 500
 KEEP_DAYS = 21
 MAX_BODY_BYTES = 40_000
 LOOP_TICK = 60.0
@@ -98,7 +101,9 @@ def norm(value: Any) -> str:
 DEFAULT_RULES: dict[str, list[str]] = {
     "urgent_words": ["urgent", "urgently", "asap", "immediately", "right now", "critical", "emergency", "p0", "sev0",
                      "sev1", "blocker", "blocking", "outage", "prod down", "production down", "site down", "escalation",
-                     "need it now", "not working", "breaking", "broken", "is down"],
+                     "need it now", "not working", "breaking", "broken", "is down",
+                     "prod issue", "production issue", "payment failed", "server down", "deployment failed", "hotfix",
+                     "p1", "data loss", "security incident", "debited", "debit alert", "transaction failed"],
     "time_words": ["today", "eod", "end of day", "cob", "by tomorrow", "tomorrow morning", "tonight", "deadline", "overdue",
                    "due today", "due tomorrow", "this morning", "this afternoon", "within the hour", "before the meeting",
                    "eta", "by now"],
@@ -245,6 +250,9 @@ def classify(text: str, sender: str = "", source: str = "other", *, vips: list[s
         if due_today:
             points += 1
             reasons.append("due today or overdue")
+            if source in TASK_SOURCES and points < 2:
+                points = 2                     # a work task of yours due today or overdue is a NOW alert
+                reasons.append("work task due today: treated as urgent")
         if vip:
             points += 1
             reasons.append(f"VIP sender ({vip})")
@@ -573,12 +581,15 @@ class Alerts:
         d = d if isinstance(d, dict) else {}
         return {"alerts": [a for a in d.get("alerts", []) if isinstance(a, dict)],
                 "recent": {str(k): float(v) for k, v in (d.get("recent") or {}).items() if isinstance(v, (int, float))},
+                "calls": [c for c in d.get("calls", []) if isinstance(c, dict)],
                 "duplicates": int(d.get("duplicates") or 0), "seen_mail": [str(x) for x in d.get("seen_mail", [])][-500:]}
 
     def _save(self, d: dict) -> None:
         cutoff = (self.clock() - dt.timedelta(days=KEEP_DAYS)).isoformat(timespec="seconds")
         keep = [a for a in d["alerts"] if not (a.get("status") == "handled" and a.get("created", "") < cutoff)]
         d["alerts"] = keep[-MAX_ALERTS:]
+        old = (self.clock() - dt.timedelta(days=2)).isoformat(timespec="seconds")
+        d["calls"] = [c for c in d.get("calls", []) if c.get("created", "") >= old][-MAX_CALLS:]
         d["recent"] = dict(sorted(d["recent"].items(), key=lambda kv: kv[1])[-MAX_RECENT:])
         try:
             self.file.save(d)
@@ -940,12 +951,44 @@ class Alerts:
             self._replace(a)
         return a
 
+    def push_phone(self, key: str, speech: str, *, title: str = "", kind: str = "other", source: str = "hub",
+                   urgency: int = 2, preview: str = "", call: bool = False) -> dict | None:
+        """Queue a spoken (or ringing, `call`) item for the phone's /pending poll, from a hub module (meeting about to start,
+        a call reminder, the hub reporting a problem). One item per `key`: the same key never queues twice. Never raises."""
+        try:
+            speech = tidy(speech, CALL_TEXT_CHARS + 60)
+            if not speech or not key or not (call or self.enabled):      # a call reminder was asked for: always queued
+                return None
+            with self.lock:
+                d = self._load()
+                if any(c.get("key") == key for c in d["calls"]):
+                    return None
+                item = {"id": "c" + secrets.token_hex(6), "key": tidy(key, 120), "urgency": max(2, min(3, int(urgency))),
+                        "speech": speech, "title": tidy(title, 120) or "Friday", "kind": kind, "source": source,
+                        "preview": tidy(preview or speech, CALL_TEXT_CHARS), "call": bool(call),
+                        "created": self.clock().isoformat(timespec="seconds"), "spoken": False}
+                d["calls"].append(item)
+                self._save(d)
+            return item
+        except Exception:  # noqa: BLE001 - a phone queue problem must never break the module that only wanted to speak
+            log.warning("could not queue a phone item")
+            return None
+
     def pending(self) -> list[dict]:
         cutoff = (self.clock() - dt.timedelta(minutes=PENDING_MINUTES)).isoformat(timespec="seconds")
+        call_cutoff = (self.clock() - dt.timedelta(hours=CALL_PENDING_HOURS)).isoformat(timespec="seconds")
         with self.lock:
-            rows = [a for a in self._load()["alerts"] if a.get("speak_phone") and not a.get("phone_spoken")
+            d = self._load()
+            rows = [a for a in d["alerts"] if a.get("speak_phone") and not a.get("phone_spoken")
                     and a.get("status") in ("new", "seen") and a["created"] >= cutoff]
-        return [{"id": a["id"], "urgency": a["urgency"], "speech": a["speech"], "title": f"Urgent from {a['sender']}"} for a in rows]
+            calls = [c for c in d["calls"] if not c.get("spoken")
+                     and c.get("created", "") >= (call_cutoff if c.get("call") else cutoff)]
+        out = [{"id": a["id"], "urgency": a["urgency"], "speech": a["speech"], "title": f"Urgent from {a['sender']}",
+                "kind": a.get("kind", "other"), "source": a.get("source", ""), "preview": a.get("preview", ""), "call": False}
+               for a in rows]
+        out += [{"id": c["id"], "urgency": c["urgency"], "speech": c["speech"], "title": c["title"], "kind": c["kind"],
+                 "source": c["source"], "preview": c["preview"], "call": bool(c["call"])} for c in calls]
+        return out
 
     def ack(self, ids: list[str]) -> int:
         n = 0
@@ -954,6 +997,10 @@ class Alerts:
             for a in d["alerts"]:
                 if a.get("id") in ids and a.get("speak_phone") and not a.get("phone_spoken"):
                     a["phone_spoken"] = True
+                    n += 1
+            for c in d["calls"]:
+                if c.get("id") in ids and not c.get("spoken"):
+                    c["spoken"] = True
                     n += 1
             if n:
                 self._save(d)
@@ -1084,6 +1131,14 @@ def engine_for(ctx: Ctx) -> Alerts:
         engine = Alerts(ctx)
         ctx.alerts = engine          # type: ignore[attr-defined]
     return engine
+
+
+def push_phone(ctx: Ctx, key: str, speech: str, **kw: Any) -> dict | None:
+    """For other hub modules: queue a spoken/ringing item for the phone (see Alerts.push_phone). Never raises."""
+    try:
+        return engine_for(ctx).push_phone(key, speech, **kw)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def triage(ctx: Ctx, event: dict, *, trusted: bool = False) -> dict | None:

@@ -633,6 +633,22 @@ class Proactive(FridayCase):
         self.clock.now = at(11, 3)
         self.assertEqual(self.tick(), [])
 
+    def test_meeting_five_minutes_away_is_spoken_by_the_phone_once(self):
+        from hub import alerts
+        self.enable()
+        self.meetings = [meeting("Design sync", at(11, 9), at(11, 40))]
+        self.tick()                                          # 9 minutes: a notification, not yet spoken
+        self.assertEqual(alerts.engine_for(self.ctx).pending(), [])
+        self.clock.now = at(11, 4)
+        self.tick()
+        rows = alerts.engine_for(self.ctx).pending()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["kind"], rows[0]["source"], rows[0]["urgency"], rows[0]["call"]), ("meeting", "calendar", 2, False))
+        self.assertIn("Design sync starts in 5 minutes", rows[0]["speech"])
+        self.clock.now = at(11, 6)
+        self.tick()
+        self.assertEqual(len(alerts.engine_for(self.ctx).pending()), 1)      # one per meeting
+
     def test_meeting_goes_through_the_dispatcher_once(self):
         from hub.proactive import Proactive
         self.enable()

@@ -227,5 +227,13 @@ class Greeting(unittest.TestCase):
         self.assertIn("At your service", persona.greeting_reply("hey jarvis"))
 
 
+class PhoneUrgencyRule(unittest.TestCase):
+    def test_urgency_three_and_meetings_pass_quiet_hours_but_urgency_two_does_not(self):
+        self.assertEqual(proactive.classify({"type": "alert", "urgency": 3}, now=NIGHT), "now")
+        self.assertEqual(proactive.classify({"type": "alert", "urgency": 2}, now=NIGHT), "quiet")
+        self.assertEqual(proactive.classify({"type": "meeting", "minutes": 4}, now=NIGHT), "now")
+        self.assertEqual(proactive.classify({"type": "backup_failed"}), "now")
+
+
 if __name__ == "__main__":
     unittest.main()
