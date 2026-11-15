@@ -365,6 +365,9 @@ class GeminiFailoverTest(unittest.IsolatedAsyncioTestCase):
 
 
 class GeminiReasonTest(unittest.TestCase):
+    def setUp(self):
+        no_real_cli_logins(self)
+
     def test_availability_explains_limit_zero_and_hides_gemini_and_duo(self):
         llm.reset_gemini_state()
         self.addCleanup(llm.reset_gemini_state)
@@ -386,8 +389,16 @@ async def _drain(gen):
     return [p async for p in gen]
 
 
+def no_real_cli_logins(test):
+    """These tests expect "nothing installed": ignore any real CLI login (agy, gemini) on the machine running them."""
+    p = mock.patch("hub.cliprov.find_program", lambda word: None)
+    p.start()
+    test.addCleanup(p.stop)
+
+
 class DefaultProviderTest(unittest.TestCase):
     def setUp(self):
+        no_real_cli_logins(self)
         self.config, _ = make_config(default_provider="auto")
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         p = mock.patch.dict(os.environ, env, clear=True)
@@ -448,6 +459,7 @@ class Tagged:
 
 class ServerTest(unittest.TestCase):
     def setUp(self):
+        no_real_cli_logins(self)
         self.config, self.root = make_config(default_provider="auto")
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         p = mock.patch.dict(os.environ, env, clear=True)
