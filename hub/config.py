@@ -220,6 +220,10 @@ class Config:
     # Playbooks (hub/playbooks.py): "when X happens, do Y" rules. The feature is on but there are no playbooks until the owner writes one.
     playbooks_enabled: bool = True          # False: no playbook runs (the list stays); Panic pauses them too
     playbooks_max_concurrent: int = 3       # playbook runs at the same time, across all playbooks (1 to 20)
+    # Scheduled job batches (hub/batches.py): slots build N ready applications/messages and send ONE notification. Sending is always a tap.
+    batches_enabled: bool = True            # False (or Panic): no slot fires; the slot list stays
+    batches_catchup_min: int = 360          # a slot missed while the laptop slept still fires once if within this many minutes (0 = never catch up)
+    batches_outreach_cap: int = 10          # outreach messages sent per day through batches (0 = no cap)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -353,6 +357,8 @@ def save(config: Config, path: Path) -> None:
         "computeruse_keep_shots": config.computeruse_keep_shots is True, "computeruse_max_steps": int(config.computeruse_max_steps or 25),
         "computeruse_blocklist": config.computeruse_blocklist, "computeruse_allow_chords": config.computeruse_allow_chords,
         "playbooks_enabled": config.playbooks_enabled is not False, "playbooks_max_concurrent": int(config.playbooks_max_concurrent or 3),
+        "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": int(config.batches_catchup_min),
+        "batches_outreach_cap": int(config.batches_outreach_cap),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

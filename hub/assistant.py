@@ -219,6 +219,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
                 "send_application"},
                re.compile(r"\bapplications?\b|\bapplied\b|\bapply\b|\bcover (?:letter|note)\b|\bready to send\b|"
                           r"\bsend (?:it|that|the application)\b|\bproposals?\b", re.I)),
+    "batches": ({"batch_list", "batch_prepare", "batch_send"},
+                re.compile(r"\bbatch(?:es)?\b|\bprepare (?:my |a |the )?(?:applications|outreach)\b|\bsend (?:the |my )?(?:morning |daily )?batch\b", re.I)),
     "triage": ({"list_alerts", "show_alert", "draft_reply", "mark_alert", "snooze_alert"},
                re.compile(r"\burgent\b|\bwhat(?:'s| is) (?:urgent|important)\b|\bdraft (?:a |the )?(?:reply|response)\b|\bsnooze\b|"
                           r"\bmark (?:it |that |this )?(?:as )?(?:handled|seen|done)\b|\bmy manager\b|\bmy boss\b|\bneed(?:s)? (?:a )?repl(?:y|ies)\b|"

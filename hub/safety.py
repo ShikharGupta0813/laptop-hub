@@ -652,4 +652,4 @@ def classify(tool_name: str, args: Any = None, *, base: str | None = None) -> st
 # `computer_run` (hub/computeruse.py) is here because what it sets in motion is the riskiest thing the hub can do: it only creates a
 # pending request, and the owner must still approve its exact scope on the Computer screen. No trust rule, remembered approval or
 # Full Control may ever shortcut that. The per-step "this looks destructive" taps are route-only (POST .../confirm-step) and read none of those.
-ALWAYS_ASK = frozenset({"send_email", "send_application", "post_publish", "submit_form", "chat_send", "computer_run"})
+ALWAYS_ASK = frozenset({"send_email", "send_application", "post_publish", "submit_form", "chat_send", "computer_run", "batch_send"})

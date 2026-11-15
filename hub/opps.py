@@ -45,6 +45,10 @@ try:  # the ready-to-send queue is built by another module; this one works witho
     from . import applyq
 except ImportError:  # pragma: no cover - depends on the branch
     applyq = None
+try:  # the owner's search profiles (hard filters + soft scoring); without it nothing is filtered
+    from . import jobprefs
+except ImportError:  # pragma: no cover
+    jobprefs = None
 
 log = logging.getLogger("hub.opps")
 
@@ -104,15 +108,15 @@ STARTER_SOURCES: list[dict] = [
      "enabled": True, "note": "Independent work network. Paste links."},
     # Remote job boards with public feeds
     {"id": "wwr", "name": "We Work Remotely", "url": "https://weworkremotely.com/remote-jobs.rss", "kind": "job",
-     "how": "rss", "enabled": True, "parser": "title_company", "note": "Public RSS of all remote jobs."},
+     "how": "rss", "remote": True, "enabled": True, "parser": "title_company", "note": "Public RSS of all remote jobs."},
     {"id": "remotive", "name": "Remotive", "url": "https://remotive.com/api/remote-jobs", "kind": "job", "how": "api",
-     "enabled": True, "note": "Public JSON API (they ask for at most a few calls a day)."},
+     "remote": True, "enabled": True, "note": "Public JSON API (they ask for at most a few calls a day)."},
     {"id": "remoteok", "name": "RemoteOK", "url": "https://remoteok.com/api", "kind": "job", "how": "api",
-     "enabled": True, "note": "Public JSON API. Link back to the listing, as their terms ask."},
+     "remote": True, "enabled": True, "note": "Public JSON API. Link back to the listing, as their terms ask."},
     {"id": "himalayas", "name": "Himalayas", "url": "https://himalayas.app/jobs/api", "kind": "job", "how": "api",
-     "enabled": True, "note": "Public jobs API. Unverified: check the first run."},
+     "remote": True, "enabled": True, "note": "Public jobs API. Unverified: check the first run."},
     {"id": "workingnomads", "name": "Working Nomads", "url": "https://www.workingnomads.com/api/exposed_jobs/",
-     "kind": "job", "how": "api", "enabled": True, "note": "Public jobs JSON. Unverified: check the first run."},
+     "kind": "job", "how": "api", "remote": True, "enabled": True, "note": "Public jobs JSON. Unverified: check the first run."},
     {"id": "hn-hiring", "name": "Hacker News: Who is hiring", "kind": "job", "how": "api", "enabled": True,
      "url": "https://hn.algolia.com/api/v1/search_by_date?query=%22Ask%20HN%3A%20Who%20is%20hiring%3F%22&tags=story,author_whoishiring&hitsPerPage=1",
      "parser": "hn_hiring", "note": "Latest monthly thread via the public Algolia API."},
@@ -598,6 +602,10 @@ class Opps:
             out["enabled"] = True
         if "note" in body or not partial:
             out["note"] = clean(body.get("note"), 300)
+        if "remote" in body:                       # a board that only lists remote work (job preferences use it)
+            if not isinstance(body["remote"], bool):
+                raise ValueError("remote must be true or false.")
+            out["remote"] = body["remote"]
         how_final = out.get("how") or (current or {}).get("how")
         url_final = out.get("url", (current or {}).get("url", ""))
         if how_final in ("rss", "api", "html") and not url_final:
@@ -671,7 +679,8 @@ class Opps:
         item = {"title": find["title"], "company": find.get("company", ""), "url": find.get("url", ""),
                 "source": find.get("source", ""), "description": find.get("description", ""), "score": find["score"],
                 "reason": find.get("reason", ""), "flags": [f["label"] for f in find.get("flags", [])],
-                "kind": find.get("kind", "other")}
+                "kind": find.get("kind", "other"),
+                "meta": {"source_id": find.get("source_id", ""), "match": find.get("match") or {}}}
         try:
             fn = self._push or (applyq.add_item if applyq is not None and hasattr(applyq, "add_item") else None)
             if fn is None:
@@ -692,7 +701,8 @@ class Opps:
         """Vet, score, dedupe and store candidate rows. Returns {new, queued, blocked, seen}."""
         prof = profile_mod.get_profile(self.ctx)
         now = self.clock()
-        counts = {"new": 0, "queued": 0, "blocked": 0, "seen": 0, "low": 0}
+        counts = {"new": 0, "queued": 0, "blocked": 0, "seen": 0, "low": 0, "filtered": 0}
+        source_remote = bool((self.get_source(source_id) or {}).get("remote"))
         with self.lock:
             state = self._state()
             for row in rows[:MAX_ITEMS_PER_SOURCE]:
@@ -715,9 +725,18 @@ class Opps:
                 find["flags"] = vet["flags"]
                 find["severity"] = vet["severity"]
                 find["score"], find["reason"] = score_find(find, prof, dt.datetime.fromtimestamp(now).date())
+                verdict = None
+                if jobprefs is not None:     # hard filters never surface a non-match; soft points re-rank (hub/jobprefs.py)
+                    verdict = jobprefs.assess(self.ctx, {**find, "source_remote": source_remote}, manual=source_id == "manual")
+                    if verdict:
+                        find["match"] = verdict["match"]
+                        find["score"] = max(0, min(100, find["score"] + verdict["delta"]))
                 if opps_vet.blocked(vet):
                     find["status"], find["blocked_reason"] = "blocked", opps_vet.reason_text(vet)
                     counts["blocked"] += 1
+                elif verdict and not verdict["ok"]:
+                    find["status"], find["filtered_reason"] = "filtered", verdict["reason"]
+                    counts["filtered"] += 1
                 elif find["score"] >= self.min_score:
                     if self.push_to_queue(find):
                         find["status"] = "queued"
@@ -735,6 +754,8 @@ class Opps:
         rows = list(self._state()["finds"].values())
         if status:
             rows = [r for r in rows if r.get("status") == status]
+        else:
+            rows = [r for r in rows if r.get("status") != "filtered"]     # filtered by a job preference: only shown when asked for
         if query:
             words = [w for w in re.findall(r"[a-z0-9+#.]+", query.lower()) if len(w) > 1]
             def hit(r):

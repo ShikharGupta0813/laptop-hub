@@ -1561,6 +1561,7 @@ def make_router(ctx: Ctx, **kw: Any) -> APIRouter:
         return "form-filling session closed (nothing was submitted)"
     _panic.register("Form filling", _panic_stop, ctx=ctx)   # hub/panic.py
     router.service = svc                       # type: ignore[attr-defined]
+    ctx.formfill = svc                         # hub/batches.py drives the same service one form after another
 
     async def guarded(fn, *args):
         try:

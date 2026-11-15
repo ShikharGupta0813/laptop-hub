@@ -340,6 +340,17 @@ def infer_channel(item: dict) -> str:
     return "web"
 
 
+def clean_meta(raw: Any) -> dict:
+    """Small JSON-safe extras from the finder (source id, job-preference match). Anything else is dropped."""
+    if not isinstance(raw, dict):
+        return {}
+    try:
+        blob = json.dumps(raw, default=str)
+        return json.loads(blob) if len(blob) <= 4000 else {}
+    except (TypeError, ValueError):
+        return {}
+
+
 class Applyq:
     def __init__(self, ctx: Ctx, *, clock: Callable[[], dt.datetime] | None = None,
                  profile_fn: Callable[[Any], dict] | None = None, gmailx: Any = None,
@@ -382,6 +393,7 @@ class Applyq:
                 "draft": None, "channel": "", "account": "", "state": "found", "created": now_iso(self.clock),
                 "updated": now_iso(self.clock), "sent_at": None, "applied_at": None, "skipped_at": None,
                 "replied_at": None, "notes": [], "error": ""}
+        item["meta"] = clean_meta(raw.get("meta"))
         item["channel"] = infer_channel({**item, "channel": raw.get("channel")})
         item["account"] = clean(raw.get("account"), 80)
         self.store.insert(item)

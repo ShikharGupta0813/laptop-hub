@@ -1,0 +1,33 @@
+/* Job preferences and Batches. Scoped under their view ids; tokens only. */
+#view-jobprefs .jp, #view-batches .bt { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) var(--gutter) var(--sp-8); }
+#view-jobprefs .jp > *, #view-batches .bt > * { min-width: 0; }
+.jp-chips, .bt-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.jp-chip { min-height: 40px; padding: 0 var(--sp-4); border-radius: 999px; border: 1px solid var(--c-line); background: var(--c-surface-2); color: var(--c-text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.jp-chip.is-on { background: var(--c-accent-soft); color: var(--c-accent-text); border-color: var(--c-accent-line); }
+.jp-pay { display: grid; grid-template-columns: 1fr 5.5rem 1fr; gap: var(--sp-2); }
+.jp-switchrow { padding: 0; }
+.jp-templates { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.jp-verdict { margin: 0; overflow-wrap: anywhere; }
+.jp-verdict.is-ok { color: var(--c-good, #2f9e5f); }
+.jp-verdict.is-no { color: var(--c-text-2); }
+.bt-stats { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.bt-stat { display: flex; flex-direction: column; min-width: 5.5rem; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); }
+.bt-stat b { font-size: var(--fs-lg, 1.25rem); color: var(--c-text); }
+.bt-stat span { color: var(--c-text-3); font-size: var(--fs-sm); }
+.bt-card { padding: var(--sp-4); }
+.bt-card.is-off { opacity: .7; }
+.bt-head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.bt-head input[type="checkbox"] { width: 24px; height: 24px; flex: none; margin-top: 2px; }
+.bt-title { margin: 0; flex: 1 1 12em; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+.bt-sub { color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.bt-badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.bt-why, .bt-preview, .bt-note { margin: 0; color: var(--c-text-2); overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.bt-preview { white-space: pre-wrap; max-height: 6em; overflow: hidden; }
+.bt-warn { margin: 0; color: var(--c-warn, #d99a1d); overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.bt-result { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.bt-result.is-good { color: var(--c-good, #2f9e5f); }
+.bt-result.is-bad { color: var(--c-bad, #d64545); }
+.bt-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.bt-sendbar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; padding: var(--sp-3) 0; background: var(--c-bg); }
+.bt-body { min-height: 8em; width: 100%; }
+@media (max-width: 480px) { .jp-pay { grid-template-columns: 1fr; } }
