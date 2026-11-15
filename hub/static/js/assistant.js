@@ -129,8 +129,9 @@ const STATE_BADGE = {
 
 export function init(container, ctx) {
   loadCss();
-  let sessionId = store.get("sessionStorage", "hub.assistant.session", "") || newSessionId();
-  store.set("sessionStorage", "hub.assistant.session", sessionId);
+  // One id per conversation, kept across app restarts (localStorage) so the hub can reload the saved conversation (hub/chatstore.py).
+  let sessionId = store.get("localStorage", "hub.assistant.session", "") || store.get("sessionStorage", "hub.assistant.session", "") || newSessionId();
+  store.set("localStorage", "hub.assistant.session", sessionId);
 
   const prefs = {
     provider: normalizeChoice(readAiMap()[sessionId] || store.get("localStorage", "hub.assistant.provider", "") || defaultProvider()),
@@ -889,7 +890,7 @@ export function init(container, ctx) {
     cancelRecording(true);
     stopSpeech();
     sessionId = newSessionId();
-    store.set("sessionStorage", "hub.assistant.session", sessionId);
+    store.set("localStorage", "hub.assistant.session", sessionId);
     rememberAi(sessionId, prefs.provider);      // a new chat starts with the AI you were using
     // A fresh chat starts safe: commands need a tap again.
     if (prefs.autoApprove) { prefs.autoApprove = false; store.set("sessionStorage", "hub.assistant.autoapprove", "0"); syncControls(); }

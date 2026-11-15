@@ -43,7 +43,7 @@ MODEL_KEYS = ("chat_model", "assistant_model", "claude_model", "embed_model", "w
               "gemini_model", "claude_cli_model")
 ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_per_hour", "kb_roots", "writable_roots", "ntfy_server", "ntfy_topic", "display_name",
                "full_control", "fast_commands", "jarvis_name", "autopilot_enabled", "autopilot_sweep_min",
-               "autopilot_daily_ai_calls", "autopilot_research", "today_enabled", "today_evening_time", "today_cache_min", "skills_enabled",
+               "autopilot_daily_ai_calls", "autopilot_research", "today_enabled", "today_evening_time", "today_cache_min", "chat_history_enabled", "chat_history_days", "skills_enabled",
                "research_enabled", "research_max_hops", "research_max_sources", "research_daily_ai_calls",
                "brain_enabled", "brain_context", "today_morning_time", "proactive_enabled", "proactive_quiet_start",
                "proactive_quiet_end", "proactive_batch_minutes", "vision_enabled", "vision_daily_calls", "buildflow_enabled",
@@ -207,7 +207,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse"):
+        elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -261,6 +261,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         elif key == "today_cache_min":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 120:
                 raise HTTPException(400, "today_cache_min must be a whole number of minutes from 0 (always live) to 120.")
+            changes[key] = value
+        elif key == "chat_history_days":
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 365:
+                raise HTTPException(400, "chat_history_days must be a whole number of days from 1 to 365.")
             changes[key] = value
         elif key == "autopilot_sweep_min":
             if isinstance(value, bool) or not isinstance(value, int) or not 5 <= value <= 240:
@@ -594,7 +598,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "autopilot_enabled": config.autopilot_enabled, "autopilot_sweep_min": config.autopilot_sweep_min,
             "autopilot_daily_ai_calls": config.autopilot_daily_ai_calls,
             "autopilot_research": config.autopilot_research, "today_enabled": config.today_enabled,
-            "today_evening_time": config.today_evening_time, "today_cache_min": config.today_cache_min, "skills_enabled": config.skills_enabled,
+            "today_evening_time": config.today_evening_time, "today_cache_min": config.today_cache_min, "chat_history_enabled": config.chat_history_enabled,
+            "chat_history_days": config.chat_history_days, "skills_enabled": config.skills_enabled,
             "research_enabled": config.research_enabled, "research_max_hops": config.research_max_hops,
             "research_max_sources": config.research_max_sources,
             "research_daily_ai_calls": config.research_daily_ai_calls,
