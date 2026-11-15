@@ -657,10 +657,11 @@ class RoutesTest(Base):
         self.assertEqual(c.patch(f"/api/batches/{bid}/items/{built['items'][0]['item_id']}", json={"ticked": False}).status_code, 200)
         self.assertEqual(c.post(f"/api/batches/{bid}/send", json={"confirm": True}).status_code, 200)
         import time
-        for _ in range(100):
+        deadline = time.monotonic() + 30        # the send runs in the app's own thread; a loaded machine can be slow
+        while time.monotonic() < deadline:
             if c.get(f"/api/batches/{bid}").json()["state"] != "sending":
                 break
-            time.sleep(0.05)
+            time.sleep(0.02)
         view = c.get(f"/api/batches/{bid}").json()
         self.assertEqual(view["state"], "done")
         self.assertEqual(len(self.mail.sent), 1)

@@ -55,6 +55,7 @@ MAX_SOURCES = 200
 MAX_ITEMS = 4000
 MAX_PER_RUN = 150
 PRESET_DATE = "2026-11-14"
+LIVE_DATE = "2026-11-15"          # day the presets were checked against the live public endpoints (read-only, one request each)
 HOST_GAP = 2.0                    # seconds between two requests to the same host
 LOOP_TICK = 20.0
 MIN_INTERVAL, MAX_INTERVAL = 2, 1440
@@ -100,9 +101,9 @@ def _under(host: str, domains) -> str:
 
 
 # ---- presets ---------------------------------------------------------------------------------------------------
-# `verified_on` is set ONLY where the endpoint and fields were read from the service's own public documentation in the
-# session that wrote this table (docs fetched 2026-11-14). The build sandbox could reach only github.com, so every other
-# preset is honestly 'unverified': the Test button on a source shows what the live service really answers.
+# `verified_on` is set ONLY where the live public endpoint was fetched (read-only, one request) and its shape matched what
+# the adapter reads (2026-11-15). Anything blocked, empty or changed stays 'unverified' with that said in its note; the
+# Test button on a source shows what the live service really answers.
 
 _REMOTE_JSON_FIELDS = {
     "remoteok": {"url": "https://remoteok.com/api", "list_path": "", "fields": {
@@ -116,7 +117,7 @@ _REMOTE_JSON_FIELDS = {
     "himalayas": {"url": "https://himalayas.app/jobs/api", "list_path": "jobs", "fields": {
         "title": "title", "company": "companyName", "url": "applicationLink", "description": "description",
         "location": "locationRestrictions", "posted": "pubDate", "employment": "employmentType", "pay_min": "minSalary",
-        "pay_max": "maxSalary", "pay_currency": "currency", "pay_unit": "=year", "remote": "=true"}},
+        "pay_max": "maxSalary", "pay_currency": "currency", "pay_unit": "salaryPeriod", "remote": "=true"}},
     "jobicy": {"url": "https://jobicy.com/api/v2/remote-jobs?count=50", "list_path": "jobs", "fields": {
         "title": "jobTitle", "company": "companyName", "url": "url", "description": "jobDescription", "location": "jobGeo",
         "posted": "pubDate", "employment": "jobType", "pay_min": "salaryMin", "pay_max": "salaryMax",
@@ -124,6 +125,9 @@ _REMOTE_JSON_FIELDS = {
     "arbeitnow": {"url": "https://www.arbeitnow.com/api/job-board-api", "list_path": "data", "fields": {
         "title": "title", "company": "company_name", "url": "url", "description": "description", "location": "location",
         "posted": "created_at", "employment": "job_types", "remote": "remote", "tags": "tags"}},
+    "workingnomads": {"url": "https://www.workingnomads.com/api/exposed_jobs/", "list_path": "", "fields": {
+        "title": "title", "company": "company_name", "url": "url", "description": "description", "location": "location",
+        "posted": "pub_date", "tags": "tags", "remote": "=true"}},
 }
 
 
@@ -140,31 +144,51 @@ def _platform(pid, label, kind, domain, note):
 
 PRESETS: list[dict] = [
     # public ATS feeds (no login, designed for public reading)
-    _preset("greenhouse", "Greenhouse board", "ats", "greenhouse", "job", needs=("board",),
-            note="Public Job Board API: boards-api.greenhouse.io/v1/boards/<board>/jobs. The board token is the last part of the careers address.",
+    _preset("greenhouse", "Greenhouse board", "ats", "greenhouse", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public Job Board API: boards-api.greenhouse.io/v1/boards/<board>/jobs. The board token is the last part of the careers address. Checked live against a large public board.",
             docs="https://developers.greenhouse.io/job-board.html"),
-    _preset("lever", "Lever postings", "ats", "lever", "job", needs=("board",), verified=PRESET_DATE,
-            note="Public Postings API: api.lever.co/v0/postings/<site>?mode=json (EU sites: api.eu.lever.co). Fields read from github.com/lever/postings-api.",
+    _preset("lever", "Lever postings", "ats", "lever", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public Postings API: api.lever.co/v0/postings/<site>?mode=json (EU sites: api.eu.lever.co). Fields read from github.com/lever/postings-api; live answer reached 2026-11-15.",
             docs="https://github.com/lever/postings-api"),
-    _preset("ashby", "Ashby job board", "ats", "ashby", "job", needs=("board",),
-            note="Public job posting API: api.ashbyhq.com/posting-api/job-board/<board>.", docs="https://developers.ashbyhq.com/docs/public-job-posting-api"),
+    _preset("ashby", "Ashby job board", "ats", "ashby", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public job posting API: api.ashbyhq.com/posting-api/job-board/<board>. Checked live.", docs="https://developers.ashbyhq.com/docs/public-job-posting-api"),
     _preset("workable", "Workable account", "ats", "workable", "job", needs=("board",),
-            note="Public widget API: apply.workable.com/api/v1/widget/accounts/<account>.", docs="https://workable.readme.io/reference/jobs"),
-    _preset("smartrecruiters", "SmartRecruiters company", "ats", "smartrecruiters", "job", needs=("board",),
-            note="Public Posting API: api.smartrecruiters.com/v1/companies/<company>/postings.", docs="https://developers.smartrecruiters.com/docs/posting-api"),
-    _preset("recruitee", "Recruitee careers site", "ats", "recruitee", "job", needs=("board",),
-            note="Public careers API: <company>.recruitee.com/api/offers/.", docs="https://docs.recruitee.com/reference/careers-site-api"),
-    _preset("teamtailor", "Teamtailor jobs feed", "ats", "teamtailor", "job", needs=("board",),
-            note="Public RSS feed of a Teamtailor career site: <company>.teamtailor.com/jobs.rss.", docs="https://support.teamtailor.com/"),
+            note="UNVERIFIED. Widget API apply.workable.com/api/v1/widget/accounts/<account> answered 200 on 2026-11-15 but with an empty job list for every account tried, "
+                 "so the job fields could not be checked (the widget API may be retired). Use Test on a source before relying on it.",
+            docs="https://workable.readme.io/reference/jobs"),
+    _preset("smartrecruiters", "SmartRecruiters company", "ats", "smartrecruiters", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public Posting API: api.smartrecruiters.com/v1/companies/<company>/postings. Checked live. The list has no description text (only the per-posting call has it), so descriptions stay empty.",
+            docs="https://developers.smartrecruiters.com/docs/posting-api"),
+    _preset("recruitee", "Recruitee careers site", "ats", "recruitee", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public careers API: <company>.recruitee.com/api/offers/. Checked live.", docs="https://docs.recruitee.com/reference/careers-site-api"),
+    _preset("teamtailor", "Teamtailor jobs feed", "ats", "teamtailor", "job", needs=("board",), verified=LIVE_DATE,
+            note="Public RSS feed of a Teamtailor career site: <company>.teamtailor.com/jobs.rss. Checked live.", docs="https://support.teamtailor.com/"),
     # remote boards with public feeds / APIs
-    _preset("remoteok", "RemoteOK", "remote", "json", "job", _REMOTE_JSON_FIELDS["remoteok"], note="Public JSON API. Link back to the listing, as their terms ask."),
-    _preset("wwr", "We Work Remotely", "remote", "rss", "job", {"url": "https://weworkremotely.com/remote-jobs.rss", "split_company": True},
-            note="Public RSS of all remote jobs."),
-    _preset("remotive", "Remotive", "remote", "json", "job", _REMOTE_JSON_FIELDS["remotive"], note="Public JSON API. They ask for only a few calls a day: keep the interval long."),
-    _preset("himalayas", "Himalayas", "remote", "json", "job", _REMOTE_JSON_FIELDS["himalayas"], note="Public jobs API."),
-    _preset("jobicy", "Jobicy", "remote", "json", "job", _REMOTE_JSON_FIELDS["jobicy"], note="Public remote-jobs API."),
-    _preset("arbeitnow", "Arbeitnow", "remote", "json", "job", _REMOTE_JSON_FIELDS["arbeitnow"], note="Public job-board API (Europe heavy)."),
-    _preset("hn-hiring", "Hacker News: Who is hiring", "remote", "hn", "job", note="Latest monthly thread via the public Algolia API (hn.algolia.com)."),
+    _preset("remoteok", "RemoteOK", "remote", "json", "job", _REMOTE_JSON_FIELDS["remoteok"], verified=LIVE_DATE,
+            note="Public JSON API. Their terms: link back (followed link) to the listing on Remote OK and name Remote OK as the source; keep calls few."),
+    _preset("wwr", "We Work Remotely", "remote", "rss", "job", {"url": "https://weworkremotely.com/remote-jobs.rss", "split_company": True}, verified=LIVE_DATE,
+            note="Public RSS of all remote jobs (feed ttl 60 minutes: do not poll faster). Link back to the listing."),
+    _preset("wwr-programming", "We Work Remotely: programming", "remote", "rss", "job",
+            {"url": "https://weworkremotely.com/categories/remote-programming-jobs.rss", "split_company": True}, verified=LIVE_DATE,
+            note="Public RSS of the programming category (feed ttl 60 minutes). Link back to the listing."),
+    _preset("remotive", "Remotive", "remote", "json", "job", _REMOTE_JSON_FIELDS["remotive"], verified=LIVE_DATE,
+            note="Public JSON API. They ask for only a few calls a day (keep the interval long, 6 h or more) and a link back to the listing. Checked with one call."),
+    _preset("himalayas", "Himalayas", "remote", "json", "job", _REMOTE_JSON_FIELDS["himalayas"], verified=LIVE_DATE,
+            note="Public jobs API (page by cursor, 20 jobs by default). Link back to the listing. Pay period comes from the feed."),
+    _preset("jobicy", "Jobicy", "remote", "json", "job", _REMOTE_JSON_FIELDS["jobicy"], verified=LIVE_DATE,
+            note="Public remote-jobs API (api docs: jobi.cy/apidocs). Keep calls few (a few a day) and link back to the listing."),
+    _preset("arbeitnow", "Arbeitnow", "remote", "json", "job", _REMOTE_JSON_FIELDS["arbeitnow"], verified=LIVE_DATE,
+            note="Free public job-board API (Europe heavy, refreshed hourly, 300 jobs a page). Link back to the listing; poll no faster than hourly."),
+    _preset("workingnomads", "Working Nomads", "remote", "json", "job", _REMOTE_JSON_FIELDS["workingnomads"], verified=LIVE_DATE,
+            note="Public exposed-jobs JSON of Working Nomads. Link back to the listing; keep the interval long (hourly or slower)."),
+    _preset("jobspresso", "Jobspresso", "remote", "rss", "job", {"url": "https://jobspresso.co/feed/?post_type=job_listing"}, verified=LIVE_DATE,
+            note="Public RSS of remote jobs. Link back to the listing; poll hourly or slower."),
+    _preset("nodesk", "NoDesk", "remote", "rss", "job", {"url": "https://nodesk.co/remote-jobs/index.xml", "split_company": "at"}, verified=LIVE_DATE,
+            note="Public RSS of remote jobs (small, about 20 items). Link back to the listing; poll a few times a day at most."),
+    _preset("python-jobs", "Python.org Jobs", "remote", "rss", "job", {"url": "https://www.python.org/jobs/feed/rss/"}, verified=LIVE_DATE,
+            note="Public RSS of the Python Job Board (worldwide, many remote). Link back to the listing; poll a few times a day at most."),
+    _preset("hn-hiring", "Hacker News: Who is hiring", "remote", "hn", "job", verified=LIVE_DATE,
+            note="Latest monthly thread via the public Algolia API (hn.algolia.com). Only top-level comments are read (replies are skipped). Keep the interval long: the thread changes slowly."),
     # freelance and AI-task platforms: email alerts or open-link only, never fetched, never automated
     _platform("upwork", "Upwork", "freelance", "upwork.com", "Turn on email alerts for a saved search."),
     _platform("fiverr", "Fiverr", "freelance", "fiverr.com", "Buyer requests need a sign-in, so use its email notifications."),
@@ -349,9 +373,35 @@ def parse_ats(adapter: str, body: str, settings: dict) -> tuple[list[dict], bool
 
 # ---- generic parsers --------------------------------------------------------------------------------------------------
 
+def split_role_at_company(row: dict) -> dict:
+    """NoDesk and Python.org style titles are 'Role at Company' (or 'Role, Company' on Python.org: left alone)."""
+    if not row.get("company") and " at " in row["title"]:
+        left, right = row["title"].rsplit(" at ", 1)
+        if left.strip() and 0 < len(right.strip()) <= 60:
+            row["title"], row["company"] = clean(left, 200), clean(right, 100)
+    return row
+
+
+_XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
+
+
+def _html_entities_to_text(text: str) -> str:
+    """Some real feeds (NoDesk, 2026-11-15) put an HTML entity such as &copy; in plain XML, which a strict parser refuses.
+    Turn those named entities into their characters; the five XML ones stay. No entity is ever declared or expanded."""
+    def fix(m):
+        if m.group(1) in _XML_ENTITIES:
+            return m.group(0)
+        out = htmllib.unescape(m.group(0))
+        return m.group(0) if out == m.group(0) else out.replace("&", "&amp;").replace("<", "&lt;")
+    return re.sub(r"&([A-Za-z][A-Za-z0-9]{1,31});", fix, text)
+
+
 def parse_rss_rows(text: str) -> list[dict]:
     try:
-        root = profile_mod.safe_xml_root(text)
+        try:
+            root = profile_mod.safe_xml_root(text)
+        except ElementTree.ParseError:
+            root = profile_mod.safe_xml_root(_html_entities_to_text(text))
     except (ElementTree.ParseError, ValueError):
         raise ValueError("not a readable feed") from None
     out = []
@@ -373,6 +423,13 @@ def parse_rss_rows(text: str) -> list[dict]:
                 row["published"] = clean(value, 40)
             elif name in ("company", "companyname", "author") and not row["company"] and value:
                 row["company"] = clean(value, 100)
+            elif name == "locations" and not row["location"]:
+                # Teamtailor: <tt:locations><tt:location><tt:city>..</tt:city><tt:country>..</tt:country>... (checked live 2026-11-15)
+                places = []
+                for node in child.iter():
+                    if opps._local(node.tag) in ("city", "country") and (node.text or "").strip():
+                        places.append((node.text or "").strip())
+                row["location"] = clean(", ".join(dict.fromkeys(places)), 100)
             elif name in ("location", "region", "country", "city") and value and not row["location"]:
                 row["location"] = clean(value, 100)
             elif name in ("remotestatus", "remote") and value:
@@ -460,6 +517,11 @@ def parse_html_rows(markup: str, settings: dict, base: str) -> list[dict]:
 
 def parse_hn_comments(data: Any) -> list[dict]:
     """'Who is hiring' comments: first line is usually 'Company | Role | Location | REMOTE | ...'."""
+    if isinstance(data, dict) and isinstance(data.get("hits"), list):
+        # Algolia returns replies too (checked live 2026-11-15: about half the hits); only top-level comments are postings.
+        data = {**data, "hits": [h for h in data["hits"] if not (isinstance(h, dict) and h.get("parent_id") is not None
+                                                                  and h.get("story_id") is not None
+                                                                  and str(h["parent_id"]) != str(h["story_id"]))]}
     rows = opps.parse_hn_hiring(data)
     for r in rows:
         parts = [p.strip() for p in r["title"].split("|")]
@@ -677,8 +739,8 @@ def check_settings(adapter: str, s: dict) -> dict:
         out["company"] = clean(s["company"], 100)
     if adapter in ("rss", "json", "html"):
         out["url"] = _check_url(s.get("url"))
-    if adapter == "rss" and s.get("split_company") is True:
-        out["split_company"] = True
+    if adapter == "rss" and s.get("split_company") in (True, "at"):
+        out["split_company"] = s["split_company"]
     if adapter == "json":
         out["list_path"] = clean(s.get("list_path"), 80)
         out["fields"] = _fields(s.get("fields"))
@@ -1068,7 +1130,9 @@ class OppSources:
             return rows, complete, meta
         if a == "rss":
             rows = parse_rss_rows(resp.text)
-            if st.get("split_company"):
+            if st.get("split_company") == "at":
+                rows = [split_role_at_company(r) for r in rows]
+            elif st.get("split_company"):
                 rows = [opps.split_title_company(r) for r in rows]
             return rows, False, meta
         if a == "json":

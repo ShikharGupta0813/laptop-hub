@@ -249,6 +249,10 @@ class Config:
     networking_ai: bool = False             # True: drafts are reworded by the owner's chosen AI (still checked against the facts; falls back to the plain draft)
     interviews_enabled: bool = True
     interviews_ai: bool = False             # True: extra questions and a short critique from the owner's chosen AI (text only; falls back to rules)
+    # Job tracker (hub/jobtrack.py): applications, follow-up reminders, the learning loop. Nothing is ever sent or applied by it.
+    jobtrack_enabled: bool = True
+    jobtrack_followup_days: list | None = None   # days after applying to remind you; None = [5, 10]; [] = no follow-up reminders
+    jobtrack_ghost_days: int = 14                # quiet this long: the screen SUGGESTS marking it ghosted (never automatic)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -396,6 +400,8 @@ def save(config: Config, path: Path) -> None:
         "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": int(config.networking_nudge_days or 14),
         "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
         "interviews_ai": config.interviews_ai is True,
+        "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
+        "jobtrack_ghost_days": int(config.jobtrack_ghost_days or 14),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

@@ -15,7 +15,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from hub import assistant as A
-from hub import safety
+from hub import chatstore, safety
 from hub.devserver import FakeLLM, FakeTranscriber
 from hub.server import Deps, create_app
 from tests.apiwalk import flat_routes
@@ -69,6 +69,7 @@ class RealRegistry(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.real = dict(app.state.assistant._extra)
         self.ran = []
+        self._chat_store = None
 
     def tools(self):
         out = []
@@ -91,8 +92,15 @@ class RealRegistry(unittest.IsolatedAsyncioTestCase):
             setattr(self.config, k, v)
         self.claude = FakeClaude(script)
         self.audit = []
-        return A.AssistantService(self.config, claude=self.claude, extra_tools=self.tools(),
-                                  audit=lambda event, **f: self.audit.append((event, f)))
+        svc = A.AssistantService(self.config, claude=self.claude, extra_tools=self.tools(),
+                                 audit=lambda event, **f: self.audit.append((event, f)))
+        # One chat-history file for the whole test: opening and creating it again for each of the hundreds of services
+        # in the taint test cost most of its time on Windows.
+        if self._chat_store is None:
+            self._chat_store = chatstore.ChatStore(Path(self.config.data_path()) / chatstore.FILE)
+            self.addCleanup(self._chat_store.close)
+        svc._chat_db = self._chat_store
+        return svc
 
 
 class EveryToolValidatesTest(RealRegistry):

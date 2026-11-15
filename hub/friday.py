@@ -772,6 +772,9 @@ class Engine:
             parts.append(f"In chat, {chat[0]['say']}.")
         if len(parts) == 1:
             parts.append("Nothing urgent on your plate. Your day looks clear.")
+        jt = self.jobtrack_line()
+        if jt:
+            parts.append(f"Job search: {jt}.")
         if failed:
             names = {"asana": "Asana", "todos": "your to-dos", "calendar": "your calendar", "mail": "your mail",
                      "alerts": "the alerts", "reminders": "your reminders", "asana_comments": "Asana comments"}
@@ -801,6 +804,14 @@ class Engine:
         return {"generated_at": local_iso(now), "greeting": greeting, "sections": sections,
                 "spoken": script or spoken, "sources_failed": failed, "spoken_by": "model" if script else "template"}
 
+    def jobtrack_line(self) -> str:
+        """"N follow-ups due" from the local job tracker file (hub/jobtrack.py); "" when none. No outside call."""
+        try:
+            from . import jobtrack
+            return jobtrack.today_line(self.ctx.config)
+        except Exception:  # noqa: BLE001 - optional
+            return ""
+
     def brief_data(self, greeting: str, ranked: dict, failed: list[str]) -> str:
         lines = [f"Assistant name: {self.settings['name']}. Address the owner as: {self.address()}.",
                  f"Greeting to start with: {greeting}"]
@@ -809,6 +820,9 @@ class Engine:
                 lines.append(f"- [{key}] priority {i['priority']}: {i['say']}")
         if len(lines) == 2:
             lines.append("- nothing needs attention today")
+        jt = self.jobtrack_line()
+        if jt:
+            lines.append(f"- [jobs] {jt}")
         if failed:
             lines.append("Unavailable sources (say you could not reach them): " + ", ".join(failed))
         return "\n".join(lines)
@@ -1478,5 +1492,4 @@ async def start(ctx: Ctx, *, client=None, clock: Clock | None = None,
     async def stop():
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-        ENGINES.pop(id(ctx), None)
     return stop

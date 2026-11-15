@@ -442,7 +442,7 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
-            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "owe": _owe_list(ctx),
+            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "jobtrack": _jobtrack_line(ctx), "owe": _owe_list(ctx),
             "numbers": numbers, "sources_failed": sorted(set(failed)),
             "cache": {"minutes": round(ttl_s / 60, 1),
                       "oldest_at": dt.datetime.fromtimestamp(min(used_at)).isoformat(timespec="seconds") if used_at else "",
@@ -465,6 +465,15 @@ def _applyq_line(ctx: Ctx) -> str:
     try:
         from . import applyq
         return applyq.today_line(ctx.config)
+    except Exception:  # noqa: BLE001 - optional
+        return ""
+
+
+def _jobtrack_line(ctx: Ctx) -> str:
+    """ONE short line, "N follow-ups due", from the local job tracker file (hub/jobtrack.py). "" when off, nothing due or missing."""
+    try:
+        from . import jobtrack
+        return jobtrack.today_line(ctx.config)
     except Exception:  # noqa: BLE001 - optional
         return ""
 

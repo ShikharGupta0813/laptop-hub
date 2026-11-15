@@ -992,5 +992,4 @@ async def start(ctx: Ctx):
 
     async def stop():
         await svc.shutdown()
-        SERVICES.pop(id(ctx), None)
     return stop
