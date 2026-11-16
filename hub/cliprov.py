@@ -166,6 +166,78 @@ def kill_tree(proc) -> None:
         pass
 
 
+class _Pipe:
+    """One pipe of a thread-run program, with the small async API the client uses."""
+
+    def __init__(self, raw):
+        self.raw = raw
+        self._pending = b""
+
+    async def read(self, n: int) -> bytes:
+        try:
+            return await asyncio.to_thread(self.raw.read1, n)
+        except (ValueError, OSError):          # the pipe was closed under us (the program was killed)
+            return b""
+
+    def write(self, data: bytes) -> None:
+        self._pending += data
+
+    async def drain(self) -> None:
+        data, self._pending = self._pending, b""
+        await asyncio.to_thread(self._send, data)
+
+    def _send(self, data: bytes) -> None:
+        self.raw.write(data)
+        self.raw.flush()
+
+    def close(self) -> None:
+        try:
+            self.raw.close()
+        except (OSError, ValueError):
+            pass
+
+
+class _ThreadProc:
+    """A subprocess.Popen shown with the same small surface as asyncio's Process. Every call that can wait on the
+    operating system (starting the program, reading, waiting) runs in a worker thread, so the server's event loop
+    never stalls on it (starting a CLI login program was seen to block the loop for about 2 seconds on Windows)."""
+
+    def __init__(self, popen):
+        self.popen = popen
+        self.pid = popen.pid
+        self.stdin = _Pipe(popen.stdin)
+        self.stdout = _Pipe(popen.stdout)
+        self.stderr = _Pipe(popen.stderr)
+
+    @property
+    def returncode(self):
+        return self.popen.poll()
+
+    async def wait(self):
+        return await asyncio.to_thread(self.popen.wait)
+
+    def kill(self) -> None:
+        self.popen.kill()
+
+    def close(self) -> None:
+        """Let go of the pipes once the program is finished (or killed)."""
+        for pipe in (self.stdin, self.stdout, self.stderr):
+            pipe.close()
+
+
+async def thread_spawn(*argv, stdin=None, stdout=None, stderr=None, cwd=None, env=None, **kwargs):
+    """The default `spawn`: subprocess.Popen started in a worker thread (same keywords as create_subprocess_exec)."""
+    def start():
+        return subprocess.Popen(list(argv), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                cwd=cwd, env=env, **kwargs)
+    return _ThreadProc(await asyncio.to_thread(start))
+
+
+async def akill_tree(proc) -> None:
+    """kill_tree off the event loop (on Windows it runs taskkill, which can take seconds)."""
+    await asyncio.to_thread(kill_tree, proc)
+
+
 def dig(data: Any, path: str) -> Any:
     for part in re.findall(r"[^.\[\]]+", path):
         if isinstance(data, list) and part.isdigit() and int(part) < len(data):
@@ -187,7 +259,7 @@ class CliLoginClient:
         self.s = settings
         self.ident = ident
         self._which = which or find_program
-        self._spawn = spawn or asyncio.create_subprocess_exec
+        self._spawn = spawn or thread_spawn
         self._env = base_env
         self.last: dict = {}          # what the last call saw: {"stdout": "", "stderr": "", "code": int}
 
@@ -210,7 +282,7 @@ class CliLoginClient:
 
     async def _run(self, stdin_text: str) -> str:
         argv = list(self.s["argv"])
-        exe = self._which(argv[0])
+        exe = await asyncio.to_thread(self._which, argv[0])      # scanning PATH can be slow: keep it off the loop
         if not exe:
             raise LLMError(NOT_FOUND + f": {argv[0]}. Install it and log in once in a terminal.")
         argv[0] = exe
@@ -223,7 +295,7 @@ class CliLoginClient:
         own_dir = None
         cwd = self.s.get("cwd") or ""
         if not (cwd and os.path.isdir(cwd)):
-            own_dir = tempfile.TemporaryDirectory(prefix="hub-cli-")
+            own_dir = await asyncio.to_thread(tempfile.TemporaryDirectory, prefix="hub-cli-")
             cwd = own_dir.name
         proc = None
         try:
@@ -254,7 +326,7 @@ class CliLoginClient:
                         buf += chunk[: cap - len(buf)]
                     if len(buf) >= cap and flag:
                         over["hit"] = True
-                        kill_tree(proc)
+                        await akill_tree(proc)
                         return
 
             async def all_done():
@@ -264,7 +336,7 @@ class CliLoginClient:
             try:
                 await asyncio.wait_for(all_done(), timeout)
             except asyncio.TimeoutError:
-                kill_tree(proc)
+                await akill_tree(proc)
                 self.last = {"stdout": mask(out.decode("utf-8", "replace")), "stderr": mask(err.decode("utf-8", "replace")), "code": None}
                 raise LLMError(f"{self.s['argv'][0]} took longer than {int(timeout)} seconds and was stopped.") from None
             text_out, text_err = out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
@@ -276,13 +348,15 @@ class CliLoginClient:
             return text_out
         finally:
             if proc is not None and proc.returncode is None:
-                kill_tree(proc)                            # also on cancel
+                await akill_tree(proc)                     # also on cancel
                 try:
                     await asyncio.wait_for(proc.wait(), 5)
                 except Exception:  # noqa: BLE001
                     pass
+            if hasattr(proc, "close") and proc.returncode is not None:
+                proc.close()
             if own_dir is not None:
-                own_dir.cleanup()
+                await asyncio.to_thread(own_dir.cleanup)
 
     def extract(self, raw: str) -> str:
         if self.s.get("output") != "json":

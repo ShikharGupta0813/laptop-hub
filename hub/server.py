@@ -101,6 +101,10 @@ class Deps:
     extra: dict = field(default_factory=dict)
 
 
+MAX_TAG_QUEUE = 20      # auto-tag jobs waiting or running at once (the local model does them one by one)
+TAG_TIMEOUT = 60         # seconds one auto-tag job may take
+
+
 class LoginBody(BaseModel):
     token: str
 
@@ -196,11 +200,11 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
     async def label(text: str):
         if deps.label:
             return await deps.label(text)
-        # routine job: the default provider (Gemini key, else local...) so Claude quota is kept
-        try:
-            return await label_note(model_for("auto"), text)
-        except LLMError:
-            return await label_note(llm, text)
+        # Auto-tagging is a routine background job: it uses the LOCAL model only, so it never spends cloud or CLI
+        # login quota and never spawns a program. If the local model is known to be down, skip (the note keeps no tags).
+        if ollama_seen["up"] is False:
+            raise LLMError("The local model is not running; this note is left untagged.")
+        return await asyncio.wait_for(label_note(llm, text), TAG_TIMEOUT)
 
     def audit(event: str, **fields) -> None:
         try:
@@ -624,12 +628,21 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
 
     # ---- notes -----------------------------------------------------------------------------
 
+    tag_gate = asyncio.Semaphore(1)       # one tag job at a time, however many notes arrive at once
+    tag_waiting = {"n": 0}                # jobs running or queued; beyond MAX_TAG_QUEUE new ones are dropped
+
     async def tag_in_background(note_id: str, text: str) -> None:
+        if tag_waiting["n"] >= MAX_TAG_QUEUE:
+            return                         # a burst of notes: the extra ones just keep no tags
+        tag_waiting["n"] += 1
         try:
-            title, tags = await label(text)
-            await asyncio.to_thread(store.apply_auto, note_id, title, tags)
-        except (LLMError, NoteError, OSError):
+            async with tag_gate:
+                title, tags = await label(text)
+                await asyncio.to_thread(store.apply_auto, note_id, title, tags)
+        except (LLMError, NoteError, OSError, asyncio.TimeoutError):
             pass  # the note keeps its plain title and no tags; the user can set them
+        finally:
+            tag_waiting["n"] -= 1
 
     @api.get("/notes")
     def list_notes(tag: str | None = None, q: str | None = None):
@@ -841,16 +854,19 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         (hub/provchain.py) when it is not ready or fails before its first word: the next ready login, endpoint or the
         local model. Local and the owner's own endpoint are never swapped."""
         wanted = (provider or "").strip().lower()
+        quick = wanted == "auto-quick"      # the default chain without the slow command line logins (Friday's brief)
+        if quick:
+            wanted = "auto"
         if wanted == "local" or wanted.startswith("endpoint:"):
             return base_model(provider)
         target = providers_mod.resolve(config, wanted)
         if target == "local" or target.startswith("endpoint:") or target in injected:
-            return base_model(provider)
+            return base_model("auto" if quick else provider)
         if target == "duo" and providers_mod.availability(config, ollama_seen["up"])["duo"]["ready"]:
-            return base_model(provider)     # the assistant reads duo.gemini / duo.supervisor itself
+            return base_model("auto" if quick else provider)     # the assistant reads duo.gemini / duo.supervisor itself
         return provchain.ChainModel(config, wanted or "auto",
                                     lambda ident: base_model("gemini" if ident == "duo" else ident),
-                                    say=consolelog.say, ollama_up=lambda: ollama_seen["up"])
+                                    say=consolelog.say, ollama_up=lambda: ollama_seen["up"], skip_cli=quick)
 
     if hasattr(assistant, "model_for"):
         assistant.model_for = model_for

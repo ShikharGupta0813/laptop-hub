@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .llm import PROVIDERS
 
+AUTO_MODEL_TIMEOUT = 10   # seconds the default ("auto") brief/plan may wait for a model before the template text is used
 BRIEF_CHOICES = (*PROVIDERS, "auto")   # "auto" = the default provider (hub.json default_provider)
 import asyncio
 import datetime as dt
@@ -832,8 +833,14 @@ class Engine:
         nonce = secrets.token_hex(8)
         user = f"===== BEGIN FRIDAY DATA {nonce} =====\n{data}\n===== END FRIDAY DATA {nonce} ====="
         try:
-            model = self.ctx.model_for(choice if choice in BRIEF_CHOICES else "local")
-            reply = await asyncio.wait_for(model.complete(system, user), timeout=90)
+            picked = choice if choice in BRIEF_CHOICES else "local"
+            # "auto" is the default and nobody chose a model: use the quick chain (no slow CLI login program) and give
+            # up after a few seconds, so the page shows the template text instead of waiting. A model the owner picked
+            # by name keeps the long wait.
+            quick = picked == "auto"
+            model = self.ctx.model_for("auto-quick" if quick else picked)
+            reply = await asyncio.wait_for(model.complete(system, user),
+                                           timeout=AUTO_MODEL_TIMEOUT if quick else 90)
         except Exception as exc:  # noqa: BLE001  any model trouble falls back to the template
             log.info("friday model failed: %s", type(exc).__name__)
             return None
