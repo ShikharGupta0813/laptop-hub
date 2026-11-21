@@ -47,6 +47,9 @@ KEEP_DAYS = 14
 FINAL = ("sent", "applied", "needs_check")
 DEFAULT_CATCHUP_MIN = 360
 DEFAULT_OUTREACH_CAP = 10
+HARD_OUTREACH_DAY = 20          # outreach emails per day, whatever the setting says (hub/outreach.py): a cap of 0 or 500 still stops at 20
+HARD_OUTREACH_BATCH = 20        # people in one outreach batch
+DEFAULT_OUTREACH_GAP = 180      # seconds between two outreach emails in one send (`outreach_gap_seconds`)
 ID_RE = re.compile(r"^[0-9a-f]{12}$")
 SLOT_RE = re.compile(r"^s[0-9a-f]{8}$")
 _DOMAIN = re.compile(r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)+$")
@@ -93,6 +96,17 @@ def catchup_min(config) -> int:
 def outreach_cap(config) -> int:
     v = getattr(config, "batches_outreach_cap", DEFAULT_OUTREACH_CAP)
     return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 200 else DEFAULT_OUTREACH_CAP
+
+
+def outreach_day_limit(config) -> int:
+    """The outreach emails allowed per day: the owner's cap, never above the hard limit (0 = no owner cap = the hard limit)."""
+    cap = outreach_cap(config)
+    return min(cap, HARD_OUTREACH_DAY) if cap else HARD_OUTREACH_DAY
+
+
+def outreach_gap(config) -> int:
+    v = getattr(config, "outreach_gap_seconds", DEFAULT_OUTREACH_GAP)
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1800 else DEFAULT_OUTREACH_GAP
 
 
 def persist_config(ctx: Ctx, changes: dict) -> None:
@@ -356,9 +370,9 @@ class Batches:
                 else:
                     apps += 1
         from . import applyq as aq
-        cap, ocap = aq.daily_cap(self.ctx.config), outreach_cap(self.ctx.config)
+        cap, ocap = aq.daily_cap(self.ctx.config), outreach_day_limit(self.ctx.config)
         return {"applications": apps, "messages": msgs, "applications_cap": cap, "messages_cap": ocap,
-                "applications_left": max(0, cap - apps) if cap else None, "messages_left": max(0, ocap - msgs) if ocap else None}
+                "applications_left": max(0, cap - apps) if cap else None, "messages_left": max(0, ocap - msgs)}
 
     def _built_today(self, profile_id: str) -> int:
         today = self.today()
@@ -465,6 +479,33 @@ class Batches:
             self._announce(batch)
         return {"batch": self.view(batch), "message": f"Built a batch of {len(chosen)}.", "skipped": skipped}
 
+    def create_batch(self, kind: str, item_ids: list[str], *, name: str = "Prepared by hand", notes: list[str] | None = None) -> dict:
+        """A batch from items the caller already put in the queue (hub/outreach.py). Builds only: nothing is sent. Outreach batches
+        hold at most HARD_OUTREACH_BATCH people and never more than the day still has room for."""
+        if kind not in KINDS:
+            raise BatchError("kind must be applications or outreach.")
+        ids = list(dict.fromkeys(i for i in item_ids if isinstance(i, str)))
+        if not ids:
+            raise BatchError("Nothing to put in a batch.")
+        if kind == "outreach":
+            if len(ids) > HARD_OUTREACH_BATCH:
+                raise BatchError(f"An outreach batch holds at most {HARD_OUTREACH_BATCH} people.")
+            room = self.day_stats()["messages_left"]
+            if len(ids) > room:
+                raise BatchError(f"Only {room} outreach emails are left for today (limit {outreach_day_limit(self.ctx.config)}).")
+        with self.lock:
+            claimed = self._claimed()
+            if any(i in claimed for i in ids):
+                raise BatchError("One of those is already in an open batch.", 409)
+            batch = {"id": secrets.token_hex(6), "slot_id": "", "slot_name": clean(name, 80) or "Prepared by hand", "kind": kind, "profile": "",
+                     "created": self.now_iso(), "state": "ready", "wanted": len(ids), "notes": list(notes or []),
+                     "items": [{"item_id": i, "ticked": True, "profile": "", "result": None} for i in ids]}
+            d = self._data()
+            d["batches"].append(batch)
+            self._save(d)
+        self.ctx.audit("batch_built", id=batch["id"], kind=kind, items=len(ids), slot="")
+        return self.view(batch)
+
     def _expire_slot_batches(self, slot: dict | None) -> None:
         """A new batch from a slot replaces that slot's earlier unsent one (its items go back to the pool)."""
         if not slot:
@@ -511,6 +552,8 @@ class Batches:
     # -- viewing -------------------------------------------------------------------------------------------------
     def resume_used(self, item: dict, route: str) -> str:
         if route == "email":
+            if (item.get("meta") or {}).get("attach_resume"):
+                return "Your resume file (formfill_resume in your data folder) is attached. Nothing else."
             return "No file attached: the message text only."
         if route == "form":
             data = Path(self.ctx.config.data_path())
@@ -747,6 +790,7 @@ class Batches:
 
     async def run_send(self, batch_id: str) -> dict:
         stop = ""
+        gap_due = False
         try:
             batch = self.get(batch_id)
             for entry in list(batch["items"]):
@@ -756,6 +800,9 @@ class Batches:
                 item = self.applyq.store.get(iid)
                 if item is not None and self.route_of(item)[0] == "manual":
                     continue
+                if gap_due and not stop:                       # outreach: a few minutes between two emails, never a burst
+                    await self.sleep(outreach_gap(self.ctx.config))
+                    gap_due = False
                 if not stop and (self.abort or _panic.on(self.ctx.config)):
                     stop = "Panic stopped the batch; nothing more was sent."
                 if stop:
@@ -768,6 +815,7 @@ class Batches:
                     log.warning("batches: send failed", exc_info=True)
                     status, message, halt = "failed", f"Unexpected problem ({type(exc).__name__}).", True
                 self._result(batch_id, iid, status, message)
+                gap_due = batch.get("kind") == "outreach" and status == "sent"
                 if halt:
                     stop = f"Stopped after an earlier item: {message}"
         finally:
@@ -801,12 +849,21 @@ class Batches:
             return "skipped", "Needs your info: " + ", ".join(miss) + ".", False
         route, _note = self.route_of(item)
         outreach = is_outreach(item)
+        if outreach:
+            try:                                           # opt-out list and the other outreach rules, checked at the moment of sending
+                from . import outreach as outreach_mod
+                why = outreach_mod.send_block(self.ctx, item)
+            except Exception:  # noqa: BLE001
+                why = ""
+            if why:
+                return "skipped", why, False
         stats = await asyncio.to_thread(self.day_stats)
         left = stats["messages_left"] if outreach else stats["applications_left"]
         if left is not None and left <= 0:
             return "stopped", "The daily limit is reached; nothing more is sent today.", True
         if route == "email":
-            r = await asyncio.to_thread(lambda: self.applyq.send(item["id"], confirm_over_cap=True))
+            files = self._outreach_attachment(item) if outreach else []
+            r = await asyncio.to_thread(lambda: self.applyq.send(item["id"], confirm_over_cap=True, **({"attachments": files} if files else {})))
             if r.get("ok") and r.get("sent"):
                 return "sent", "Sent by email. It cannot be taken back.", False
             if r.get("ok"):
@@ -815,6 +872,17 @@ class Batches:
         if route == "form":
             return await self._form_one(item)
         return "skipped", "Open + copy item: never automated.", False
+
+    def _outreach_attachment(self, item: dict) -> list[str]:
+        """The owner's resume file, ONLY when they chose to attach it for this outreach item. Nothing else is ever attached."""
+        if not (item.get("meta") or {}).get("attach_resume"):
+            return []
+        data = Path(self.ctx.config.data_path())
+        for ext in ("pdf", "docx", "doc"):
+            p = data / f"formfill_resume.{ext}"
+            if p.is_file():
+                return [str(p)]
+        return []
 
     async def _form_one(self, item: dict) -> tuple[str, str, bool]:
         ff = self.formfill_svc()

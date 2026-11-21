@@ -83,6 +83,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("chatchan",)   # Google Chat channels for a
 FEATURE_MODULES = FEATURE_MODULES + ("networking", "interviews")   # networking drafts and interview coach: drafts and practice only, nothing is sent (docs/api/networking.md, interviews.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tailor", "answerbank")   # per-job resume + cover note from your own facts, fit and honesty check, answer bank (docs/api/tailor.md)
 FEATURE_MODULES = FEATURE_MODULES + ("jobtrack",)   # job tracker: applications, follow-ups, learning loop (docs/api/jobtrack.md)
+FEATURE_MODULES = FEATURE_MODULES + ("replies", "jobinsights", "outreach")   # reply sorting, deeper job insights, batched personal outreach (docs/api/replies.md, jobinsights.md, outreach.md)
 FEATURE_MODULES = FEATURE_MODULES + ("ats", "resumes", "packet")   # ATS match score + resume read check, master resumes + batch tailoring queue, one-page application packet (docs/api/ats.md, resumes.md, packet.md)
 FEATURE_MODULES = FEATURE_MODULES + ("triage",)   # go / no-go label, ghost and lock flags, gig score for finds (docs/api/triage.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls

@@ -19,3 +19,5 @@
 .jt-table .n { text-align: right; }
 .jt-draft { width: 100%; min-height: 12rem; font: inherit; }
 .jt-actions a.ui-btn { text-decoration: none; }
+.jt-table--wide { font-size: var(--fs-sm); }
+.jt-replies { min-width: 0; }

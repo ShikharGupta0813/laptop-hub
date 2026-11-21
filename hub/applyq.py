@@ -553,7 +553,7 @@ class Applyq:
         return {"to": item.get("contact_email") or "", "subject": d.get("subject", ""), "body": d.get("body", ""),
                 "cover_note": d.get("cover_note", ""), "answers": d.get("answers", {}), "url": item["url"]}
 
-    def send(self, item_id: str, *, confirm_over_cap: bool = False, account: str = "") -> dict:
+    def send(self, item_id: str, *, confirm_over_cap: bool = False, account: str = "", attachments: list | None = None) -> dict:
         """Only called from POST /send and the approved assistant tool. Returns a result dict; never raises for
         'could not send' (the owner gets a sentence and the item stays ready or becomes failed)."""
         item = self.get(item_id)
@@ -590,7 +590,7 @@ class Applyq:
                 listed = []
             acct = str(listed[0].get("id")) if listed and isinstance(listed[0], dict) else ""
         try:
-            result = send_mail(self.ctx, acct, item["contact_email"], draft["subject"], draft["body"], None)
+            result = send_mail(self.ctx, acct, item["contact_email"], draft["subject"], draft["body"], attachments or None)
         except Exception as exc:  # noqa: BLE001
             result = {"ok": False, "error": clean(str(exc), 200) or "Gmail failed."}
         if not isinstance(result, dict) or not result.get("ok"):

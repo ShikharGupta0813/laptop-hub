@@ -254,6 +254,13 @@ class Config:
     jobtrack_enabled: bool = True
     jobtrack_followup_days: list | None = None   # days after applying to remind you; None = [5, 10]; [] = no follow-up reminders
     jobtrack_ghost_days: int = 14                # quiet this long: the screen SUGGESTS marking it ghosted (never automatic)
+    # Reply sorting, job insights, batched outreach (hub/replies.py, jobinsights.py, outreach.py). Nothing is sent or changed without your tap.
+    replies_enabled: bool = True
+    replies_ai: bool = False                     # True: a LOCAL model may help sort mails the plain rules could not place (default off)
+    jobinsights_enabled: bool = True
+    outreach_enabled: bool = True
+    outreach_followup_days: int = 5              # one follow-up per person this many days after the first email (needs its own tap)
+    outreach_gap_seconds: int = 180              # pause between two outreach emails in one send (0 to 1800)
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -403,6 +410,9 @@ def save(config: Config, path: Path) -> None:
         "interviews_ai": config.interviews_ai is True,
         "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
         "jobtrack_ghost_days": int(config.jobtrack_ghost_days or 14),
+        "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
+        "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
+        "outreach_followup_days": int(config.outreach_followup_days or 5), "outreach_gap_seconds": int(config.outreach_gap_seconds),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
