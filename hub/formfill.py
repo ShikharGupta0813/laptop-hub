@@ -280,6 +280,7 @@ def parse_page(html: str) -> dict:
     buttons: list[dict] = []
     groups: dict[str, dict] = {}
     counter = {"f": 0, "b": 0}
+    node_ids: dict[str, dict] = {"f": {}, "b": {}}     # id(node) -> idx; a side table for hub/workday.py, never used by the generic path
 
     def ancestors(n: Node):
         p = n.parent
@@ -350,6 +351,7 @@ def parse_page(html: str) -> dict:
         idx_attr = c.attrs.get("data-rl-btn")
         idx = int(idx_attr) if idx_attr and idx_attr.isdigit() else counter["b"]
         counter["b"] += 1
+        node_ids["b"][id(c)] = idx
         buttons.append({"idx": idx, "text": _clip(text, 80), "type": btype.lower(), "in_form": in_form(c),
                         "disabled": c.attrs.get("disabled") is not None or c.get("aria-disabled") == "true",
                         "visible": _is_visible_flag(c, "data-rl-bvis")})
@@ -358,6 +360,7 @@ def parse_page(html: str) -> dict:
         idx_attr = c.attrs.get("data-rl-idx")
         idx = int(idx_attr) if idx_attr and idx_attr.isdigit() else counter["f"]
         counter["f"] += 1
+        node_ids["f"][id(c)] = idx
         tag = c.tag
         ftype = (c.get("type") or "text").lower() if tag == "input" else tag
         if tag == "input" and ftype in BUTTON_INPUTS:
@@ -423,7 +426,7 @@ def parse_page(html: str) -> dict:
         elif not f.get("label"):
             f["label"] = "(unlabelled field)"
     visible_text = _own_text(root)
-    return {"fields": fields, "buttons": buttons, "text": visible_text, "root": root}
+    return {"fields": fields, "buttons": buttons, "text": visible_text, "root": root, "index": node_ids}
 
 
 # ---- blockers, steps, buttons ----------------------------------------------------------------------------------
@@ -875,13 +878,17 @@ def plan_form(fields: list[dict], facts: dict) -> list[dict]:
     return plans
 
 
-def digest_of(url: str, fields: list[dict], values: dict[int, str], submit: dict | None) -> str:
+def digest_of(url: str, fields: list[dict], values: dict[int, str], submit: dict | None, extra: dict | None = None) -> str:
     """Hash of the page address, the step's field structure and every value currently in the page's fields (passwords are
-    never read). If the owner or the page changes anything after the screenshot, the digest changes."""
+    never read). If the owner or the page changes anything after the screenshot, the digest changes. `extra` holds the values of
+    custom widgets that are not inputs (Workday pop-up lists, pickers); without it the hash is exactly what it always was."""
     parts = urlsplit(url)
     shape = [[f["idx"], f["type"], f["name"], f["label"][:60]] for f in fields if f["visible"]]
     vals = sorted((int(k), str(v)) for k, v in values.items())
-    blob = json.dumps([f"{parts.scheme}://{parts.netloc}{parts.path}", shape, vals, [submit["idx"], submit["text"]] if submit else None], sort_keys=True)
+    items: list = [f"{parts.scheme}://{parts.netloc}{parts.path}", shape, vals, [submit["idx"], submit["text"]] if submit else None]
+    if extra:
+        items.append(sorted((str(k), str(v)) for k, v in extra.items()))
+    blob = json.dumps(items, sort_keys=True)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
 
 
@@ -918,6 +925,22 @@ READ_JS = """() => {
 }"""
 
 
+WIDGET_JS = """() => {
+  const out = {};
+  document.querySelectorAll('button[aria-haspopup="listbox"][data-rl-btn]').forEach((e) => {
+    out['b' + e.getAttribute('data-rl-btn')] = (e.innerText || '').trim();
+  });
+  document.querySelectorAll('[data-rl-idx][data-automation-id="searchBox"]').forEach((e) => {
+    const box = e.closest('[data-automation-id="multiSelectContainer"]') || e.parentElement;
+    const chips = box ? Array.from(box.querySelectorAll('[data-automation-id="selectedItem"]')).map((c) => (c.innerText || '').trim()) : [];
+    out['p' + e.getAttribute('data-rl-idx')] = chips.join('|');
+  });
+  return out;
+}"""
+SEARCH_OPTION_SEL = ('[data-automation-id="activeListContainer"] [role="option"], [data-automation-id="activeListContainer"] [data-automation-id="promptOption"], '
+                     '[role="listbox"] [role="option"]')
+
+
 class Driver:
     """What the flow needs from a browser. Methods run on ONE worker thread (Playwright's sync API is thread-bound).
     The real implementation is PlaywrightDriver; tests use a fake with the same methods."""
@@ -935,6 +958,14 @@ class Driver:
     def screenshot(self) -> bytes: raise NotImplementedError
     def blocked_navigation(self) -> str: raise NotImplementedError
     def close(self) -> None: raise NotImplementedError
+    # custom widgets (hub/workday.py). idx is a data-rl-idx (inputs) or data-rl-btn (buttons) stamp from html().
+    def type_text(self, idx: int, value: str) -> None: raise NotImplementedError             # key-by-key typing (masked date parts)
+    def open_list(self, btn_idx: int) -> list[str]: raise NotImplementedError                # click a pop-up dropdown, return its option texts
+    def pick_listed(self, btn_idx: int, text: str) -> str: raise NotImplementedError         # click that option, return the button text now
+    def close_list(self) -> None: raise NotImplementedError                                  # close an open pop-up without choosing
+    def search_options(self, idx: int, query: str) -> list[str]: raise NotImplementedError   # type into a search picker, return the options shown
+    def pick_searched(self, idx: int, text: str) -> str: raise NotImplementedError           # click that option, return the chips now selected
+    def wd_values(self) -> dict[str, str]: return {}                                         # visible value of every custom widget
 
 
 def playwright_available() -> bool:
@@ -1052,6 +1083,61 @@ class PlaywrightDriver(Driver):
 
     def blocked_navigation(self) -> str:
         return self._blocked
+
+    def type_text(self, idx: int, value: str) -> None:
+        loc = self._loc("data-rl-idx", idx)
+        loc.click(timeout=5000)
+        loc.fill("", timeout=3000)
+        loc.press_sequentially(value, delay=25, timeout=6000)
+
+    def open_list(self, btn_idx: int) -> list[str]:
+        self._loc("data-rl-btn", btn_idx).click(timeout=5000)
+        box = self._page.locator('[role="listbox"]').last
+        box.wait_for(state="visible", timeout=4000)
+        return [" ".join(t.split()) for t in box.locator('[role="option"]').all_inner_texts()][:500]
+
+    def pick_listed(self, btn_idx: int, text: str) -> str:
+        box = self._page.locator('[role="listbox"]').last
+        box.get_by_role("option", name=text, exact=True).first.click(timeout=4000)
+        try:
+            box.wait_for(state="hidden", timeout=3000)
+        except Exception:  # noqa: BLE001 - some lists stay in the page; the button text below is the proof
+            pass
+        return " ".join(self._loc("data-rl-btn", btn_idx).inner_text().split())
+
+    def close_list(self) -> None:
+        try:
+            self._page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def search_options(self, idx: int, query: str) -> list[str]:
+        loc = self._loc("data-rl-idx", idx)
+        loc.click(timeout=5000)
+        loc.fill("", timeout=3000)
+        loc.press_sequentially(query, delay=25, timeout=6000)
+        loc.press("Enter")
+        opts = self._page.locator(SEARCH_OPTION_SEL)
+        try:
+            opts.first.wait_for(state="visible", timeout=5000)
+        except Exception:  # noqa: BLE001 - nothing found
+            return []
+        return list(dict.fromkeys(" ".join(t.split()) for t in opts.all_inner_texts() if t.strip()))[:200]
+
+    def pick_searched(self, idx: int, text: str) -> str:
+        opts = self._page.locator(SEARCH_OPTION_SEL)
+        for i in range(opts.count()):
+            o = opts.nth(i)
+            if " ".join(o.inner_text().split()) == text:
+                o.click(timeout=4000)
+                break
+        else:
+            raise FormfillError("That option is not on the page.", 400)
+        self.settle()
+        return (self.wd_values().get(f"p{int(idx)}") or "").replace("|", ", ")
+
+    def wd_values(self) -> dict[str, str]:
+        return {str(k): str(v) for k, v in (self._page.evaluate(WIDGET_JS) or {}).items()}
 
     def close(self) -> None:
         for obj, method in ((self._ctx, "close"), (self._pw, "stop")):
@@ -1248,15 +1334,34 @@ class Formfill:
         run.last = self.clock()
 
     # -- capture -----------------------------------------------------------------------------------------------------
+    def _wd_read(self, url: str, html: str, page: dict) -> dict | None:
+        """The Workday reading of a page, or None for every other site (then nothing below changes)."""
+        try:
+            from . import workday
+            if not workday.applies(url, html):
+                return None
+            return workday.parse(page, url)
+        except Exception:  # noqa: BLE001 - if the Workday reader fails the generic mapper still works
+            log.warning("formfill: the Workday reader failed, using the generic mapper")
+            return None
+
     def _capture(self, run: Run, status: int | None = None, *, fill: bool = False) -> None:
         """Read the page, (optionally) fill it, then take the digest and the screenshot together."""
         drv = run.driver
         assert drv is not None
         run.url = drv.url()
-        page = parse_page(drv.html())
+        html = drv.html()
+        page = parse_page(html)
+        wd = self._wd_read(run.url, html, page)
         run.blockers = detect_blockers(page, run.url, status)
-        run.controls = find_controls(page["buttons"])
-        run.step = wizard_info(page, run.controls)
+        if wd is not None:
+            from . import workday
+            run.blockers = workday.blockers(wd, run.blockers)
+            run.controls = wd["controls"]
+            run.step = {**wd["step"], "has_next": run.controls["next"] is not None}
+        else:
+            run.controls = find_controls(page["buttons"])
+            run.step = wizard_info(page, run.controls)
         run.step["current"] = run.step["current"] or run.steps_done + 1
         hard = any(b["kind"] in ("login_required", "blocked", "no_form") for b in run.blockers)
         fields = [f for f in page["fields"] if f["visible"] or f["type"] == "radio"]
@@ -1274,16 +1379,37 @@ class Formfill:
                         facts["_answers"]["value"] = {**facts["_answers"]["value"], **{k: v for k, v in bank.items() if k not in facts["_answers"]["value"]}}
                 except Exception:  # noqa: BLE001
                     pass
-                run.plans = plan_form(fields, facts)
-                self._execute(run)
+                if wd is not None:
+                    run.plans = workday.fill_step(self.ctx, drv, wd, facts, item=item, profile=profile, this_year=self.svc.clock().year,
+                                                  reread=lambda: self._wd_reread(run))
+                else:
+                    run.plans = plan_form(fields, facts)
+                    self._execute(run)
+        extra = None
+        if wd is not None:                               # the page changed while filling (added entries, ticked boxes): read it again
+            html = drv.html()
+            page = parse_page(html)
+            again = self._wd_read(run.url, html, page)
+            if again is not None:
+                run.controls = again["controls"]
+                run.step = {**again["step"], "has_next": run.controls["next"] is not None, "current": run.step["current"]}
+            extra = drv.wd_values()
         values = drv.values()
-        run.digest = digest_of(run.url, page["fields"], values, run.controls["submit"])
+        run.digest = digest_of(run.url, page["fields"], values, run.controls["submit"], extra)
         self._drop_shot(run)
         self.shots.mkdir(parents=True, exist_ok=True)
         run.shot = self.shots / f"{run.id}.png"
         run.shot.write_bytes(drv.screenshot())
         run.seen = ""
         run._page_fields = page["fields"]       # type: ignore[attr-defined]
+
+    def _wd_reread(self, run: Run) -> tuple[dict | None, dict[int, str]]:
+        """Fresh Workday reading and input values after the page changed (used by hub/workday.py while filling)."""
+        drv = run.driver
+        assert drv is not None
+        html = drv.html()
+        page = parse_page(html)
+        return self._wd_read(drv.url(), html, page), drv.values()
 
     def _resume_fact(self, run: Run, profile: dict) -> dict | None:
         for ext in ("pdf", "docx", "doc", "txt", "rtf"):
@@ -1337,6 +1463,10 @@ class Formfill:
         if run.kind == "fill" and run.plans:
             label = f"step {st['current']} of {st['total']} filled" if st["total"] else (
                 f"step {st['current']} filled; there is a Next button" if st["has_next"] else "form filled")
+            if st.get("title"):
+                label = f"{label} ({st['title']})"
+        elif run.kind == "fill" and st.get("title") and st.get("total"):
+            label = f"step {st['current']} of {st['total']} ({st['title']})"
         limit = self.login_for if run.kind == "login" else self.idle
         ctrl = run.controls
         return {"run": run.id, "item_id": run.item_id, "host": run.host, "kind": run.kind, "state": run.state, "step": {**st, "label": label},
@@ -1511,8 +1641,11 @@ class Formfill:
             raise FormfillError("Send the field_digest from the screenshot you looked at.", 400)
         self._touch(run)
         drv = run.driver
-        page = parse_page(drv.html())
-        live = digest_of(drv.url(), page["fields"], drv.values(), find_controls(page["buttons"])["submit"])
+        html = drv.html()
+        page = parse_page(html)
+        wd = self._wd_read(drv.url(), html, page)
+        live_submit = wd["controls"]["submit"] if wd is not None else find_controls(page["buttons"])["submit"]
+        live = digest_of(drv.url(), page["fields"], drv.values(), live_submit, drv.wd_values() if wd is not None else None)
         if live != run.digest or field_digest != run.digest:
             self._capture(run, None, fill=False)
             raise FormfillError("The page changed since the screenshot you saw. Look at the new one and confirm again.", 409,

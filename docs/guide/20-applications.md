@@ -20,6 +20,8 @@ Set up once on the laptop: `pip install playwright`, then `python -m playwright 
 What it will not do: fill ID numbers, date of birth, salary history, gender or ethnicity questions, bank details, passwords or any "I agree / I certify" box; guess an answer your profile does not hold; solve a captcha or get around a login or two-step code; open LinkedIn (it is on a never list you can edit) or any private address. If a site blocks it, use Copy instead. It closes itself after 5 idle minutes. Friday asks "want me to fill it on the laptop?" and `submit_form` always asks for your tap, even in Full Control.
 Details: [docs/api/formfill.md](../api/formfill.md).
 
+**Workday jobs** (links like `company.wd5.myworkdayjobs.com`): the fill understands Workday's own dropdowns and pickers. On "My Information" it fills your name, city, phone and, from your standard answers, country, state, postal code and so on; for "How did you hear about us" it picks Job Board, or Company Website if there is no Job Board. On "My Experience" it adds one Work Experience entry per job and one Education entry per school in your profile (it never adds one that is not there, and it does not add twice if Workday already read your resume). What you still do yourself: sign in or create the account, the "Voluntary Disclosures" / "Self Identify" step, work-authorization and sponsorship questions, tick the terms boxes, press Save and Continue on each step (the hub asks you first), and the final Submit.
+
 ## Say or type
 
 - "What applications are ready?" (Friday lists them)

@@ -288,6 +288,13 @@ class FakeDriver(ff.Driver):
     def upload(self, idx, path): self.calls.append(("upload", idx)); self.vals[idx] = Path(path).name
     def settle(self): pass
     def blocked_navigation(self): return ""
+    # custom-widget methods (Workday; see tests/test_workday.py for the fake that models them). Plain pages never use them.
+    def type_text(self, idx, value): self.calls.append(("type", idx)); self.vals[idx] = value
+    def open_list(self, btn_idx): self.calls.append(("open_list", btn_idx)); return []
+    def pick_listed(self, btn_idx, text): self.calls.append(("pick", btn_idx)); return text
+    def close_list(self): self.calls.append(("close_list",))
+    def search_options(self, idx, query): self.calls.append(("search", idx)); return []
+    def pick_searched(self, idx, text): self.calls.append(("pick_search", idx)); return text
 
     def click(self, idx):
         self.calls.append(("click", idx))
