@@ -271,6 +271,64 @@ def _clean_job(raw: dict) -> dict:
     return out
 
 
+
+# ---- warm path finder (pure): who do I know at this company? --------------------------------------------------------------
+
+def _norm_co(text: str) -> str:
+    if _jobtrack is not None:
+        return _jobtrack.norm_name(text)
+    return " ".join(re.sub(r"[^a-z0-9+# ]", " ", (text or "").lower()).split())
+
+
+def _same_company(a: str, b: str) -> str:
+    """'exact' when both names are the same company, 'part' when one name holds the other as whole words, else ''."""
+    a, b = _norm_co(a), _norm_co(b)
+    if not a or not b:
+        return ""
+    if a == b:
+        return "exact"
+    return "part" if re.search(r"(?<![a-z0-9])" + re.escape(a) + r"(?![a-z0-9])", b) or re.search(r"(?<![a-z0-9])" + re.escape(b) + r"(?![a-z0-9])", a) else ""
+
+
+def warm_candidates(contacts: list[dict], company: str, today: dt.date) -> list[dict]:
+    """People the owner knows who work, or used to work, at `company`, best first. Plain scoring: a current colleague of the company beats
+    a former one, who beats a mention in the notes; a recent contact adds a little. Each candidate says why."""
+    out = []
+    for c in contacts:
+        score, why = 0, []
+        m = _same_company(c.get("company", ""), company)
+        if m:
+            score += 10 if m == "exact" else 8
+            why.append("works there now" + (f" ({c['company']})" if c.get("company") else ""))
+        else:
+            for past in re.split(r"[,;/]", c.get("past_companies", "")):
+                pm = _same_company(past, company)
+                if pm:
+                    score += 5
+                    why.append(f"used to work there ({past.strip()})")
+                    break
+        if not why:
+            cn = _norm_co(company)
+            blob = _norm_co(f"{c.get('how_known', '')} {c.get('note', '')}")
+            if cn and re.search(r"(?<![a-z0-9])" + re.escape(cn) + r"(?![a-z0-9])", blob):
+                score += 2
+                why.append("their notes mention the company")
+        if not why:
+            continue
+        if c.get("last_contact"):
+            try:
+                days = (today - dt.date.fromisoformat(c["last_contact"])).days
+            except ValueError:
+                days = None
+            if days is not None and days <= 180:
+                score += 2
+                why.append(f"you wrote to them {days} days ago")
+        if re.search(r"\b(?:engineer|developer|manager|lead|recruit|talent|hr)\b", c.get("role", ""), re.I):
+            score += 1
+        out.append({"contact": c, "score": score, "reasons": why})
+    return sorted(out, key=lambda x: (-x["score"], x["contact"]["name"].lower()))
+
+
 class Networking:
     def __init__(self, ctx: Ctx, *, clock: Callable[[], dt.datetime] | None = None, profile_fn=None, model_fn=None, applyq_fn=None):
         self.ctx = ctx
@@ -300,14 +358,14 @@ class Networking:
     def _contact_fields(self, body: dict, base: dict | None = None) -> dict:
         base = dict(base or {})
         today = self.today()
-        for key, n in (("name", 80), ("company", 120), ("role", 120), ("how_known", 200), ("note", 300)):
+        for key, n in (("name", 80), ("company", 120), ("past_companies", 200), ("role", 120), ("how_known", 200), ("note", 300)):
             if key in body:
                 base[key] = fbmod.clean(str(body.get(key) or ""), n)
         if "last_contact" in body:
             base["last_contact"] = _date(body.get("last_contact"), today, "Last contact")
         if not base.get("name"):
             raise NetworkError("A contact needs a name.")
-        for key in ("company", "role", "how_known", "note", "last_contact"):
+        for key in ("company", "past_companies", "role", "how_known", "note", "last_contact"):
             base.setdefault(key, "")
         return base
 
@@ -367,6 +425,38 @@ class Networking:
     def _followed_up(self, application_id: str, since: str) -> bool:
         return any(dr.get("application_id") == application_id and dr.get("kind") == "follow_up" and (dr.get("sent_on") or "") >= since
                    for dr in self._data()["drafts"])
+
+    # -- warm path ------------------------------------------------------------------------------------------------
+    def tracker_for(self, company: str) -> list[dict]:
+        d = JsonFile(Path(self.ctx.config.data_path()) / "jobtrack.json").load({})
+        return [{"role": r.get("role", ""), "status": r.get("status", ""), "applied_at": r.get("applied_at", "")}
+                for r in (d.get("records", []) if isinstance(d, dict) else []) if isinstance(r, dict) and _same_company(r.get("company", ""), company)][:8]
+
+    async def warm_path(self, body: dict) -> dict:
+        company, role, app_id = fbmod.clean(str(body.get("company") or ""), 120), fbmod.clean(str(body.get("role") or ""), 200), str(body.get("application_id") or "")
+        if app_id:
+            job, _item = self.tailor.job_from_item(app_id)
+            company, role = company or job.get("company", ""), role or job.get("title", "")
+        if not company:
+            raise NetworkError("Give the company (or pick an application).")
+        cands = warm_candidates(self._data()["contacts"], company, self.today())
+        tracker = self.tracker_for(company)
+        tips = []
+        if any(t["status"] == "interview" for t in tracker):
+            tips.append("You already have an interview there: ask your contact to introduce you to the hiring manager rather than for a referral.")
+        elif any(t["status"] in ("applied", "viewed", "replied") for t in tracker):
+            tips.append("You have already applied there: a contact can still pass your name to the hiring manager. Say that you applied.")
+        if not cands:
+            tips.append("Nobody in your contacts is linked to this company. Add a contact and its company, or past companies, to find a warm path next time.")
+        res = {"company": company, "role": role, "candidates": cands[:6], "best": cands[0]["contact"]["id"] if cands else "", "tracker": tracker, "tips": tips,
+               "draft": None, "sends": False, "note": "A suggestion from your own contacts list and tracker. Nothing was sent."}
+        if body.get("draft") is True and cands:
+            res["draft"] = await self.make({"kind": "referral", "contact_id": res["best"], "company": company, "role": role, "application_id": app_id,
+                                            **({"ai": body["ai"]} if "ai" in body else {})})
+        return res
+
+    def thank_you_for(self, body: dict):
+        return self.make({**body, "kind": "thank_you"})
 
     # -- drafts ------------------------------------------------------------------------------------------------------
     def public(self, dr: dict) -> dict:
@@ -574,6 +664,16 @@ def make_router(ctx: Ctx, *, clock=None, profile_fn=None, model_fn=None, applyq_
     async def drafts():
         on()
         return {"drafts": svc.drafts()}
+
+    @router.post("/warm-path")
+    async def warm_path(body: dict = Body(default_factory=dict)):
+        on()
+        try:
+            return await svc.warm_path(body)
+        except (NetworkError, tl.TailorError) as exc:
+            raise HTTPException(400, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
 
     @router.post("/drafts")
     async def make(body: dict = Body(default_factory=dict)):

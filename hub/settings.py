@@ -58,6 +58,7 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batche
 ALLOWED_KEYS = (*ALLOWED_KEYS, "chatch_enabled", "chatch_email_parse")   # hub/chatchan.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "networking_enabled", "networking_nudge_days", "networking_ai", "interviews_enabled", "interviews_ai")   # hub/networking.py, hub/interviews.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "jobtrack_enabled", "jobtrack_followup_days", "jobtrack_ghost_days")   # hub/jobtrack.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "companyintel_enabled", "companyintel_ai", "offers_enabled", "proposals_enabled")   # hub/companyintel.py, offers.py, proposals.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -298,7 +299,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
                     or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100000 for v in value.values())):
                 raise HTTPException(400, f"provider_daily_caps must map providers ({', '.join(usage_mod.PROVIDERS)}) to whole numbers (0 = no cap).")
             changes[key] = {k: v for k, v in value.items() if v}
-        elif key in ("networking_enabled", "networking_ai", "interviews_enabled", "interviews_ai"):
+        elif key in ("networking_enabled", "networking_ai", "interviews_enabled", "interviews_ai", "companyintel_enabled", "companyintel_ai", "offers_enabled", "proposals_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -639,6 +640,8 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": config.networking_nudge_days,
             "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
             "interviews_ai": config.interviews_ai is True,
+            "companyintel_enabled": config.companyintel_enabled is not False, "companyintel_ai": config.companyintel_ai is True,
+            "offers_enabled": config.offers_enabled is not False, "proposals_enabled": config.proposals_enabled is not False,
             "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
             "jobtrack_ghost_days": config.jobtrack_ghost_days,
             "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,

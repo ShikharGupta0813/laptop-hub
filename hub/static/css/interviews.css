@@ -26,3 +26,13 @@
 @media (min-width: 560px) { .iv-pay { grid-template-columns: repeat(3, 1fr); } }
 .is-live { outline: 2px solid var(--c-accent-line); }
 #view-interviews .ui-input { width: 100%; box-sizing: border-box; }
+/* spoken practice, day pack and debrief */
+.iv-rec { display: flex; flex-direction: column; gap: var(--sp-2); }
+.iv-meter { height: 8px; border-radius: 999px; background: var(--c-surface-2); overflow: hidden; }
+.iv-meter > span { display: block; height: 100%; width: 0; background: var(--c-accent, #5b8def); transition: width 0.1s linear; }
+.iv-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-2); }
+@media (min-width: 560px) { .iv-stats { grid-template-columns: repeat(4, 1fr); } }
+.iv-stat { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.iv-stat b { display: block; font-size: var(--fs-lg, 1.25rem); }
+.iv-stat.is-no { border-color: var(--c-warn, #d99a1d); }
+.iv-stat.is-ok { border-color: var(--c-good, #2f9e5f); }

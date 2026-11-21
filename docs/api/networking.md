@@ -28,5 +28,13 @@ A contact with a `last_contact` of at least N days ago (N = `networking_nudge_da
 ## Tool for Friday
 `network_draft {kind, application_id? | company, role, description, contact_name, how_known, interviewer, topic, ai?}`: builds a draft and returns the text. No approval is needed because it only stores a local draft; it is marked untrusted (posting text is data). It cannot send.
 
+## Warm path finder (added)
+Contacts have one more optional field, `past_companies` (text, up to 200 characters, for example "Initech, Hooli").
+
+`POST /warm-path` `{company | application_id, role?, draft?, ai?}` answers "who do I know at this company": `{company, role, candidates[{contact, score, reasons[]}] (best first, at most 6), best (contact id or ""), tracker[{role, status, applied_at}], tips[], draft, sends: false}`.
+- Matching is by whole company name (legal endings such as Inc or Pvt Ltd are ignored): the contact's `company` (works there now: 10 points exact, 8 when one name holds the other as whole words), `past_companies` (5), or the company named in `how_known` or `note` (2). "Acme" does not match "Acmeology". A contact written to in the last 180 days adds 2; an engineering, manager, recruiter or HR role adds 1.
+- `tracker`: your application records (`jobtrack.json`) for that company. With an interview already in progress the tip says to ask for an introduction to the hiring manager instead of a referral.
+- `draft: true` also builds the referral request for the best person through the normal draft (`POST /drafts`, kind `referral`, same honesty check and 120-word cap, stored with the other drafts). A draft needs facts; without them the answer is a plain 400. Nothing is ever sent.
+
 ## Optional link to the application tracker
 `hub/jobtrack.py` (another lane) is imported inside `try/except` and not used yet; networking works from `hub/applyq.py` data only.

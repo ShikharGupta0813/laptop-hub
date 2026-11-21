@@ -1,0 +1,30 @@
+/* Company brief, Offers and Proposals screens (one file, scoped under their view ids). Tokens only. Fits 375 px: one column, wrapping text, 40 px+ tap targets. */
+:is(#view-companyintel, #view-offers, #view-proposals) .wo { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
+:is(#view-companyintel, #view-offers, #view-proposals) .wo > * { min-width: 0; }
+:is(#view-companyintel, #view-offers, #view-proposals) .ui-input { width: 100%; box-sizing: border-box; }
+.wo-note { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.wo-h { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+.wo-text { margin: 0; overflow-wrap: anywhere; }
+.wo-area { resize: vertical; min-height: 3.5rem; font: inherit; }
+.wo-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.wo-row { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0; border-top: 1px solid var(--c-line); min-width: 0; }
+.wo-row:first-of-type { border-top: 0; }
+.wo-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.wo-script { margin: 0; white-space: pre-wrap; padding: var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); user-select: text; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.wo-grid { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); }
+@media (min-width: 560px) { .wo-grid { grid-template-columns: repeat(2, 1fr); } }
+.wo-flag { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md, 12px); border: 1px solid var(--c-warn, #d99a1d); overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.wo-flag.is-info { border-color: var(--c-line); color: var(--c-text-3); }
+/* the compare table scrolls inside its own box, never the page */
+.wo-scroll { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+.wo-table { border-collapse: collapse; min-width: 100%; font-size: var(--fs-sm); }
+.wo-table th, .wo-table td { padding: var(--sp-2); border-bottom: 1px solid var(--c-line); text-align: left; vertical-align: top; min-width: 7rem; }
+.wo-table th:first-child, .wo-table td:first-child { min-width: 6.5rem; max-width: 8rem; color: var(--c-text-3); position: sticky; left: 0; background: var(--c-surface, inherit); }
+.wo-table .is-best { font-weight: 700; color: var(--c-good, #2f9e5f); }
+.wo-verdict { padding: var(--sp-3); border-radius: var(--r-md, 12px); border: 1px solid var(--c-line); font-weight: 600; overflow-wrap: anywhere; }
+.wo-verdict.is-below { border-color: var(--c-warn, #d99a1d); }
+.wo-verdict.is-in, .wo-verdict.is-above { border-color: var(--c-good, #2f9e5f); }
+.wo-check { display: flex; gap: var(--sp-3); align-items: flex-start; min-height: 40px; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.wo-check input { width: 24px; height: 24px; flex: none; }
+.wo-bar { height: 10px; border-radius: 999px; background: var(--c-surface-2); overflow: hidden; }
+.wo-bar > span { display: block; height: 100%; background: var(--c-accent, #5b8def); }

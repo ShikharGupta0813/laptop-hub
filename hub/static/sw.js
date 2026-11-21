@@ -39,6 +39,7 @@ const SHELL = [
   "/js/networking.js", "/css/networking.css",
   "/js/interviews.js", "/css/interviews.css",
   "/js/jobtrack.js", "/css/jobtrack.css",
+  "/js/companyintel.js", "/js/offers.js", "/js/proposals.js", "/css/winoffer.css",
 ];
 // Screens other features add later (settings, notifications, ...) are cached the first time they load.
 

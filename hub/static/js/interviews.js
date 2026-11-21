@@ -7,7 +7,10 @@ import * as ui from "./ui.js";
 
 const CSS = "/css/interviews.css";
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
-const TABS = [["questions", "Questions"], ["practice", "Practice"], ["stories", "Stories"], ["about", "About me"], ["brief", "Brief"], ["pay", "Pay"]];
+const TABS = [["questions", "Questions"], ["practice", "Practice"], ["stories", "Stories"], ["about", "About me"], ["brief", "Brief"], ["day", "Day pack"], ["debrief", "Debrief"], ["pay", "Pay"]];
+const SILENT = 0.012;          // loudness (0 to 1) under which the microphone is counted as silent
+const MIN_PAUSE = 1.0;         // seconds of silence counted as a pause
+const MAX_RECORD = 300;        // seconds: a recording stops by itself
 const KIND_TONE = { technical: "accent", behavioural: "good", motivation: "gray" };
 
 async function copy(text) {
@@ -24,7 +27,10 @@ export function init(container) {
   container.append(root);
   let data = null, error = "", tab = "questions";
   let job = { application_id: "", title: "", company: "", description: "" };
-  let ai = false, questions = null, drill = { question: "", kind: "behavioural", answer: "", result: null }, about = null, brief = null;
+  let ai = false, questions = null, drill = { question: "", kind: "behavioural", answer: "", result: null, spoken: null }, about = null, brief = null;
+  let pack = null, packForm = { when: "", place: "", who: "", round: "", fetch: false, save: true }, note = null;
+  let debrief = { company: "", role: "", round: "", interviewer: "", date: "", rating: "", asked: "", went_well: "", to_improve: "", follow: "", used: [], story: { title: "", situation: "", task: "", action: "", result: "" } };
+  let lastDebrief = null;
   const ticked = new Set();
 
   async function load() {
@@ -43,7 +49,7 @@ export function init(container) {
     if (!data) { root.append(ui.skeleton("list", 3)); return; }
     root.append(ui.notice("Practice material only. Nothing is sent. Answers you practise stay on this laptop; you can delete them any time.", { tone: "info" }),
       jobPicker(), ui.segmented({ options: TABS.map(([value, label]) => ({ value, label })), value: tab, label: "Interview coach sections", onChange: (v) => { tab = v; paint(); } }),
-      { questions: questionsTab, practice: practiceTab, stories: storiesTab, about: aboutTab, brief: briefTab, pay: payTab }[tab]());
+      { questions: questionsTab, practice: practiceTab, stories: storiesTab, about: aboutTab, brief: briefTab, day: dayTab, debrief: debriefTab, pay: payTab }[tab]());
     ui.renumberEyebrows(root);
   }
 
@@ -92,19 +98,21 @@ export function init(container) {
     const question = area(drill.question, 2, { placeholder: "Pick a question on the Questions tab, or type one" });
     const kind = el("select", { class: "ui-input" }, ...["behavioural", "technical", "motivation"].map((k) => el("option", { value: k }, k))); kind.value = drill.kind;
     const answer = area(drill.answer, 8, { placeholder: "Type your answer, or tap the microphone and say it." });
+    answer.addEventListener("input", () => { drill.spoken = null; });      // editing the text makes it a typed answer: the recording numbers no longer fit
     const keep = ui.switchControl({ checked: true, label: "Keep this answer on this laptop" });
     const mic = micButton(answer);
-    const go = ui.button({ label: "Get feedback", icon: "check", variant: "primary", onClick: () => ui.busy(go, async () => {
-      drill = { question: question.value, kind: kind.value, answer: answer.value, result: null };
-      try {
-        drill.result = await api(keep.input.checked ? "/api/interviews/practice" : "/api/interviews/feedback", { method: "POST",
-          json: { question: drill.question, kind: drill.kind, answer: drill.answer, ai, role: job.title, company: job.company } });
-        if (keep.input.checked) data = await api("/api/interviews");
-        paint();
-      } catch (e) { fail(e); }
-    }) });
+    const sendFeedback = async (spoken) => {
+      drill = { question: question.value, kind: kind.value, answer: answer.value, result: null, spoken: spoken ?? drill.spoken };
+      const json = { question: drill.question, kind: drill.kind, answer: drill.answer, ai, role: job.title, company: job.company };
+      if (drill.spoken) { json.seconds = drill.spoken.seconds; json.pauses = drill.spoken.pauses; }
+      drill.result = await api(keep.input.checked ? "/api/interviews/practice" : "/api/interviews/feedback", { method: "POST", json });
+      if (keep.input.checked) data = await api("/api/interviews");
+      paint();
+    };
+    const go = ui.button({ label: "Get feedback", icon: "check", variant: "primary", onClick: () => ui.busy(go, async () => { try { await sendFeedback(); } catch (e) { fail(e); } }) });
+    const speak = recorder(async (text, spoken) => { answer.value = text; await sendFeedback(spoken); });
     const box = el("section", { class: "ui-card ui-stack" }, ui.eyebrow("02", "Practise an answer"), field("Question", question), field("Kind", kind),
-      field("Your answer", answer, "Aim to speak for 30 to 90 seconds."), mic,
+      field("Your answer", answer, "Aim to speak for 30 to 90 seconds."), speak, mic,
       el("div", { class: "ui-row iv-switchrow" }, el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Keep this answer on this laptop")), keep), go);
     const out = [box];
     if (drill.result) out.push(feedbackCard(drill.result));
@@ -127,11 +135,85 @@ export function init(container) {
     return el("div", { class: "iv-actions" }, b, el("span", { class: "iv-note" }, "Tap again to stop."));
   }
 
+  // ---- (b2) spoken practice: record, transcribe (POST /api/transcribe), measure ----
+  function recorder(onDone) {
+    const problem = !window.isSecureContext ? "The microphone needs the secure (HTTPS) address of your laptop. This page is on a plain address, so it cannot record here. You can still type or dictate."
+      : (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") ? "This browser cannot record audio on this page. You can still type or dictate." : "";
+    if (problem) return el("p", { class: "iv-note" }, problem);
+    const meter = el("span", {}), status = el("p", { class: "iv-note", role: "status", "aria-live": "polite" }, "Tap, answer out loud, tap again. The recording is turned into text on your laptop, then discarded.");
+    let rec = null;
+    const stopAll = () => { try { rec?.recorder.state !== "inactive" && rec?.recorder.stop(); } catch { /* already stopped */ } };
+    const btn = ui.button({ label: "Record and measure", icon: "mic", variant: "tonal", onClick: () => (rec ? stopAll() : start()) });
+    async function start() {
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { ui.toast("The microphone is not allowed. You can type instead.", { kind: "warn" }); return; }
+      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((m) => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || "";
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const chunks = [], t0 = performance.now();
+      // loudness every 100 ms WHILE recording only: first and last speech give the speaking time, silences of 1 s or more are the pauses
+      let analyser = null, audio = null, tick = null, first = null, last = null, silentFrom = null; const pauses = [];
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext; audio = new AC();
+        analyser = audio.createAnalyser(); analyser.fftSize = 1024; audio.createMediaStreamSource(stream).connect(analyser);
+      } catch { analyser = null; }
+      const buf = analyser ? new Float32Array(analyser.fftSize) : null;
+      const sample = () => {
+        if (!root.isConnected) { stopAll(); return; }
+        const now = (performance.now() - t0) / 1000;
+        if (now >= MAX_RECORD) { stopAll(); return; }
+        if (!analyser) return;
+        analyser.getFloatTimeDomainData(buf);
+        let sum = 0; for (const v of buf) sum += v * v;
+        const level = Math.sqrt(sum / buf.length);
+        meter.style.width = Math.min(100, Math.round(level * 400)) + "%";
+        if (level >= SILENT) {
+          if (first === null) first = now;
+          if (silentFrom !== null && first !== null && now - silentFrom >= MIN_PAUSE) pauses.push(Math.round((now - silentFrom) * 10) / 10);
+          silentFrom = null; last = now;
+        } else if (silentFrom === null && first !== null) silentFrom = now;
+      };
+      recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+      recorder.onstop = async () => {
+        clearInterval(tick); stream.getTracks().forEach((t) => t.stop()); try { audio?.close(); } catch { /* ignore */ }
+        meter.style.width = "0"; btn.classList.remove("is-live"); rec = null;
+        const total = (performance.now() - t0) / 1000;
+        const seconds = analyser && first !== null && last !== null && last > first ? Math.round((last - first) * 10) / 10 : Math.round(total * 10) / 10;
+        const spoken = { seconds: Math.max(1, seconds), pauses: analyser ? pauses : null };
+        const type = recorder.mimeType || mime || "audio/webm";
+        const form = new FormData();
+        form.append("file", new Blob(chunks, { type }), "answer." + (type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm"));
+        status.textContent = "Turning your answer into text...";
+        try {
+          const res = await api("/api/transcribe", { method: "POST", form });
+          const text = String(res?.text || "").trim();
+          if (text.split(/\s+/).length < 3) { status.textContent = "Nothing was heard. Try again, closer to the microphone."; return; }
+          status.textContent = "Done."; await onDone(text, spoken);
+        } catch (e) { status.textContent = ""; fail(e); }
+      };
+      recorder.start(); rec = { recorder }; btn.classList.add("is-live");
+      status.textContent = "Recording... tap again when you finish. It stops by itself after 5 minutes.";
+      tick = setInterval(sample, 100);
+    }
+    return el("div", { class: "iv-rec" }, el("div", { class: "iv-actions" }, btn), el("div", { class: "iv-meter", "aria-hidden": "true" }, meter), status);
+  }
+
+  function spokenCard(sp) {
+    const stat = (title, value, ok, sub) => el("div", { class: "iv-stat " + (ok === true ? "is-ok" : ok === false ? "is-no" : "") }, el("span", {}, title), el("b", {}, String(value)), sub ? el("span", { class: "iv-note" }, sub) : null);
+    const t = sp.time, f = sp.fillers;
+    const stats = [stat("Speaking time", `${Math.round(sp.seconds)} s`, t.ok, `aim for ${t.lo} to ${t.hi} s`),
+      stat("Words a minute", sp.wpm ?? "n/a", sp.wpm_band ? sp.wpm_band === "good" : null, `calm: ${sp.wpm_target[0]} to ${sp.wpm_target[1]}`),
+      stat("Filler words", f.total, f.ok, Object.entries(f.by_word).map(([k, v]) => `${k} ${v}`).join(", ") || "none heard"),
+      sp.pauses ? stat("Long pauses", sp.pauses.long, sp.pauses.ok, `longest ${sp.pauses.longest} s`) : stat("Pauses", "n/a", null, "no timing data")];
+    return el("div", { class: "ui-stack" }, el("div", { class: "iv-stats" }, ...stats),
+      sp.tips.length ? list(sp.tips) : null,
+      el("p", { class: "iv-note" }, "The transcriber can drop \"um\" and \"uh\", so the filler count may be lower than what you said."));
+  }
+
   function feedbackCard(r) {
     const f = r.feedback;
     return el("section", { class: "ui-card ui-stack" }, ui.eyebrow("03", "Feedback"),
-      el("p", { class: "iv-summary" }, f.summary), el("p", { class: "iv-note" }, `${f.words} words, about ${f.seconds} seconds spoken`),
-      el("ul", { class: "iv-checks" }, ...f.checks.map((c) => el("li", { class: c.ok ? "is-ok" : "is-no" },
+      el("p", { class: "iv-summary" }, r.spoken ? r.spoken.summary : f.summary), r.spoken ? spokenCard(r.spoken) : el("p", { class: "iv-note" }, `${f.words} words, about ${f.seconds} seconds spoken`),
+      el("ul", { class: "iv-checks" }, ...(r.spoken ? r.spoken.checks : f.checks).map((c) => el("li", { class: c.ok ? "is-ok" : "is-no" },
         el("span", { class: "iv-mark", "aria-hidden": "true" }, c.ok ? "OK" : "FIX"), el("span", {}, c.label + (c.tip ? ". " + c.tip : ""))))),
       f.unverified_numbers?.length ? ui.notice("These numbers are not in your confirmed facts: " + f.unverified_numbers.join(", ") + ". Say them only if they are true.", { tone: "warn" }) : null,
       r.critique ? el("div", { class: "iv-critique" }, el("strong", {}, "AI critique"), el("p", {}, r.critique)) : null,
@@ -227,6 +309,103 @@ export function init(container) {
       })));
     }
     return el("div", { class: "ui-stack ui-stack--lg" }, ...out.filter(Boolean));
+  }
+
+  // ---- (e2) interview day pack ----
+  function dayTab() {
+    const f = { when: input(packForm.when, { placeholder: "Tue 24 Nov, 3 pm IST" }), place: input(packForm.place, { placeholder: "Meeting link or address", maxlength: "300" }),
+      who: input(packForm.who, { placeholder: "Dana Lee (manager), Ravi Shah" }), round: input(packForm.round, { placeholder: "Technical round" }) };
+    const fetchBrief = ui.switchControl({ checked: packForm.fetch, label: "Read the company's public pages now" }), save = ui.switchControl({ checked: packForm.save, label: "Keep this interview day" });
+    const go = ui.button({ label: "Build the pack", icon: "clock", variant: "primary", onClick: () => ui.busy(go, async () => {
+      if (!hasJob()) { ui.toast("Pick an application or paste a job first.", { kind: "warn" }); return; }
+      packForm = { when: f.when.value, place: f.place.value, who: f.who.value, round: f.round.value, fetch: fetchBrief.input.checked, save: save.input.checked };
+      try {
+        pack = await api("/api/interviews/day-pack", { method: "POST", json: { ...jobBody(), when: packForm.when, place: packForm.place, who: packForm.who, round: packForm.round, fetch_brief: packForm.fetch, save: packForm.save } });
+        if (packForm.save) data = await api("/api/interviews");
+        paint();
+      } catch (e) { fail(e); }
+    }) });
+    const out = [el("section", { class: "ui-card ui-stack" }, ui.eyebrow("02", "Interview day"), el("p", { class: "iv-note" }, "Everything for the day on one page. Friday can read it out: ask for \"my interview pack\"."),
+      field("When", f.when), field("Link or place", f.place), field("Who you meet", f.who, "Separate names with commas."), field("Round", f.round),
+      el("div", { class: "ui-row iv-switchrow" }, el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Company brief"),
+        el("span", { class: "ui-row__sub" }, "Uses the saved brief if you have one. Reading now makes a few polite requests to the company's own public pages.")), fetchBrief),
+      el("div", { class: "ui-row iv-switchrow" }, el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Keep this interview day")), save), go)];
+    if (pack) {
+      const sec = (title, items, node) => (items?.length || node) ? el("section", { class: "ui-card ui-stack" }, el("h3", { class: "iv-h" }, title), node || list(items)) : null;
+      const d = pack.day, cb = pack.company_brief;
+      out.push(el("section", { class: "ui-card ui-stack" }, el("h3", { class: "iv-h" }, [pack.role.title, pack.role.company].filter(Boolean).join(" at ") || "The role"),
+        el("p", { class: "iv-note" }, [d.when, d.place, d.round, d.who?.length ? "with " + d.who.join(", ") : ""].filter(Boolean).join(" - ") || "No time or place given."),
+        pack.role.summary ? el("p", {}, pack.role.summary) : null,
+        el("div", { class: "iv-actions" }, ui.button({ label: "Copy as text", icon: "copy", variant: "tonal", size: "sm", onClick: () => copy(pack.read_aloud) }),
+          window.speechSynthesis ? ui.button({ label: "Read it out", icon: "volume", variant: "tonal", size: "sm", onClick: () => { try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(pack.read_aloud)); } catch { /* no voice */ } } }) : null,
+          window.speechSynthesis ? ui.button({ label: "Stop", icon: "stop", variant: "ghost", size: "sm", onClick: () => { try { speechSynthesis.cancel(); } catch { /* ignore */ } } }) : null)),
+      sec("About the company", cb.available ? [cb.summary, ...cb.red_flags.map((x) => "Watch for: " + x), ...cb.news.map((x) => "News: " + x)] : [cb.hint]),
+      sec("Likely questions", pack.questions.map((q) => `[${q.kind}] ${q.text}`)),
+      sec("Your three best stories", null, el("div", { class: "ui-stack" }, ...pack.stories.map((s) => el("div", { class: "iv-q" }, el("p", { class: "iv-qtext" }, s.title + (s.starter ? " (starter)" : "")),
+        ...[["S", s.situation], ["T", s.task], ["A", s.action], ["R", s.result]].map(([k, v]) => el("p", { class: "iv-star" }, el("b", {}, k + " "), v || "(write this part before the day)")))))),
+      sec("Questions to ask them", pack.ask_them), sec("Gaps to prepare an honest answer for", pack.role.gaps),
+      pack.earlier?.length ? sec("From your earlier interviews here", pack.earlier.map((e) => [e.date, e.round, e.to_improve ? "improve: " + e.to_improve : "", ...(e.follow_ups || []).map((x) => "follow up: " + x)].filter(Boolean).join(" - "))) : null,
+      el("section", { class: "ui-card ui-stack" }, el("h3", { class: "iv-h" }, "Checklist"), ...pack.checklist.map((c, i) => {
+        const box = el("input", { type: "checkbox", "aria-label": c }); box.checked = ticked.has("d" + i);
+        box.addEventListener("change", () => { if (box.checked) ticked.add("d" + i); else ticked.delete("d" + i); });
+        return el("label", { class: "iv-check" }, box, el("span", {}, c));
+      })));
+    }
+    if (data.days?.length) {
+      const del = async (id) => { try { await api(`/api/interviews/days/${id}`, { method: "DELETE" }); data = await api("/api/interviews"); paint(); } catch (e) { fail(e); } };
+      out.push(el("section", { class: "ui-card ui-stack" }, el("h3", { class: "iv-h" }, "Kept interview days"), ...data.days.map((d) => el("div", { class: "iv-q" },
+        el("p", { class: "iv-qtext" }, [d.role, d.company].filter(Boolean).join(" at ") || "Interview"), el("p", { class: "iv-note" }, [d.when, d.round].filter(Boolean).join(" - ")),
+        el("div", { class: "iv-actions" }, ui.button({ label: "Debrief", icon: "edit", variant: "tonal", size: "sm", onClick: () => { debrief = { ...debrief, company: d.company, role: d.role, round: d.round || "", day_id: d.id }; tab = "debrief"; paint(); } }),
+          ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: () => del(d.id) }))))));
+    }
+    return el("div", { class: "ui-stack ui-stack--lg" }, ...out.filter(Boolean));
+  }
+
+  // ---- (e3) debrief after the interview ----
+  function debriefTab() {
+    const company = input(debrief.company || job.company, { placeholder: "Company", maxlength: "120" }), role = input(debrief.role || job.title, { placeholder: "Role", maxlength: "200" });
+    const round = input(debrief.round, { placeholder: "Round 1", maxlength: "60" }), who = input(debrief.interviewer, { placeholder: "Interviewer's name", maxlength: "80" });
+    const date = el("input", { class: "ui-input", type: "date", "aria-label": "Interview date" }); date.value = debrief.date;
+    const rating = el("select", { class: "ui-input" }, el("option", { value: "" }, "How did it go? (optional)"), ...[[5, "5 - very well"], [4, "4 - well"], [3, "3 - okay"], [2, "2 - not well"], [1, "1 - badly"]].map(([v, l]) => el("option", { value: String(v) }, l)));
+    rating.value = debrief.rating;
+    const asked = area(debrief.asked, 5, { placeholder: "One question per line" }), well = area(debrief.went_well, 2), improve = area(debrief.to_improve, 2), follow = area(debrief.follow, 2, { placeholder: "One per line: send the code sample..." });
+    const used = data.stories.map((s) => { const box = el("input", { type: "checkbox", "aria-label": "I told: " + s.title }); box.checked = debrief.used.includes(s.id); box.addEventListener("change", () => { debrief.used = box.checked ? [...debrief.used, s.id] : debrief.used.filter((x) => x !== s.id); }); return el("label", { class: "iv-check" }, box, el("span", {}, s.title)); });
+    const st = { title: input(debrief.story.title, { maxlength: "100", placeholder: "Title (optional)" }), situation: area(debrief.story.situation, 2), task: area(debrief.story.task, 2), action: area(debrief.story.action, 3), result: area(debrief.story.result, 2) };
+    const lines = (t) => t.value.split("\n").map((x) => x.trim()).filter(Boolean);
+    const go = ui.button({ label: "Save the debrief", icon: "check", variant: "primary", onClick: () => ui.busy(go, async () => {
+      const story = Object.fromEntries(Object.entries(st).map(([k, n]) => [k, n.value.trim()]));
+      const json = { company: company.value, role: role.value, round: round.value, interviewer: who.value, date: date.value, rating: rating.value ? Number(rating.value) : null,
+        asked: lines(asked), went_well: well.value, to_improve: improve.value, follow_ups: lines(follow), stories_used: debrief.used, day_id: debrief.day_id || "",
+        new_stories: story.title || story.action ? [story] : [] };
+      try {
+        lastDebrief = await api("/api/interviews/debriefs", { method: "POST", json });
+        debrief = { ...debrief, asked: "", went_well: "", to_improve: "", follow: "", used: [], rating: "", day_id: "", story: { title: "", situation: "", task: "", action: "", result: "" } };
+        note = null; data = await api("/api/interviews"); ui.toast("Saved on this laptop.", { kind: "good" }); paint();
+      } catch (e) { fail(e); }
+    }) });
+    const out = [el("section", { class: "ui-card ui-stack" }, ui.eyebrow("02", "After the interview"),
+      el("p", { class: "iv-note" }, "Write it down while you remember. The questions are added to this company's question list. Stories you told, or write below, join your STAR bank."),
+      field("Company", company), field("Role", role), field("Round", round), field("Interviewer", who), field("Date", date), field("Overall", rating),
+      field("Questions you were asked", asked), field("What went well", well), field("What to improve", improve), field("Follow-ups", follow),
+      used.length ? el("div", { class: "ui-stack" }, el("span", { class: "ui-label" }, "Stories you told"), ...used) : null,
+      el("details", {}, el("summary", {}, "Write down a new story from this interview"), el("div", { class: "ui-stack" }, field("Title", st.title), field("Situation", st.situation), field("Task", st.task), field("Action: what YOU did", st.action), field("Result", st.result))), go)];
+    if (lastDebrief) out.push(ui.notice(`Saved: ${lastDebrief.questions_saved} question(s) added to ${lastDebrief.company}'s list, ${lastDebrief.stories_added} story added to your bank.`, { tone: "good" }));
+    const thanks = async (d) => {
+      try { note = { for: d.id, draft: await api(`/api/interviews/debriefs/${d.id}/thank-you`, { method: "POST", json: { ai } }) }; paint(); } catch (e) { fail(e); }
+    };
+    const rows = data.debriefs.map((d) => el("div", { class: "iv-q" }, el("p", { class: "iv-qtext" }, [d.role, d.company].filter(Boolean).join(" at ") + (d.round ? ` (${d.round})` : "")),
+      el("p", { class: "iv-note" }, [d.date, d.rating ? `went ${d.rating} of 5` : "", `${d.asked.length} question(s)`].filter(Boolean).join(" - ")),
+      d.to_improve ? el("p", { class: "iv-answer" }, "Improve: " + d.to_improve) : null, ...(d.follow_ups || []).map((x) => el("p", { class: "iv-answer" }, "Follow up: " + x)),
+      el("div", { class: "iv-actions" }, ui.button({ label: "Draft a thank-you note", icon: "pen", variant: "tonal", size: "sm", onClick: () => thanks(d) }),
+        ui.button({ label: "Delete", icon: "trash", variant: "ghost", size: "sm", onClick: async () => {
+          if (await ui.confirm({ title: "Delete this debrief?", message: "The questions it added are taken back from the list. Stories stay.", confirmLabel: "Delete", danger: true })) { try { await api(`/api/interviews/debriefs/${d.id}`, { method: "DELETE" }); data = await api("/api/interviews"); paint(); } catch (e) { fail(e); } }
+        } })),
+      note?.for === d.id ? el("div", { class: "ui-stack" }, el("p", { class: "iv-script" }, note.draft.text),
+        note.draft.blocked ? ui.notice((note.draft.blockers || []).join(" "), { tone: "warn" }) : null,
+        el("p", { class: "iv-note" }, "Draft only. Copy it and send it yourself. It is also in Networking."),
+        ui.button({ label: "Copy", icon: "copy", variant: "tonal", size: "sm", disabled: !!note.draft.blocked, onClick: () => copy(note.draft.text) })) : null));
+    out.push(el("section", { class: "ui-card ui-stack" }, el("h3", { class: "iv-h" }, "Your debriefs"), rows.length ? el("div", { class: "ui-stack" }, ...rows) : el("p", { class: "iv-note" }, "None yet.")));
+    return el("div", { class: "ui-stack ui-stack--lg" }, ...out);
   }
 
   // ---- (f) negotiation ----

@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import networking, interviews   # networking drafts and interview coach (docs/api/networking.md, interviews.md)
+from . import companyintel, offers, proposals   # company brief, offers and negotiation, freelance proposals (docs/api/companyintel.md, offers.md, proposals.md)
 from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor, chatchan, jobtrack
 from . import models as models_mod
 from . import llm as llm_mod
@@ -82,6 +83,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("chatchan",)   # Google Chat channels for a
 FEATURE_MODULES = FEATURE_MODULES + ("networking", "interviews")   # networking drafts and interview coach: drafts and practice only, nothing is sent (docs/api/networking.md, interviews.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tailor", "answerbank")   # per-job resume + cover note from your own facts, fit and honesty check, answer bank (docs/api/tailor.md)
 FEATURE_MODULES = FEATURE_MODULES + ("jobtrack",)   # job tracker: applications, follow-ups, learning loop (docs/api/jobtrack.md)
+FEATURE_MODULES = FEATURE_MODULES + ("companyintel", "offers", "proposals")   # public-source company brief, offers and negotiation, freelance proposals (docs/api/companyintel.md, offers.md, proposals.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -231,6 +233,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + applyq_tools.build(lambda: app, config)
         + networking.build(lambda: app, config)
         + interviews.build(lambda: app, config)
+        + companyintel.build(lambda: app, config) + offers.build(lambda: app, config) + proposals.build(lambda: app, config)
         + alerts_tools.build(lambda: app, config)
         + ccsessions.build(lambda: app, config)
         + buildflow_tools.build(lambda: app, config)
