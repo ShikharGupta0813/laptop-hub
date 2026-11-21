@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import ats, packet   # ATS match score and application packet tools (docs/api/ats.md, packet.md)
 from . import networking, interviews   # networking drafts and interview coach (docs/api/networking.md, interviews.md)
 from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor, chatchan, jobtrack
 from . import models as models_mod
@@ -82,6 +83,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("chatchan",)   # Google Chat channels for a
 FEATURE_MODULES = FEATURE_MODULES + ("networking", "interviews")   # networking drafts and interview coach: drafts and practice only, nothing is sent (docs/api/networking.md, interviews.md)
 FEATURE_MODULES = FEATURE_MODULES + ("tailor", "answerbank")   # per-job resume + cover note from your own facts, fit and honesty check, answer bank (docs/api/tailor.md)
 FEATURE_MODULES = FEATURE_MODULES + ("jobtrack",)   # job tracker: applications, follow-ups, learning loop (docs/api/jobtrack.md)
+FEATURE_MODULES = FEATURE_MODULES + ("ats", "resumes", "packet")   # ATS match score + resume read check, master resumes + batch tailoring queue, one-page application packet (docs/api/ats.md, resumes.md, packet.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
@@ -244,6 +246,8 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + playbooks.build(lambda: app, config)
         + batches.build(lambda: app, config)
         + oppsources.build(lambda: app, config)
+        + ats.build(lambda: app, config)
+        + packet.build(lambda: app, config)
         + tailor.build(lambda: app, config)
         + chatchan.build(lambda: app, config)
         + jobtrack.build(lambda: app, config))

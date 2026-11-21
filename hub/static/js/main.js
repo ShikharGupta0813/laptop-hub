@@ -65,6 +65,7 @@ export const VIEWS = [
   { id: "networking", label: "Networking", icon: "users", path: "./networking.js", under: "apps" },
   { id: "interviews", label: "Interview coach", icon: "quiz", path: "./interviews.js", under: "apps" },
   { id: "jobtrack", label: "Job tracker", icon: "target", path: "./jobtrack.js", under: "apps" },
+  { id: "ats", label: "ATS and packets", icon: "wand", path: "./ats.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);
