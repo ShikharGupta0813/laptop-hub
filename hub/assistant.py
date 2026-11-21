@@ -251,6 +251,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "tailor": ({"tailor_preview", "answerbank_list", "answerbank_add"},
                re.compile(r"\btailor(?:ed|ing)?\b|\b(?:custom|customi[sz]e|adapt)\w* (?:my |the )?(?:resume|cv|cover (?:letter|note))\b|\bcover (?:letter|note)\b|\bproposal for\b|"
                           r"\banswer bank\b|\bsaved answers?\b|\bfit (?:check|score)\b|\bhow (?:well )?do i (?:fit|match)\b|\bam i (?:a good fit|qualified)\b|\bsalary expectation\b|\bnotice period\b", re.I)),
+    "ats": ({"ats_score", "packet_prepare"},
+            re.compile(r"\bats\b|\bapplicant tracking\b|\bresume (?:score|match|keywords?)\b|\bkeywords? (?:missing|match)\b|\bmatch score\b|\bapplication packet\b|\bapply packet\b|\bprepare (?:a |the )?packet\b", re.I)),
     "networking": ({"network_draft", "interview_prep"},
                    re.compile(r"\breferral\b|\bnetwork(?:ing)? (?:message|note|draft)\b|\brecruiters?\b|\bthank[- ]you (?:note|email|message)\b|\bfollow(?:ing)?[- ]up (?:note|email|message)\b|"
                               r"\binterview (?:prep|questions?|practice|coach|brief)\b|\bprepare me for (?:the |my )?interview\b|\btell me about yourself\b|\bstar (?:story|stories)\b|\bnegotiat\w+\b", re.I)),

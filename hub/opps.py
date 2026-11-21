@@ -49,6 +49,10 @@ try:  # the owner's search profiles (hard filters + soft scoring); without it no
     from . import jobprefs
 except ImportError:  # pragma: no cover
     jobprefs = None
+try:  # go / no-go label, ghost and lock flags, gig score (hub/triage.py); without it finds are stored as before
+    from . import triage
+except ImportError:  # pragma: no cover
+    triage = None
 
 log = logging.getLogger("hub.opps")
 
@@ -680,7 +684,8 @@ class Opps:
                 "source": find.get("source", ""), "description": find.get("description", ""), "score": find["score"],
                 "reason": find.get("reason", ""), "flags": [f["label"] for f in find.get("flags", [])],
                 "kind": find.get("kind", "other"),
-                "meta": {"source_id": find.get("source_id", ""), "match": find.get("match") or {}}}
+                "meta": {"source_id": find.get("source_id", ""), "match": find.get("match") or {},
+                         **({"triage": triage.compact(find["triage"])} if triage is not None and find.get("triage") else {})}}
         try:
             fn = self._push or (applyq.add_item if applyq is not None and hasattr(applyq, "add_item") else None)
             if fn is None:
@@ -703,6 +708,7 @@ class Opps:
         now = self.clock()
         counts = {"new": 0, "queued": 0, "blocked": 0, "seen": 0, "low": 0, "filtered": 0}
         source_remote = bool((self.get_source(source_id) or {}).get("remote"))
+        tri_owner = triage.safe_owner(self.ctx) if triage is not None and rows else {}     # the owner's side, read once per batch
         with self.lock:
             state = self._state()
             for row in rows[:MAX_ITEMS_PER_SOURCE]:
@@ -733,6 +739,10 @@ class Opps:
                     if verdict:
                         find["match"] = verdict["match"]
                         find["score"] = max(0, min(100, find["score"] + verdict["delta"]))
+                if triage is not None:       # go / no-go label with ONE plain reason. A label only: nothing is hidden or sent because of it
+                    tri = triage.assess_find(self.ctx, find, tri_owner, verdict=verdict, now=now)
+                    if tri:
+                        find["triage"] = tri
                 if opps_vet.blocked(vet):
                     find["status"], find["blocked_reason"] = "blocked", opps_vet.reason_text(vet)
                     counts["blocked"] += 1
@@ -752,12 +762,26 @@ class Opps:
             self._save_state(state)
         return counts
 
-    def finds(self, *, status: str = "", query: str = "", limit: int = 100) -> list[dict]:
+    def triage_counts(self) -> dict:
+        """{apply, maybe, skip, none}: every stored find (filtered ones included), by go / no-go label."""
+        out = {"apply": 0, "maybe": 0, "skip": 0, "none": 0}
+        for f in self._state()["finds"].values():
+            if f.get("status") == "dismissed":
+                continue
+            v = (f.get("triage") or {}).get("verdict")
+            out[v if v in out else "none"] += 1
+        return out
+
+    def finds(self, *, status: str = "", query: str = "", limit: int = 100, verdict: str = "") -> list[dict]:
         rows = list(self._state()["finds"].values())
         if status:
             rows = [r for r in rows if r.get("status") == status]
+        elif verdict:                     # a go / no-go filter shows its finds whatever their status, so a skip is never out of sight
+            rows = [r for r in rows if r.get("status") != "dismissed"]
         else:
             rows = [r for r in rows if r.get("status") != "filtered"]     # filtered by a job preference: only shown when asked for
+        if verdict:
+            rows = [r for r in rows if (r.get("triage") or {}).get("verdict") == verdict]
         if query:
             words = [w for w in re.findall(r"[a-z0-9+#.]+", query.lower()) if len(w) > 1]
             def hit(r):
@@ -1067,9 +1091,12 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
         return {"ok": True}
 
     @router.get("/finds")
-    async def finds(status: str = "", q: str = "", limit: int = 100):
+    async def finds(status: str = "", q: str = "", limit: int = 100, verdict: str = ""):
         limit = max(1, min(int(limit), 300))
-        return {"finds": engine.finds(status=status, query=q, limit=limit), **{k: v for k, v in engine.status().items() if k != "sources"}}
+        if verdict and verdict not in ("apply", "maybe", "skip"):
+            raise HTTPException(400, "verdict must be apply, maybe or skip.")
+        return {"finds": engine.finds(status=status, query=q, limit=limit, verdict=verdict), "triage_counts": engine.triage_counts(),
+                "triage_ai": triage is not None and triage.ai_on(ctx.config), **{k: v for k, v in engine.status().items() if k != "sources"}}
 
     @router.post("/add")
     async def add_link(body: dict = Body(...)):
@@ -1141,7 +1168,9 @@ def fmt_find(f: dict, persona: str) -> str:
     head = f"{f['score']}/100 {f['title']}" + (f" at {f['company']}" if f.get("company") else "") + f" [{f.get('source', '')}]"
     if persona == "friday":
         return head
-    return f"{head} | fit: {f.get('reason', '')}" + (f" | flags: {flags}" if flags else "") + (f" | {f['url']}" if f.get("url") else "")
+    tri = f.get("triage") or {}
+    return (f"{head} | fit: {f.get('reason', '')}" + (f" | {tri['verdict']}: {tri.get('reason', '')}" if tri.get("verdict") else "")
+            + (f" | flags: {flags}" if flags else "") + (f" | {f['url']}" if f.get("url") else ""))
 
 
 def build(get_app: Callable[[], Any], config) -> list[ExtraTool]:

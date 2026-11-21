@@ -703,6 +703,16 @@ class Tailor:
                    "created": now, "updated": now, "fit": {k: fit[k] for k in ("score", "label", "counts", "flags", "unchecked", "risk_blocked", "summary", "years_experience")},
                    "requirements": fit["requirements"], "resume": resume, "cover": cover, "risk_ack": False,
                    "resume_ok": res_check["ok"], "log": [], "item_title": (item or {}).get("title", "")}
+        # Which master resume (and version) this one came from: its label is the tracker's `resume_version` (hub/resumes.py).
+        try:
+            from . import resumes
+            master = resumes.Masters(self.ctx, clock=self.clock, profile_fn=self.profile_fn).choose(body.get("master_id"), job, fb)
+        except LookupError:
+            raise
+        except Exception:  # noqa: BLE001 - the master record is an extra; tailoring must work without it
+            master = None
+        variant["master"] = master
+        variant["resume_version"] = (master or {}).get("label", "")
         self._put(variant)
         return public_variant(variant)
 
@@ -808,6 +818,14 @@ class Tailor:
                                     "note": f"Tailored variant {v['id']} applied"})
         v["application_id"] = item_id
         self._put(v)
+        if v.get("resume_version"):             # the job tracker groups replies by this text (hub/jobtrack.py `resume_version`)
+            try:
+                stored = svc.get(item_id)
+                stored["resume_version"] = v["resume_version"]
+                svc.store.save(stored)
+                item = svc.public(stored)
+            except Exception:  # noqa: BLE001
+                log.warning("tailor: could not record the resume version on the application")
         return {"item": item, "blocked": bool(b), "blockers": b}
 
 

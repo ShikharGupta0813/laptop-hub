@@ -47,6 +47,7 @@ REDLINE is an Android app that controls your Windows laptop. This guide explains
 25. [36 · Tailor and answers](36-tailor-and-answers.md): a resume and cover note for each job from your own facts, an honesty check, and your saved answers to form questions.
 27. [40 · Networking drafts](40-networking-drafts.md): short referral, recruiter, thank-you and follow-up drafts from your own facts, a contacts list with nudges; you send everything yourself.
 28. [41 · Interview coach](41-interview-coach.md): likely questions, practice with feedback, STAR stories, a 60 and 90 second intro, a brief and a pay cheat sheet; nothing is sent.
+29. [42 · ATS and packets](42-ats-and-packets.md): how a posting scores against your resume, how an ATS reads your resume file, master resumes per role, a tailoring queue and a one-page application packet; nothing is sent.
 21. [99 · Troubleshooting new features](99-troubleshooting-new-features.md): plain fixes for first-run problems.
 
 Also: [How to import this guide into Notion](IMPORT-INTO-NOTION.md).
