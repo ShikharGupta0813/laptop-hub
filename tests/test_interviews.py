@@ -467,7 +467,7 @@ class RouteTests(Base):
         c = self.client()
         self.queue().add({"title": "Python dev", "url": "https://jobs.example.test/ov", "company": "Globex", "description": "Python."})
         o = c.get("/api/interviews").json()
-        self.assertEqual(set(o), {"applications", "stories", "suggestions", "practice", "negotiation", "has_facts", "settings", "sends"})
+        self.assertEqual(set(o), {"applications", "stories", "suggestions", "practice", "negotiation", "has_facts", "settings", "sends", "days", "debriefs", "speak_targets", "wpm_target", "filler_words"})
         self.assertIs(o["sends"], False)
         self.assertTrue(o["has_facts"])
         self.assertEqual(o["applications"][0]["company"], "Globex")
@@ -487,6 +487,313 @@ class RouteTests(Base):
             self.assertNotRegex(p, r"/(send|post|publish|submit)\b")
 
 
+class SpokenFeedbackTests(Base):
+    """Spoken practice: the screen records, /api/transcribe makes the text, and these are the numbers (plain arithmetic and word patterns)."""
+
+    def sp(self, text, seconds, **kw):
+        return I.spoken_feedback(kw.pop("kind", "behavioural"), text, seconds, kw.pop("pauses", None), None, kw.pop("target", None))
+
+    def test_words_a_minute_and_the_band(self):
+        self.assertEqual(self.sp("word " * 120, 60)["wpm"], 120)
+        self.assertEqual(self.sp("word " * 120, 60)["wpm_band"], "good")
+        self.assertEqual(self.sp("word " * 200, 60)["wpm_band"], "fast")
+        self.assertEqual(self.sp("word " * 60, 60)["wpm_band"], "slow")
+        self.assertEqual(self.sp("word " * 160, 60)["wpm_band"], "good")          # the edges of the range are good
+        self.assertEqual(self.sp("word " * 110, 60)["wpm_band"], "good")
+        self.assertEqual(self.sp("word " * 15, 90)["wpm"], 10)
+        self.assertIsNone(self.sp("one two three four", 3)["wpm"])                 # too short a recording to say
+        self.assertEqual(I.WPM_GOOD, (110, 160))
+
+    def test_speaking_time_against_the_target_for_the_kind(self):
+        self.assertEqual(self.sp("word " * 40, 20)["time"]["label"], "short")
+        self.assertEqual(self.sp("word " * 120, 90)["time"]["label"], "good")
+        self.assertEqual(self.sp("word " * 300, 150)["time"]["label"], "long")
+        self.assertEqual(self.sp("word " * 60, 40, kind="motivation")["time"], {"lo": 30, "hi": 90, "ok": True, "label": "good"})
+        self.assertEqual(self.sp("word " * 60, 40, kind="behavioural")["time"]["label"], "short")      # the same 40 seconds is short for a story
+        self.assertEqual(self.sp("word " * 60, 40, target=(30, 45))["time"]["ok"], True)
+        tips = self.sp("word " * 40, 20)["tips"]
+        self.assertTrue(any("aim for 60 to 120" in t for t in tips))
+
+    def test_filler_words_are_counted_by_word(self):
+        text = "Um, so basically I actually built it, you know, and like, uh it worked. So we shipped. It was like really good."
+        f = self.sp(text, 30)["fillers"]
+        self.assertEqual(f["by_word"], {"um": 1, "uh": 1, "like": 2, "basically": 1, "actually": 1, "you know": 1, "so": 1})
+        self.assertEqual(f["total"], 8)
+        self.assertEqual(f["per_100_words"], round(8 / len(text.split()) * 100, 1))
+        self.assertFalse(f["ok"])
+
+    def test_ordinary_words_are_not_fillers(self):
+        text = "I like Python because it is simple. We chose it so that the team could learn fast. It looks like a clean design so I kept it. So, we moved on."
+        f = self.sp(text, 30)["fillers"]
+        self.assertEqual(f["by_word"].get("like", 0), 0)       # "like Python" and "looks like a" are not fillers
+        self.assertEqual(f["by_word"].get("so", 0), 1)          # only a sentence that starts with "so" counts; "so that" and "so I" do not
+        self.assertEqual(self.sp("Clean answer with no filler words at all.", 10)["fillers"]["total"], 0)
+
+    def test_pauses_when_timing_data_exists(self):
+        p = self.sp("word " * 100, 60, pauses=[0.5, 2.5, 3.1, 1.0])["pauses"]
+        self.assertEqual((p["count"], p["long"], p["longest"], p["total"], p["ok"]), (4, 2, 3.1, 7.1, True))
+        bad = self.sp("word " * 100, 60, pauses=[2.0, 2.5, 3.1])
+        self.assertFalse(bad["pauses"]["ok"])
+        self.assertTrue(any("pauses" in t for t in bad["tips"]))
+        self.assertIsNone(self.sp("word " * 100, 60)["pauses"])                    # no timing data: nothing is said about pauses
+        self.assertEqual(self.sp("word " * 100, 60, pauses=[])["pauses"]["longest"], 0.0)
+
+    def test_pause_list_is_cleaned(self):
+        self.assertEqual(I._pause_list([0.1, "1.5", 2, 9999]), [1.5, 2.0])
+        self.assertIsNone(I._pause_list(None))
+        with self.assertRaises(I.InterviewError):
+            I._pause_list("long")
+        with self.assertRaises(I.InterviewError):
+            I._pause_list(["x"])
+
+    def test_star_structure_is_checked_for_behavioural_answers_only(self):
+        s = self.sp(GOOD, 70)
+        ids = {c["id"] for c in s["checks"]}
+        self.assertTrue({"situation", "task", "action", "result", "ownership", "metric"} <= ids)
+        self.assertNotIn("length", ids)                                             # replaced by speaking time
+        self.assertNotIn("filler", ids)                                             # replaced by the filler count
+        self.assertTrue(all(c["ok"] for c in s["checks"]), s["checks"])
+        t = self.sp("It is fine and works well in most cases for me.", 20, kind="technical")
+        self.assertIn("reason", {c["id"] for c in t["checks"]})
+        self.assertNotIn("situation", {c["id"] for c in t["checks"]})
+
+    def test_summary_and_errors(self):
+        s = self.sp(GOOD, 70)
+        self.assertIn("words a minute", s["summary"])
+        self.assertIn("structure checks", s["summary"])
+        with self.assertRaises(I.InterviewError):
+            self.sp("some words here", 0)
+
+    def test_the_routes_keep_the_spoken_numbers_with_the_answer(self):
+        c = self.client()
+        body = {"question": "Tell me about a time something broke.", "kind": "behavioural", "answer": GOOD, "seconds": 70, "pauses": [0.6, 2.4]}
+        r = c.post("/api/interviews/practice", json=body)
+        self.assertEqual(r.status_code, 200, r.text)
+        sp = r.json()["spoken"]
+        self.assertEqual(sp["seconds"], 70.0)
+        self.assertEqual(sp["pauses"]["long"], 1)
+        self.assertEqual(c.get("/api/interviews/practice").json()["practice"][0]["spoken"]["wpm"], sp["wpm"])
+        self.assertNotIn("spoken", c.post("/api/interviews/feedback", json={**body, "seconds": None}).json())      # typed answers have none
+        self.assertEqual(c.post("/api/interviews/feedback", json={**body, "target_seconds": [20, 40]}).json()["spoken"]["time"]["label"], "long")
+        for bad in ({"seconds": 0}, {"seconds": 5000}, {"seconds": "soon"}, {"pauses": "many"}):
+            self.assertEqual(c.post("/api/interviews/feedback", json={**body, **bad}).status_code, 400, bad)
+
+
+class DebriefTests(Base):
+    def seed_stories(self, c):
+        a = c.post("/api/interviews/stories", json={"title": "Cut slow queries", "situation": "At Initech the API was slow", "task": "Cut response time",
+                                                    "action": "I profiled Postgres queries and added indexes", "result": "Calls went from 4 seconds to 1 second"}).json()
+        b = c.post("/api/interviews/stories", json={"title": "Team lunch", "action": "I booked a table"}).json()
+        return a, b
+
+    def test_questions_asked_join_the_list_for_that_company(self):
+        c = self.client()
+        r = c.post("/api/interviews/debriefs", json={"company": "Acme", "role": "Backend Engineer", "round": "Round 1", "interviewer": "Dana Lee", "rating": 4,
+                                                     "asked": ["How would you design a rate limiter?", "Tell me about a time you disagreed with your manager.", "How would you design a rate limiter?"],
+                                                     "went_well": "Good talk about Postgres.", "to_improve": "Slow down.", "follow_ups": ["Send the code sample"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertEqual((d["questions_saved"], d["stories_added"]), (2, 0))             # the repeated question counts once in one debrief
+        q = c.post("/api/interviews/questions", json=JOB).json()
+        first = q["questions"][:2]
+        self.assertEqual({x["source"] for x in first}, {"debrief"})
+        self.assertEqual({x["text"] for x in first}, {"How would you design a rate limiter?", "Tell me about a time you disagreed with your manager."})
+        self.assertTrue(all("earlier interview" in x["why"] for x in first))
+        self.assertEqual({x["kind"] for x in first}, {"technical", "behavioural"})
+        self.assertEqual(q["from_debriefs"], 2)                                              # both are new: the rule list has other wording
+        self.assertEqual(len({x["id"] for x in q["questions"]}), len(q["questions"]))
+        other = c.post("/api/interviews/questions", json={**JOB, "company": "Globex"}).json()
+        self.assertNotIn("debrief", {x["source"] for x in other["questions"]})
+
+    def test_a_question_asked_twice_says_so(self):
+        c = self.client()
+        for _ in range(2):
+            c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["How do you test an API?"]})
+        q = c.post("/api/interviews/questions", json=JOB).json()["questions"][0]
+        self.assertEqual(q["text"], "How do you test an API?")
+        self.assertIn("(2 times)", q["why"])
+
+    def test_the_debrief_feeds_the_star_story_bank(self):
+        c = self.client()
+        a, b = self.seed_stories(c)
+        r = c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["Tell me about a slow system."], "stories_used": [a["id"], "st-nope"],
+                                                     "new_stories": [{"title": "Fixed the nightly job", "situation": "Reports failed at Hooli", "task": "Make them reliable",
+                                                                      "action": "I split the job and added retries", "result": "No failures for 3 months"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["stories_added"], 1)
+        stories = c.get("/api/interviews/stories").json()["stories"]
+        self.assertEqual(len(stories), 3)
+        new = next(s for s in stories if s["title"] == "Fixed the nightly job")
+        self.assertEqual(new["source"], "debrief")
+        self.assertEqual(new["debrief_id"], r.json()["id"])
+        self.assertEqual(new["result"], "No failures for 3 months")
+        used = next(s for s in stories if s["id"] == a["id"])
+        self.assertEqual((used["used_count"], used["last_used"]), (1, "2026-11-20"))
+        self.assertNotIn("used_count", next(s for s in stories if s["id"] == b["id"]))
+        self.assertTrue(new["unverified_numbers"] or new["unverified_numbers"] == [])         # a reminder list, never a block
+
+    def test_a_bad_story_in_a_debrief_changes_nothing(self):
+        c = self.client()
+        r = c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["Q one?"], "new_stories": [{"situation": "no title and no action"}]})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(c.get("/api/interviews/debriefs").json()["debriefs"], [])
+        self.assertNotIn("debrief", {x["source"] for x in c.post("/api/interviews/questions", json=JOB).json()["questions"]})
+
+    def test_validation_is_plain(self):
+        c = self.client()
+        for body in ({}, {"company": "Acme"}, {"asked": ["x?"]}, {"company": "Acme", "asked": ["x?"], "rating": 9}, {"company": "Acme", "asked": ["x?"], "rating": "good"},
+                     {"company": "Acme", "asked": ["x?"], "date": "yesterday"}):
+            r = c.post("/api/interviews/debriefs", json=body)
+            self.assertEqual(r.status_code, 400, body)
+            self.assertTrue(r.json()["detail"])
+
+    def test_deleting_a_debrief_takes_its_questions_back(self):
+        c = self.client()
+        d = c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["How do you test an API?"]}).json()
+        d2 = c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["How do you test an API?"]}).json()
+        self.assertEqual(c.delete(f"/api/interviews/debriefs/{d['id']}").status_code, 200)
+        self.assertIn("earlier interview.", c.post("/api/interviews/questions", json=JOB).json()["questions"][0]["why"])        # asked once now
+        self.assertEqual(c.delete(f"/api/interviews/debriefs/{d2['id']}").status_code, 200)
+        self.assertNotIn("debrief", {x["source"] for x in c.post("/api/interviews/questions", json=JOB).json()["questions"]})
+        self.assertEqual(c.delete(f"/api/interviews/debriefs/{d2['id']}").status_code, 404)
+
+    def test_debrief_from_an_application(self):
+        c = self.client()
+        item, _ = self.queue().add({"title": "Python dev", "url": "https://jobs.example.test/d", "company": "Globex", "description": "Python and Docker."})
+        r = c.post("/api/interviews/debriefs", json={"application_id": item["id"], "asked": ["Why Python?"]}).json()
+        self.assertEqual((r["company"], r["role"]), ("Globex", "Python dev"))
+        self.assertEqual(c.post("/api/interviews/debriefs", json={"application_id": "nope", "asked": ["x?"]}).status_code, 404)
+
+    def test_thank_you_note_uses_the_existing_draft_and_sends_nothing(self):
+        c = self.client()
+        d = c.post("/api/interviews/debriefs", json={"company": "Acme", "role": "Backend Engineer", "interviewer": "Dana Lee", "asked": ["Why Python?"]}).json()
+        with mock.patch.object(socket, "create_connection", side_effect=AssertionError("nothing may open a connection")):
+            r = c.post(f"/api/interviews/debriefs/{d['id']}/thank-you", json={"topic": "the Postgres design question"})
+        self.assertEqual(r.status_code, 200, r.text)
+        note = r.json()
+        self.assertEqual(note["kind"], "thank_you")
+        self.assertIn("Dana", note["text"])
+        self.assertEqual(self.queue().list("sent"), [])
+        from hub import networking
+        drafts = networking.Networking(self.ctx, clock=lambda: NOW, profile_fn=lambda c: self.profile).drafts()
+        self.assertEqual(drafts[0]["id"], note["id"])
+        self.assertEqual(c.post("/api/interviews/debriefs/db-nope/thank-you", json={}).status_code, 404)
+        self.profile.clear()
+        self.assertEqual(c.post(f"/api/interviews/debriefs/{d['id']}/thank-you", json={}).status_code, 400)       # no facts: a plain message
+
+
+class DayPackTests(Base):
+    BODY = {"title": JOB["title"], "company": "Acme", "description": DESC, "when": "2026-11-24 15:00 IST", "place": "https://meet.example.test/abc",
+            "who": ["Dana Lee (Engineering Manager)", "Ravi Shah"], "round": "Technical"}
+
+    def test_the_pack_has_every_part(self):
+        c = self.client()
+        r = c.post("/api/interviews/day-pack", json=self.BODY)
+        self.assertEqual(r.status_code, 200, r.text)
+        p = r.json()
+        self.assertEqual(p["day"]["when"], "2026-11-24 15:00 IST")
+        self.assertEqual(p["day"]["who"], ["Dana Lee (Engineering Manager)", "Ravi Shah"])
+        self.assertEqual(p["role"]["company"], "Acme")
+        self.assertLessEqual(len(p["questions"]), 5)
+        self.assertEqual(len(p["questions"]), 5)
+        self.assertEqual(len(p["stories"]), 3)
+        self.assertTrue(all(s["starter"] for s in p["stories"]))                       # no saved stories yet: starters from the facts
+        self.assertTrue(p["ask_them"] and len(p["ask_them"]) <= 5)
+        self.assertTrue(p["checklist"][0].startswith("Open the interview link"))
+        self.assertFalse(p["company_brief"]["available"])
+        self.assertIn("Company brief", p["company_brief"]["hint"])
+        self.assertFalse(p["sends"])
+        kinds = [q["kind"] for q in p["questions"]]
+        self.assertEqual((kinds.count("technical"), kinds.count("behavioural")), (2, 2))
+        self.assertIn("Likely questions:", p["read_aloud"])
+        self.assertIn("2026-11-24 15:00 IST", p["read_aloud"])
+        self.assertIn("No company brief is saved yet.", p["read_aloud"])
+        self.assertNotIn("\n\n\n", p["read_aloud"])
+
+    def test_best_stories_are_the_ones_that_fit_the_posting_and_are_complete(self):
+        c = self.client()
+        DebriefTests.seed_stories(DebriefTests, c)
+        for t in ("Python API tuning", "Docker rollout at Hooli"):
+            c.post("/api/interviews/stories", json={"title": t, "situation": "x", "task": "y", "action": f"I did {t} with Python and Docker", "result": "it worked"})
+        p = c.post("/api/interviews/day-pack", json=self.BODY).json()
+        titles = [s["title"] for s in p["stories"]]
+        self.assertEqual(len(titles), 3)
+        self.assertNotIn("Team lunch", titles)                                            # nothing in common with the posting, no result
+        self.assertTrue(all(not s["starter"] for s in p["stories"]))
+
+    def test_a_used_story_is_ranked_a_little_lower(self):
+        stories = [{"id": "a", "title": "Python tuning", "action": "Python", "result": "ok", "situation": "s", "task": "t", "used_count": 3},
+                   {"id": "b", "title": "Python rollout", "action": "Python", "result": "ok", "situation": "s", "task": "t"}]
+        best = I.best_stories(stories, {"title": "Python dev", "description": "Python"}, [], n=2)
+        self.assertEqual([s["id"] for s in best], ["b", "a"])
+
+    def test_earlier_questions_from_debriefs_come_first(self):
+        c = self.client()
+        c.post("/api/interviews/debriefs", json={"company": "Acme", "asked": ["How would you design a rate limiter?"], "to_improve": "Slow down.", "round": "Round 1"})
+        p = c.post("/api/interviews/day-pack", json=self.BODY).json()
+        self.assertEqual(p["questions"][0]["text"], "How would you design a rate limiter?")
+        self.assertEqual(p["questions"][0]["source"], "debrief")
+        self.assertEqual(p["earlier"][0]["to_improve"], "Slow down.")
+        self.assertIn("rate limiter", p["read_aloud"])
+
+    def test_a_saved_company_brief_is_included_without_any_new_request(self):
+        from hub import companyintel
+        base = Path(self.config.data_path())
+        base.mkdir(parents=True, exist_ok=True)
+        key = "acme|acme.example"
+        brief = {"company": "Acme", "summary": "Acme makes inventory tools.", "generated_at": "2026-11-19T09:00:00", "cached": False,
+                 "red_flags": [{"id": "news", "text": "News headline: layoffs."}, {"id": "scope", "text": "Flags come from public text only."}],
+                 "news": [{"title": "Acme opens an office"}]}
+        (base / "companyintel.json").write_text(json.dumps({key: {"brief": brief, "expires_ts": NOW.timestamp() + 86400, "saved_ts": NOW.timestamp()}}), encoding="utf-8")
+        c = self.client()
+        with mock.patch.object(socket, "create_connection", side_effect=AssertionError("no network for a saved brief")):
+            p = c.post("/api/interviews/day-pack", json=self.BODY).json()
+        cb = p["company_brief"]
+        self.assertTrue(cb["available"])
+        self.assertEqual(cb["summary"], "Acme makes inventory tools.")
+        self.assertEqual(cb["red_flags"], ["News headline: layoffs."])                     # the generic scope note is not a red flag
+        self.assertIn("Acme makes inventory tools.", p["read_aloud"])
+        self.assertTrue(companyintel.enabled(self.config))
+
+    def test_saving_the_day_and_listing_it(self):
+        c = self.client()
+        p = c.post("/api/interviews/day-pack", json={**self.BODY, "save": True}).json()
+        self.assertTrue(p["day"]["id"].startswith("dy-"))
+        days = c.get("/api/interviews/days").json()["days"]
+        self.assertEqual((days[0]["company"], days[0]["place"]), ("Acme", "https://meet.example.test/abc"))
+        self.assertEqual(c.get("/api/interviews").json()["days"][0]["id"], p["day"]["id"])
+        self.assertEqual(c.post("/api/interviews/day-pack", json=self.BODY).json()["day"].get("id"), None)        # not saved unless asked
+        self.assertEqual(c.delete(f"/api/interviews/days/{p['day']['id']}").status_code, 200)
+        self.assertEqual(c.delete(f"/api/interviews/days/{p['day']['id']}").status_code, 404)
+
+    def test_from_an_application_and_nothing_is_sent(self):
+        c = self.client()
+        item, _ = self.queue().add({"title": "Python dev", "url": "https://jobs.example.test/dp", "company": "Globex", "description": "Python, Docker and deadlines."})
+        with mock.patch.object(socket, "create_connection", side_effect=AssertionError("nothing may open a connection")):
+            p = c.post("/api/interviews/day-pack", json={"application_id": item["id"], "who": "Dana, Ravi"}).json()
+        self.assertEqual(p["role"]["company"], "Globex")
+        self.assertEqual(p["day"]["who"], ["Dana", "Ravi"])
+        self.assertEqual(self.queue().list("sent"), [])
+        self.assertEqual(c.post("/api/interviews/day-pack", json={"application_id": "nope"}).status_code, 404)
+
+    def test_friday_tool_reads_the_pack_out(self):
+        open_ctx = Ctx(config=self.config, model_for=lambda p: None, transcriber=None, notes=None, need_auth=lambda: None, audit=lambda *a, **k: None)
+        app = FastAPI()
+        app.include_router(I.make_router(open_ctx, clock=lambda: NOW, profile_fn=lambda c: self.profile))
+        self.config.session_generation = 0
+        tools = {t.spec["name"]: t for t in I.build(lambda: app, self.config)}
+        tool = tools["interview_day_pack"]
+        self.assertFalse(tool.needs_approval({}))
+        self.assertTrue(tool.untrusted({}))
+        ok, text = asyncio.run(tool.run({"title": JOB["title"], "company": "Acme", "description": DESC, "when": "Tuesday 3 pm", "who": ["Dana"]}))
+        self.assertTrue(ok, text)
+        self.assertIn("Tuesday 3 pm", text)
+        self.assertIn("Likely questions:", text)
+        self.assertIn("Nothing was sent", text)
+        ok, _ = asyncio.run(tool.run({}))
+        self.assertFalse(ok)
+
+
 class WiringTests(Base):
     def test_wiring_settings_and_tool_group(self):
         from hub import server, settings
@@ -500,7 +807,7 @@ class WiringTests(Base):
 
     def test_tool_is_read_only_and_untrusted(self):
         tools = {t.spec["name"]: t for t in I.build(lambda: self.app, self.config)}
-        self.assertEqual(set(tools), {"interview_prep"})
+        self.assertEqual(set(tools), {"interview_prep", "interview_day_pack"})
         self.assertFalse(tools["interview_prep"].needs_approval({}))
         self.assertTrue(tools["interview_prep"].untrusted({}))
 

@@ -161,17 +161,18 @@ export function init(container) {
 
   // ---- contacts ----
   function contactSheet(c) {
-    const cur = c || { name: "", company: "", role: "", how_known: "", last_contact: "", note: "" };
+    const cur = c || { name: "", company: "", past_companies: "", role: "", how_known: "", last_contact: "", note: "" };
     const name = input(cur.name, { maxlength: "80" }), company = input(cur.company, { maxlength: "120" }), role = input(cur.role, { maxlength: "120" });
+    const past = input(cur.past_companies, { maxlength: "200", placeholder: "Example: Initech, Hooli" });
     const how = input(cur.how_known, { maxlength: "200", placeholder: "Example: worked together at a past job" });
     const last = el("input", { class: "ui-input", type: "date" }); last.value = cur.last_contact || "";
     const note = input(cur.note, { maxlength: "300" });
-    ui.sheet({ title: c ? "Edit contact" : "Add a contact", content: el("div", { class: "ui-stack" }, field("Name", name), field("Company", company), field("Their role", role),
+    ui.sheet({ title: c ? "Edit contact" : "Add a contact", content: el("div", { class: "ui-stack" }, field("Name", name), field("Company", company), field("Worked before at", past, "Used by the warm-path finder: who do I know at a company."), field("Their role", role),
       field("How you know them", how), field("Last time you wrote or spoke", last, "Leave empty if you have not yet."), field("Note", note)),
     actions: [{ label: "Save", variant: "primary", icon: "check", onClick: async () => {
       try {
         await api(c ? `/api/networking/contacts/${c.id}` : "/api/networking/contacts", { method: c ? "PUT" : "POST",
-          json: { name: name.value, company: company.value, role: role.value, how_known: how.value, last_contact: last.value, note: note.value } });
+          json: { name: name.value, company: company.value, past_companies: past.value, role: role.value, how_known: how.value, last_contact: last.value, note: note.value } });
         ui.toast("Saved.", { kind: "good" }); load(); return true;
       } catch (e) { fail(e); return false; }
     } }] });

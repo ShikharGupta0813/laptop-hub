@@ -250,6 +250,11 @@ class Config:
     networking_ai: bool = False             # True: drafts are reworded by the owner's chosen AI (still checked against the facts; falls back to the plain draft)
     interviews_enabled: bool = True
     interviews_ai: bool = False             # True: extra questions and a short critique from the owner's chosen AI (text only; falls back to rules)
+    # Win the offer (hub/companyintel.py, hub/offers.py, hub/proposals.py): public-source company brief, offer comparison, freelance proposal drafts. Drafts only.
+    companyintel_enabled: bool = True
+    companyintel_ai: bool = False           # True: public page text is summarised by the owner's chosen AI (falls back to plain code)
+    offers_enabled: bool = True
+    proposals_enabled: bool = True
     # Job tracker (hub/jobtrack.py): applications, follow-up reminders, the learning loop. Nothing is ever sent or applied by it.
     jobtrack_enabled: bool = True
     jobtrack_followup_days: list | None = None   # days after applying to remind you; None = [5, 10]; [] = no follow-up reminders
@@ -408,6 +413,8 @@ def save(config: Config, path: Path) -> None:
         "networking_enabled": config.networking_enabled is not False, "networking_nudge_days": int(config.networking_nudge_days or 14),
         "networking_ai": config.networking_ai is True, "interviews_enabled": config.interviews_enabled is not False,
         "interviews_ai": config.interviews_ai is True,
+        "companyintel_enabled": config.companyintel_enabled is not False, "companyintel_ai": config.companyintel_ai is True,
+        "offers_enabled": config.offers_enabled is not False, "proposals_enabled": config.proposals_enabled is not False,
         "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
         "jobtrack_ghost_days": int(config.jobtrack_ghost_days or 14),
         "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,

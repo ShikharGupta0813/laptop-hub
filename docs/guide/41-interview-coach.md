@@ -26,6 +26,17 @@ Tap **60 seconds** or **90 seconds** for a "tell me about yourself" built only f
 ## 5. Brief
 **Build the brief** for a short summary of the role, what they ask for, where you match, the **gaps** (things they ask for that you have no confirmed fact about: prepare an honest answer), questions to ask them, and a checklist. It uses the job text only.
 
+## Speak your answer (Practice tab)
+Tap **Record and measure**, say your answer out loud, tap again. The recording is turned into text on your laptop (the same way as voice notes) and you get feedback on **how you spoke**: speaking time against a target (60 to 120 seconds for a story, 30 to 90 for "why this role"), words a minute (110 to 160 is calm and clear), filler words (um, uh, like, basically, actually, you know, so), long pauses of 2 seconds or more, and the STAR parts. This needs the secure (HTTPS) address of your laptop; on a plain address you can still type or dictate.
+
+> ⚠️ **Careful:** Transcribers often drop "um" and "uh", so the filler count can be lower than what you really said.
+
+## Day pack
+On the **Day pack** tab, type the time, the link or place and who you meet, then tap **Build the pack**. You get one page: the company brief (the saved one, or read now if you switch it on), the role, your **top 5 likely questions**, your **3 best stories** for this job, **questions to ask** and a checklist. **Copy as text** or **Read it out** (your phone reads it with its own voice). Ask Friday for "my interview pack" and it reads it out too.
+
+## Debrief
+Right after the interview, use the **Debrief** tab: the questions you were asked, how it went, what to improve and follow-ups. The questions are added to that company's list (the next time you prepare for it, they come first). A story you tell, or write down here, joins your STAR bank. Tap **Draft a thank-you note** for a short note from your own facts; copy it and send it yourself.
+
 ## 6. Pay
 Type your own lowest, target and top number. REDLINE does not know market pay and will not guess. You get general tips and sentences with your numbers filled in.
 

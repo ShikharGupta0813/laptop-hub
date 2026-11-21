@@ -448,5 +448,75 @@ class WiringTests(Base):
         self.assertFalse(ok)
 
 
+class WarmPathTests(Base):
+    """Who do I know at this company? Contacts matched on company, past companies and notes; the tracker is read, nothing is sent."""
+
+    def contacts(self, c):
+        rows = [{"name": "Dana Lee", "company": "Acme Inc", "role": "Engineering Manager", "how_known": "former teammate", "last_contact": "2026-10-20"},
+                {"name": "Ravi Shah", "company": "Globex", "past_companies": "Initech, Acme", "role": "Developer", "how_known": "college"},
+                {"name": "Mia Chen", "company": "Hooli", "how_known": "met at a meetup, she mentioned Acme is hiring", "role": "Designer"},
+                {"name": "Joe Park", "company": "Acmeology Labs", "role": "Developer"},        # a different company with a similar start
+                {"name": "Una Roy", "company": "Zed", "role": "HR"}]
+        return [c.post("/api/networking/contacts", json=r).json()["id"] for r in rows]
+
+    def test_best_person_first_with_reasons(self):
+        c = self.client()
+        ids = self.contacts(c)
+        r = c.post("/api/networking/warm-path", json={"company": "Acme", "role": "Backend Engineer"})
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        names = [x["contact"]["name"] for x in d["candidates"]]
+        self.assertEqual(names, ["Dana Lee", "Ravi Shah", "Mia Chen"])         # current colleague, then former colleague, then a mention
+        self.assertEqual(d["best"], ids[0])
+        self.assertIn("works there now", d["candidates"][0]["reasons"][0])
+        self.assertTrue(any("wrote to them" in x for x in d["candidates"][0]["reasons"]))      # a recent contact
+        self.assertIn("used to work there", d["candidates"][1]["reasons"][0])
+        self.assertIn("notes mention", d["candidates"][2]["reasons"][0])
+        self.assertNotIn("Joe Park", names)
+        self.assertFalse(d["sends"])
+        self.assertIsNone(d["draft"])
+
+    def test_with_a_draft_uses_the_existing_referral_draft_and_sends_nothing(self):
+        c = self.client()
+        ids = self.contacts(c)
+        with mock.patch.object(socket, "create_connection", side_effect=AssertionError("nothing may open a connection")):
+            d = c.post("/api/networking/warm-path", json={"company": "Acme", "role": "Senior Python Backend Engineer", "draft": True}).json()
+        self.assertEqual(d["draft"]["kind"], "referral")
+        self.assertEqual(d["draft"]["contact_id"], ids[0])
+        self.assertEqual(c.get("/api/networking/drafts").json()["drafts"][0]["id"], d["draft"]["id"])
+
+    def test_no_match_says_how_to_find_one_and_the_tracker_is_read(self):
+        c = self.client()
+        self.contacts(c)
+        Path(self.config.data_path()).mkdir(parents=True, exist_ok=True)
+        (Path(self.config.data_path()) / "jobtrack.json").write_text(json.dumps({"records": [
+            {"id": "a" * 12, "company": "Umbrella Corp", "role": "Dev", "status": "interview", "applied_at": "2026-11-01"}]}), encoding="utf-8")
+        d = c.post("/api/networking/warm-path", json={"company": "Umbrella"}).json()
+        self.assertEqual(d["candidates"], [])
+        self.assertEqual(d["best"], "")
+        self.assertEqual(d["tracker"][0]["status"], "interview")
+        self.assertTrue(any("introduce you to the hiring manager" in t for t in d["tips"]))
+        self.assertTrue(any("Nobody in your contacts" in t for t in d["tips"]))
+
+    def test_errors_are_plain_and_auth_is_needed(self):
+        self.assertEqual(self.client(False).post("/api/networking/warm-path", json={"company": "Acme"}).status_code, 401)
+        c = self.client()
+        self.assertEqual(c.post("/api/networking/warm-path", json={}).status_code, 400)
+        self.assertEqual(c.post("/api/networking/warm-path", json={"application_id": "nope"}).status_code, 404)
+
+    def test_past_companies_is_saved_on_the_contact(self):
+        c = self.client()
+        r = c.post("/api/networking/contacts", json={"name": "Ravi", "past_companies": "Initech, Acme"}).json()
+        self.assertEqual(r["past_companies"], "Initech, Acme")
+        self.assertEqual(c.put(f"/api/networking/contacts/{r['id']}", json={"name": "Ravi", "past_companies": ""}).json()["past_companies"], "")
+
+    def test_company_matching_is_whole_word(self):
+        self.assertEqual(N._same_company("Acme Inc", "Acme"), "exact")          # "Inc" is not part of the name
+        self.assertEqual(N._same_company("Acme Payments", "Acme"), "part")
+        self.assertEqual(N._same_company("Acme", "acme"), "exact")
+        self.assertEqual(N._same_company("Acmeology", "Acme"), "")
+        self.assertEqual(N._same_company("", "Acme"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

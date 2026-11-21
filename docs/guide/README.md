@@ -98,3 +98,6 @@ flowchart TD
 It matches the project as of its `HANDOFF.md` (last updated 2026-11-04, with later notes through 2026-11-12). If the code changes, update the page that mentions it.
 27. [39 · Job tracker](39-job-tracker.md): every application with its status, day 5 and 10 follow-up reminders with a draft nudge you copy yourself, and which sources get replies.
 28. [45 · Replies, insights and personal outreach](45-replies-insights-outreach.md): job mail sorted on your laptop with confirm-first suggestions, what is working plus one experiment a week, and batched personal emails sent with one tap.
+29. [48 · Company brief](48-company-brief.md): a one-page brief from public sources only, red flags, and who you know at the company.
+30. [49 · Offers and negotiation](49-offers-and-negotiation.md): record and compare offers with an India in-hand estimate, a counter-offer draft, a clause checklist and a pay check.
+31. [50 · Freelance proposals](50-freelance-proposals.md): proposal drafts from your own facts with three openings, and which opening wins more. You submit by hand.
