@@ -89,7 +89,12 @@ export async function openSources() {
     const node = el("div", { class: "ui-stack ui-stack--lg" }, ui.notice(cat.policy, { tone: "info" }));
     for (const group of cat.groups) {
       const rows = cat.presets.filter((p) => p.group === group);
-      node.append(el("section", { class: "st-group" }, el("h2", { class: "ui-caps st-caps" }, GROUP_NAME[group] || group),
+      const bulk = (group === "freelance" || group === "task") && rows.some((p) => !p.added)
+        ? ui.button({ variant: "secondary", size: "sm", icon: "plus", label: "Add all in this group", onClick: async () => {
+          try { const r = await api("/api/oppsources/presets/add-group", { method: "POST", json: { group } }); sheet.close(); await reload(); good(`Added ${r.added.length} platforms.`); }
+          catch (e) { fail(e); }
+        } }) : null;
+      node.append(el("section", { class: "st-group" }, el("h2", { class: "ui-caps st-caps" }, GROUP_NAME[group] || group), bulk,
         el("div", { class: "ui-list ui-list--inset ui-list--icons" }, rows.map((p) => ui.listRow({
           icon: p.never_automated ? "shield" : "globe", tone: p.never_automated ? "orange" : "accent", title: p.label, sub: `${p.verification}. ${p.note}`,
           meta: p.added ? ui.badge("Added", "good") : ui.badge("Add", "info"), chevron: true, onClick: () => addPreset(p, sheet) })))));
