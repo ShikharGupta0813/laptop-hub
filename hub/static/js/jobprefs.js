@@ -110,14 +110,26 @@ export function init(container) {
     const regions = text(csv(data.owner.regions), { placeholder: "India, EU" });
     const tzs = text(csv(data.owner.timezones), { placeholder: "IST" });
     const honour = ui.switchControl({ checked: data.owner.honour_region !== false, label: "Skip remote jobs limited to other regions" });
+    const auth = text(csv(data.owner.work_auth), { placeholder: "India" });
+    const notice = text(data.owner.notice_days ?? "", { placeholder: "30", inputmode: "numeric", maxlength: "3" });
+    const langs = text(csv(data.owner.languages), { placeholder: "Hindi, English" });
+    const relocate = ui.switchControl({ checked: data.owner.relocate === true, label: "Willing to relocate" });
     const save = ui.button({ label: "Save", icon: "check", variant: "primary", size: "sm", onClick: () => ui.busy(save, async () => {
-      try { data = await api("/api/jobprefs/owner", { method: "PUT", json: { regions: split(regions.value), timezones: split(tzs.value), honour_region: honour.input.checked } }); ui.toast("Saved.", { kind: "good" }); paint(); }
+      const nd = notice.value.trim();
+      if (nd && !/^\d{1,3}$/.test(nd)) { ui.toast("Notice period is a whole number of days.", { kind: "warn" }); return; }
+      try { data = await api("/api/jobprefs/owner", { method: "PUT", json: { regions: split(regions.value), timezones: split(tzs.value), honour_region: honour.input.checked,
+        work_auth: split(auth.value), notice_days: nd ? Number(nd) : null, languages: split(langs.value), relocate: relocate.input.checked } }); ui.toast("Saved.", { kind: "good" }); paint(); }
       catch (e) { fail(e); }
     }) });
     return el("section", { class: "ui-card ui-stack" }, ui.eyebrow("01", "Where you live"),
       el("p", { class: "ui-hint" }, "Countries or regions you may work from. A posting that says remote but only for the US is skipped when you are not in the US."),
       labelled("Your region(s)", regions, "Country or region names, comma separated."), labelled("Your time zone", tzs),
       el("div", { class: "ui-row jp-switchrow" }, el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Skip remote jobs limited to other regions")), honour),
+      el("p", { class: "ui-hint" }, "Used by the go / no-go label on every find: a posting that asks for something you cannot give is marked skip, with the reason. Nothing is hidden."),
+      labelled("Countries you may work in without sponsorship", auth, "For example India. Used for lines like 'must be authorised to work in the US'."),
+      labelled("Your notice period (days)", notice, "Used for 'immediate joiners' and 'notice of 30 days max'. Leave empty if not set."),
+      labelled("Languages you speak", langs, "English is always counted. Used for 'fluent German required'."),
+      el("div", { class: "ui-row jp-switchrow" }, el("span", { class: "ui-row__body" }, el("span", { class: "ui-row__title" }, "Willing to relocate")), relocate),
       save);
   }
 

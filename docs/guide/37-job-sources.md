@@ -6,7 +6,7 @@
 Settings > Assistants and rules > **Job and gig sources**. The list starts **empty**. Nothing is on until you add it.
 
 ## Three quick ways to add
-1. **From the catalogue:** public company job systems (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, Teamtailor: give the company's board name), remote boards (RemoteOK, We Work Remotely, Remotive, Himalayas, Jobicy, Arbeitnow, Hacker News "Who is hiring"), and freelance platforms by email alert. Each shows **verified <date>** or **unverified**.
+1. **From the catalogue:** public company job systems (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, Teamtailor: give the company's board name), remote boards (RemoteOK, We Work Remotely, Remotive, Himalayas, Jobicy, Arbeitnow, Hacker News "Who is hiring"), and freelance platforms by email alert. Each shows **verified <date>** or **unverified**. New: Personio and Breezy HR (company name), Workday (tenant, site and data centre such as wd5; unverified until you Test it), and three search sites with salary data, **Adzuna**, **Jooble** and **Findwork**: register for the free key yourself, paste it in the box (it goes into this laptop's secure keyring and is never shown again). Until a key is saved the source stays off and says "needs your free key".
 2. **Watch a company:** paste its careers page address. REDLINE works out which job system it uses and checks it every few minutes. A brand-new role is marked **Be early** and you get a notification. What was already open when you started is not marked.
 3. **My own source:** an RSS feed, a JSON address with a field mapping, a public page with CSS selectors, alert emails from your mail, or a webhook. Tap **Test now** to see what it would find before you rely on it.
 

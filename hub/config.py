@@ -141,6 +141,7 @@ class Config:
     oppsources_watch_interval_min: int = 10    # company watch list (early-bird)
     oppsources_stale_days: int = 45
     oppsources_ghost_days: int = 60
+    triage_ai: bool = False                 # True: the 'Ask AI' button on a find gives a second opinion (text leaves the laptop; plain verdict always shown) (hub/triage.py)
 
     # Privacy redaction (hub/redact.py): hide emails, phones, cards, keys... before text goes to a CLOUD model.
     redact_enabled: bool = True
@@ -350,7 +351,7 @@ def save(config: Config, path: Path) -> None:
         "opps_min_score": int(config.opps_min_score),
         "oppsources_enabled": config.oppsources_enabled is True, "oppsources_interval_min": int(config.oppsources_interval_min),
         "oppsources_watch_interval_min": int(config.oppsources_watch_interval_min),
-        "oppsources_stale_days": int(config.oppsources_stale_days), "oppsources_ghost_days": int(config.oppsources_ghost_days),
+        "oppsources_stale_days": int(config.oppsources_stale_days), "oppsources_ghost_days": int(config.oppsources_ghost_days), "triage_ai": config.triage_ai is True,
         "alerts_enabled": config.alerts_enabled is not False, "alerts_vips": list(config.alerts_vips or []),
         "alerts_sources": list(config.alerts_sources or []), "alerts_rules": dict(config.alerts_rules or {}),
         "alerts_speak_on_laptop": config.alerts_speak_on_laptop is True, "alerts_ai": config.alerts_ai is True,

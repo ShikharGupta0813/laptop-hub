@@ -4,6 +4,7 @@
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
 import { lanePicker, askLane } from "./lanepicker.js";
+import * as tg from "./triagebadges.js";
 
 const CSS = "/css/applyq.css";
 const TABS = [["ready", "Ready"], ["sent", "Sent"], ["skipped", "Skipped"]];
@@ -16,9 +17,10 @@ async function copy(text, what = "Copied.") {
 
 export function init(container, ctx) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
+  tg.loadCss();
   const root = el("div", { class: "aq ui-stack ui-stack--lg" });
   container.append(root);
-  let tab = "ready", items = [], summary = null, accounts = [], loadError = "", seq = 0, fill = { enabled: false, playwright: false };
+  let tab = "ready", vf = "", items = [], summary = null, accounts = [], loadError = "", seq = 0, fill = { enabled: false, playwright: false };
   const editing = new Set();
   const slot = { head: el("div", { class: "aq-head" }), list: el("div", { class: "ui-stack" }) };
 
@@ -217,7 +219,9 @@ export function init(container, ctx) {
       el("h3", { class: "aq-title" }, item.title), el("span", { class: "aq-when" }, day(item.sent_at || item.created))),
       el("div", { class: "aq-meta" }, item.company ? el("span", {}, item.company) : null, el("span", {}, item.source), ui.badge(item.channel, ""),
         item.state !== "ready" ? ui.badge(item.state, item.state === "replied" ? "good" : item.state === "failed" ? "bad" : "") : null, ...flags),
-      item.reason ? el("p", { class: "aq-reason" }, item.reason) : null);
+      item.reason ? el("p", { class: "aq-reason" }, item.reason) : null,
+      tg.verdictLine(tg.triageOf(item)), tg.ghostWhy(tg.triageOf(item)),
+      tg.flagBadges(tg.triageOf(item)).length ? el("div", { class: "tg-badges" }, ...tg.flagBadges(tg.triageOf(item))) : null);
     if (item.error) node.append(el("p", { class: "aq-missing" }, item.error));
     if (tab === "ready" && editing.has(item.id)) { node.append(editor(item, node)); return node; }
     if (d.body) node.append(el("p", { class: "aq-preview" }, d.body));
@@ -265,8 +269,14 @@ export function init(container, ctx) {
     if (loadError === "off") { slot.list.replaceChildren(ui.emptyState({ icon: "send", title: "Applications are switched off", body: "Set applyq_enabled to true in Settings." })); return; }
     header();
     if (loadError) { slot.list.replaceChildren(ui.emptyState({ icon: "alert", title: "Couldn't load applications", body: loadError, action: { label: "Try again", icon: "refresh", onClick: load } })); return; }
-    slot.list.replaceChildren(items.length ? el("div", { class: "ui-stack" }, ...items.map(card))
-      : ui.emptyState({ icon: "send", title: tab === "ready" ? "Nothing ready yet" : "Nothing here", body: tab === "ready" ? "The finder queues drafts here, or paste a link below." : "" }));
+    // Go / no-go chips (hub/triage.py): a filter only. Every item stays in the queue; "All" shows them together.
+    const counts = { apply: 0, maybe: 0, skip: 0, none: 0 };
+    for (const it of items) { const v = tg.triageOf(it)?.verdict; counts[v in counts ? v : "none"] += 1; }
+    const shown = vf ? items.filter((it) => tg.triageOf(it)?.verdict === vf) : items;
+    const chips = tab === "ready" && items.length ? tg.chipRow({ value: vf, counts, total: items.length, onChange: (v) => { vf = v; paint(); } }) : null;
+    slot.list.replaceChildren(...(chips ? [chips] : []), shown.length ? el("div", { class: "ui-stack" }, ...shown.map(card))
+      : ui.emptyState({ icon: "send", title: tab === "ready" ? (vf ? "Nothing with that label" : "Nothing ready yet") : "Nothing here",
+        body: tab === "ready" ? (vf ? "Choose All to see everything in the queue." : "The finder queues drafts here, or paste a link below.") : "" }));
   }
 
   const tabs = el("div", { class: "aq-tabs", role: "tablist" });
