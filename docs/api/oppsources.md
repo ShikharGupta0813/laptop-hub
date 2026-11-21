@@ -80,3 +80,7 @@ redirect or a robots refusal is never worked around: the source goes to "needs m
 
 Not added on purpose: LinkedIn, Indeed, Naukri, Instahyre, Wellfound, Glassdoor (they forbid bots). Remote.co was too slow to answer (timeout) and was skipped. Every preset `note` states the terms to respect (link back, call frequency).
 Use Test on a source to see what the live service answers today.
+
+## Freelance and task platforms in one tap
+
+`POST /api/oppsources/presets/add-group` with `{"group": "freelance"}` or `{"group": "task"}` adds every ready-made platform of that group that is not on your list yet (it answers `{added, already_there}`). The platforms are email-alert sources: nothing is fetched from them, nothing is automated, and you submit by hand. The source catalogue screen has an "Add all in this group" button. Platforms include Upwork, Fiverr, Freelancer, Toptal, Contra, PeoplePerHour, Guru, Braintrust, Codeable, Gun.io, Lemon.io, Arc, Truelancer, Internshala and 99designs (freelance), and DataAnnotation, Outlier, Alignerr, Mercor, Prolific, Remotasks, Appen, TELUS Digital, Turing, Toloka, Clickworker, Mechanical Turk, Microworkers, Respondent and UserTesting (tasks). They are never fetched, so they are not "verified"; LinkedIn, Indeed, Naukri, Instahyre and Wellfound stay manual.

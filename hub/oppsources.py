@@ -71,7 +71,11 @@ ITEM_STATUSES = ("new", "blocked", "expired", "closed", "dismissed")
 # terms forbid bots. Items on them are always apply_method=platform_manual and auto_submit=false. A plain data table.
 NEVER_AUTOMATE = {"linkedin.com", "indeed.com", "glassdoor.com", "upwork.com", "fiverr.com", "freelancer.com", "toptal.com",
                   "contra.com", "peopleperhour.com", "guru.com", "dataannotation.tech", "outlier.ai", "alignerr.com",
-                  "mercor.com", "remotasks.com", "scale.com", "appen.com", "telus.com", "turing.com", "prolific.com"}
+                  "mercor.com", "remotasks.com", "scale.com", "appen.com", "telus.com", "turing.com", "prolific.com",
+                  "guru.com", "usebraintrust.com", "codeable.io", "gun.io", "lemon.io", "arc.dev", "truelancer.com",
+                  "internshala.com", "99designs.com", "telusdigital.com", "toloka.ai", "clickworker.com", "mturk.com",
+                  "microworkers.com", "respondent.io", "userinterviews.com", "usertesting.com", "wellfound.com",
+                  "naukri.com", "instahyre.com"}
 ATS_HOSTS = {"greenhouse.io": "greenhouse", "lever.co": "lever", "ashbyhq.com": "ashby", "workable.com": "workable",
              "smartrecruiters.com": "smartrecruiters", "recruitee.com": "recruitee", "teamtailor.com": "teamtailor"}
 
@@ -200,6 +204,27 @@ PRESETS: list[dict] = [
     _platform("outlier", "Outlier", "llm-task", "outlier.ai", "AI-training tasks; sign-in needed."),
     _platform("alignerr", "Alignerr", "llm-task", "alignerr.com", "AI-training projects."),
     _platform("mercor", "Mercor", "llm-task", "mercor.com", "Expert contract work for AI labs."),
+    # more freelance and task platforms (email alert or pasted link only; never fetched, never automated)
+    _platform("guru", "Guru", "freelance", "guru.com", "Use job email alerts."),
+    _platform("braintrust", "Braintrust", "freelance", "usebraintrust.com", "Talent network for tech contracts: turn on job alerts."),
+    _platform("codeable", "Codeable", "freelance", "codeable.io", "WordPress and web projects: apply once, then paste openings."),
+    _platform("gun", "Gun.io", "freelance", "gun.io", "Vetted developer network: paste openings you receive."),
+    _platform("lemon", "Lemon.io", "freelance", "lemon.io", "Vetted developers for startups: paste openings you receive."),
+    _platform("arc", "Arc", "freelance", "arc.dev", "Remote developer jobs and contracts: use its email alerts."),
+    _platform("truelancer", "Truelancer", "freelance", "truelancer.com", "India-friendly freelance projects: use project email alerts."),
+    _platform("internshala", "Internshala", "freelance", "internshala.com", "India: freelance projects and internships; use its email alerts."),
+    _platform("99designs", "99designs", "freelance", "99designs.com", "Design contests and projects."),
+    _platform("prolific", "Prolific", "llm-task", "prolific.com", "Paid research studies; sign-in needed, notified by email."),
+    _platform("scale-remotasks", "Remotasks (Scale)", "llm-task", "remotasks.com", "AI data tasks; sign-in needed."),
+    _platform("appen", "Appen", "llm-task", "appen.com", "Search and AI data projects; sign-in needed."),
+    _platform("telus-digital", "TELUS Digital AI", "llm-task", "telusdigital.com", "AI community tasks; sign-in needed."),
+    _platform("turing", "Turing", "llm-task", "turing.com", "Remote developer and AI-training roles; use its email alerts."),
+    _platform("toloka", "Toloka", "llm-task", "toloka.ai", "Micro-tasks and AI data labelling; sign-in needed."),
+    _platform("clickworker", "Clickworker", "llm-task", "clickworker.com", "Micro-tasks; sign-in needed."),
+    _platform("mturk", "Amazon Mechanical Turk", "llm-task", "mturk.com", "Micro-tasks; sign-in needed."),
+    _platform("microworkers", "Microworkers", "llm-task", "microworkers.com", "Micro-tasks; sign-in needed."),
+    _platform("respondent", "Respondent", "llm-task", "respondent.io", "Paid research interviews; notified by email."),
+    _platform("usertesting", "UserTesting", "llm-task", "usertesting.com", "Paid product tests; notified by email."),
 ]
 PRESET_BY_ID = {p["id"]: p for p in PRESETS}
 
@@ -965,6 +990,24 @@ class OppSources:
         return self.add_source({"label": label, "adapter": adapter, "kind": p["kind"], "settings": settings, "preset": pid, "mode": mode,
                                 "enabled": body.get("enabled", True), "note": p["note"]})
 
+    def add_group(self, group: str) -> dict:
+        """One tap: add every ready-made platform of a group ("freelance" or "task") that is not on the list yet. They are
+        email-alert sources (nothing is fetched, nothing is automated); presets that need an input are skipped."""
+        if group not in ("freelance", "task"):
+            raise SourceError("group must be freelance or task.")
+        have = {s.get("preset") for s in self.sources()}
+        added, skipped = [], []
+        for p in PRESETS:
+            if p["group"] != group or p["needs"]:
+                continue
+            if p["id"] in have:
+                skipped.append(p["id"])
+                continue
+            self.add_preset(p["id"], {})
+            added.append(p["id"])
+        self.ctx.audit("oppsource_add_group", group=group, added=len(added))
+        return {"added": added, "already_there": skipped}
+
     async def add_watch(self, url: str, label: str = "") -> dict:
         """Owner pastes a careers URL: detect the job system (from the address, else from the page's own markup, robots.txt
         respected) and subscribe with early-bird polling."""
@@ -1526,6 +1569,10 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
         return {"presets": [{**preset_view(p), "added": p["id"] in have} for p in PRESETS],
                 "groups": ["ats", "remote", "freelance", "task"],
                 "policy": "Freelance and AI-task platforms are email-alert or open-link only. Auto-submit is off for them and for everything else: you tap."}
+
+    @router.post(P + "/presets/add-group")
+    def add_group(body: dict = Body(default={})):
+        return guarded(eng.add_group, str((body or {}).get("group") or ""))
 
     @router.post(P + "/presets/{pid}/add")
     def add_preset(pid: str, body: dict = Body(default={})):

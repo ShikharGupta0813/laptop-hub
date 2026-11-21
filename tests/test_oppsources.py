@@ -171,6 +171,24 @@ class Presets(Base):
                      "hn-hiring", "upwork", "fiverr", "freelancer", "toptal", "contra", "data-annotation"):
             self.assertIn(want, by)
 
+    def test_add_a_whole_group_in_one_tap_and_only_once(self):
+        r = self.client.post("/api/oppsources/presets/add-group", json={"group": "freelance"})
+        self.assertEqual(r.status_code, 200, r.text)
+        added = r.json()["added"]
+        self.assertGreaterEqual(len(added), 10)
+        for want in ("upwork", "guru", "braintrust", "truelancer"):
+            self.assertIn(want, added)
+        rows = self.client.get("/api/oppsources/sources").json()["sources"]
+        self.assertEqual(len(rows), len(added))
+        for row in rows:
+            self.assertEqual(row["adapter"], "email")
+        again = self.client.post("/api/oppsources/presets/add-group", json={"group": "freelance"}).json()
+        self.assertEqual(again["added"], [])
+        self.assertEqual(len(again["already_there"]), len(added))
+        task = self.client.post("/api/oppsources/presets/add-group", json={"group": "task"}).json()
+        self.assertIn("prolific", task["added"])
+        self.assertEqual(self.client.post("/api/oppsources/presets/add-group", json={"group": "ats"}).status_code, 400)
+
     def test_platforms_are_email_or_link_only_and_never_auto_submit(self):
         for pid in ("upwork", "fiverr", "freelancer", "toptal", "contra", "data-annotation", "outlier", "alignerr", "mercor"):
             r = self.client.post(f"/api/oppsources/presets/{pid}/add", json={})
