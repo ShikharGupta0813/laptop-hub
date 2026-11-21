@@ -39,23 +39,35 @@ from xml.etree import ElementTree
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
-from . import opps, opps_vet, oppsnorm as N, panic as _panic, profile as profile_mod
+from . import opps, opps_vet, oppsnorm as N, panic as _panic, profile as profile_mod, triage
 from .assistant import ExtraTool, mark_tools
 from .common import Ctx, InProcessClient, JsonFile
-from .provlist import clean as _pclean
+from .provlist import KeyringSecrets, ListError, clean as _pclean
 from .research import BlockedURL, check_url
 
 log = logging.getLogger("hub.oppsources")
 
 ADAPTERS = ("rss", "json", "html", "email", "webhook", "greenhouse", "lever", "ashby", "workable", "smartrecruiters",
-            "recruitee", "teamtailor", "hn", "link")
-ATS_ADAPTERS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "teamtailor")
+            "recruitee", "teamtailor", "hn", "link", "personio", "breezy", "workday", "adzuna", "jooble", "findwork")
+ATS_ADAPTERS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "teamtailor", "personio", "breezy")
+# Search APIs that need the owner's own free key. The key lives in the OS keyring (never in hub.json, a response or a log).
+KEYED = {"adzuna": {"label": "Adzuna", "fields": (("app_id", "App id"), ("app_key", "App key")), "signup": "https://developer.adzuna.com/signup"},
+         "jooble": {"label": "Jooble", "fields": (("key", "API key"),), "signup": "https://jooble.org/api/about"},
+         "findwork": {"label": "Findwork", "fields": (("token", "API token"),), "signup": "https://findwork.dev/developers/"}}
+WORKDAY_HOST_RE = re.compile(r"^wd\d{1,3}$")
+TENANT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$")
+COUNTRY_RE = re.compile(r"^[a-z]{2}$")
+ADZUNA_CURRENCY = {"gb": "GBP", "us": "USD", "in": "INR", "au": "AUD", "ca": "CAD", "de": "EUR", "fr": "EUR", "nl": "EUR", "it": "EUR", "at": "EUR",
+                   "pl": "PLN", "sg": "SGD", "za": "ZAR", "nz": "NZD", "br": "BRL", "ch": "CHF", "mx": "MXN", "ru": "RUB", "es": "EUR", "be": "EUR"}
+WORKDAY_PAGE = 20                  # Workday answers at most 20 postings per request
+WORKDAY_PAGES = 3
 KINDS = ("job", "freelance", "llm-task")
 MAX_SOURCES = 200
 MAX_ITEMS = 4000
 MAX_PER_RUN = 150
 PRESET_DATE = "2026-11-14"
 LIVE_DATE = "2026-11-15"          # day the presets were checked against the live public endpoints (read-only, one request each)
+LIVE_DATE_2 = "2026-11-21"        # day Workday, Personio and Breezy were checked (one polite request each)
 HOST_GAP = 2.0                    # seconds between two requests to the same host
 LOOP_TICK = 20.0
 MIN_INTERVAL, MAX_INTERVAL = 2, 1440
@@ -77,7 +89,8 @@ NEVER_AUTOMATE = {"linkedin.com", "indeed.com", "glassdoor.com", "upwork.com", "
                   "microworkers.com", "respondent.io", "userinterviews.com", "usertesting.com", "wellfound.com",
                   "naukri.com", "instahyre.com"}
 ATS_HOSTS = {"greenhouse.io": "greenhouse", "lever.co": "lever", "ashbyhq.com": "ashby", "workable.com": "workable",
-             "smartrecruiters.com": "smartrecruiters", "recruitee.com": "recruitee", "teamtailor.com": "teamtailor"}
+             "smartrecruiters.com": "smartrecruiters", "recruitee.com": "recruitee", "teamtailor.com": "teamtailor",
+             "personio.de": "personio", "breezy.hr": "breezy", "myworkdayjobs.com": "workday"}
 
 
 class SourceError(ValueError):
@@ -135,9 +148,10 @@ _REMOTE_JSON_FIELDS = {
 }
 
 
-def _preset(pid, label, group, adapter, kind, settings=None, *, needs=(), verified="", note="", docs="", modes=None):
+def _preset(pid, label, group, adapter, kind, settings=None, *, needs=(), verified="", note="", docs="", modes=None, optional=()):
     return {"id": pid, "label": label, "group": group, "adapter": adapter, "kind": kind, "settings": settings or {},
-            "needs": list(needs), "verified_on": verified, "note": note, "docs": docs, "modes": modes or []}
+            "needs": list(needs), "optional": list(optional), "verified_on": verified, "note": note, "docs": docs, "modes": modes or [],
+            "needs_key": adapter if adapter in KEYED else ""}
 
 
 def _platform(pid, label, kind, domain, note):
@@ -167,6 +181,32 @@ PRESETS: list[dict] = [
             note="Public careers API: <company>.recruitee.com/api/offers/. Checked live.", docs="https://docs.recruitee.com/reference/careers-site-api"),
     _preset("teamtailor", "Teamtailor jobs feed", "ats", "teamtailor", "job", needs=("board",), verified=LIVE_DATE,
             note="Public RSS feed of a Teamtailor career site: <company>.teamtailor.com/jobs.rss. Checked live.", docs="https://support.teamtailor.com/"),
+    _preset("workday", "Workday career site", "ats", "workday", "job", needs=("tenant", "site", "host"), optional=("search",),
+            note="UNVERIFIED. Public career-site search: POST https://<tenant>.<wdN>.myworkdayjobs.com/wday/cxs/<tenant>/<site>/jobs with {limit, offset, searchText}. "
+                 "The host is the part such as wd1, wd3 or wd5 in the careers address. Checked once on 2026-11-21 against one big public board: it answered a redirect to its "
+                 "maintenance page ('Workday is currently unavailable'), so the posting fields come from Workday's published shape, not a live answer. Needs the host to allow "
+                 "robots; one request per page, 2 s apart. The list has no description text (only a title, place and 'posted N days ago'). Use Test before relying on it.",
+            docs="https://community.workday.com/"),
+    _preset("personio", "Personio jobs feed", "ats", "personio", "job", needs=("board",), verified=LIVE_DATE_2,
+            note="Public XML feed: https://<company>.jobs.personio.de/xml. The board name is the first part of the careers address. Checked live 2026-11-21 against one public board "
+                 "(<position> with id, office, department, name, employmentType, seniority, schedule, createdAt; descriptions are empty on that board).",
+            docs="https://developer.personio.de/docs/retrieving-open-job-positions"),
+    _preset("breezy", "Breezy HR careers page", "ats", "breezy", "job", needs=("board",), verified=LIVE_DATE_2,
+            note="Public JSON: https://<company>.breezy.hr/json. The board name is the first part of the careers address. Checked live 2026-11-21 against one public board "
+                 "(a list with id, name, url, published_date, type, location, salary text). The list has no description text.",
+            docs="https://help.breezy.hr/"),
+    # search APIs with the owner's own free key (the preset stays off until the key is saved in the OS keyring)
+    _preset("adzuna", "Adzuna (has salary data)", "search", "adzuna", "job", {"pages": 1}, needs=("country", "what"), optional=("where",),
+            note="NEEDS YOUR FREE ADZUNA KEY (app id and app key from developer.adzuna.com). Search API: https://api.adzuna.com/v1/api/jobs/<country>/search/<page>; country is a two-letter code "
+                 "such as in, gb, us, au, ca, de. UNVERIFIED: built from the public docs, not called live (no key). Salaries Adzuna only estimates are ignored; real ones become the pay.",
+            docs="https://developer.adzuna.com/docs/search"),
+    _preset("jooble", "Jooble", "search", "jooble", "job", needs=("keywords",), optional=("location",),
+            note="NEEDS YOUR FREE JOOBLE KEY (request one at jooble.org/api/about). POST https://jooble.org/api/<key> with {keywords, location}. UNVERIFIED: built from the public docs, "
+                 "not called live (no key). The key is part of the address Jooble uses, so it is kept out of every log and message.",
+            docs="https://jooble.org/api/about"),
+    _preset("findwork", "Findwork", "search", "findwork", "job", needs=("search",), optional=("location",),
+            note="NEEDS YOUR FREE FINDWORK TOKEN (findwork.dev/developers). GET https://findwork.dev/api/jobs/ with the header 'Authorization: Token <token>'. UNVERIFIED: built from the public docs, "
+                 "not called live (no key).", docs="https://findwork.dev/developers/"),
     # remote boards with public feeds / APIs
     _preset("remoteok", "RemoteOK", "remote", "json", "job", _REMOTE_JSON_FIELDS["remoteok"], verified=LIVE_DATE,
             note="Public JSON API. Their terms: link back (followed link) to the listing on Remote OK and name Remote OK as the source; keep calls few."),
@@ -256,6 +296,10 @@ def ats_url(adapter: str, settings: dict) -> str:
         return f"https://{b}.recruitee.com/api/offers/"
     if adapter == "teamtailor":
         return f"https://{b}.teamtailor.com/jobs.rss"
+    if adapter == "personio":
+        return f"https://{b}.jobs.personio.de/xml"
+    if adapter == "breezy":
+        return f"https://{b}.breezy.hr/json"
     raise SourceError("Unknown job system.")
 
 
@@ -267,6 +311,8 @@ _ATS_PATTERNS = (
     ("smartrecruiters", re.compile(r"(?:careers|jobs)\.smartrecruiters\.com/([\w.%-]+)", re.I)),
     ("recruitee", re.compile(r"([\w-]+)\.recruitee\.com", re.I)),
     ("teamtailor", re.compile(r"([\w-]+)\.teamtailor\.com", re.I)),
+    ("personio", re.compile(r"([\w-]+)\.jobs\.personio\.(?:de|com)", re.I)),
+    ("breezy", re.compile(r"([\w-]+)\.breezy\.hr", re.I)),
 )
 _NOT_BOARD = {"embed", "v1", "api", "www", "static", "assets", "cdn", "careers", "jobs", "widget", "boards", "job_board"}
 
@@ -331,11 +377,28 @@ def parse_ats(adapter: str, body: str, settings: dict) -> tuple[list[dict], bool
         for r in rows:
             r["company"] = r["company"] or company or settings.get("board", "")
         return rows, True
+    if adapter == "personio":
+        return parse_personio(body, settings), True
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
         raise ValueError("not JSON") from None
     rows: list[dict] = []
+    if adapter == "breezy":
+        if not isinstance(data, list):
+            raise ValueError("not a Breezy positions list")
+        for j in data:
+            if not isinstance(j, dict):
+                continue
+            loc = j.get("location") if isinstance(j.get("location"), dict) else {}
+            remote = loc.get("is_remote")
+            detail = str(_g(loc, "remote_details", "value") or "").lower()
+            rows.append({"title": _text(j.get("name")), "company": company or _text(_g(j, "company", "name")) or settings.get("board", ""),
+                         "url": _text(j.get("url")), "description": "", "published": j.get("published_date") or "",
+                         "location": _text(loc.get("name")), "employment": _text(_g(j, "type", "name")),
+                         "remote": "hybrid" if detail == "hybrid" else "remote" if remote else "",
+                         "pay_text": _text(j.get("salary")), "ext_id": str(j.get("id") or "")})
+        return [r for r in rows if r["title"]], True
     if adapter == "greenhouse":
         for j in (data.get("jobs") if isinstance(data, dict) else None) or []:
             rows.append({"title": _text(j.get("title")), "company": company or settings.get("board", ""), "url": _text(j.get("absolute_url")),
@@ -394,6 +457,135 @@ def parse_ats(adapter: str, body: str, settings: dict) -> tuple[list[dict], bool
     else:
         raise ValueError("unknown job system")
     return [r for r in rows if r["title"]], True
+
+
+def parse_personio(text: str, settings: dict) -> list[dict]:
+    """Rows from a Personio XML feed: <workzag-jobs><position><id/><office/><name/><jobDescriptions><jobDescription><name/><value/>...</position>."""
+    try:
+        root = profile_mod.safe_xml_root(text)
+    except (ElementTree.ParseError, ValueError):
+        raise ValueError("not a readable Personio feed") from None
+    board = settings.get("board", "")
+    company = clean(settings.get("company") or "", 100) or board
+    rows = []
+    for pos in root.iter():
+        if opps._local(pos.tag) != "position":
+            continue
+        f: dict[str, str] = {}
+        parts: list[str] = []
+        for child in pos:
+            name = opps._local(child.tag)
+            if name == "jobdescriptions":
+                for jd in child:
+                    head = body = ""
+                    for part in jd:
+                        pn = opps._local(part.tag)
+                        if pn == "name":
+                            head = (part.text or "").strip()
+                        elif pn == "value":
+                            body = (part.text or "").strip()
+                    if body:
+                        parts.append((head + ": " if head else "") + opps.strip_html(htmllib.unescape(body) if "&lt;" in body else body, 1500))
+            else:
+                f.setdefault(name, (child.text or "").strip())
+        pid = f.get("id", "")
+        if not f.get("name"):
+            continue
+        rows.append({"title": clean(f["name"], 200), "company": company, "description": "\n".join(parts)[:3000],
+                     "url": f"https://{quote(board, safe='')}.jobs.personio.de/job/{quote(pid, safe='')}" if pid and board else "",
+                     "published": f.get("createdat", ""), "location": clean(f.get("office", ""), 100),
+                     "employment": clean((f.get("schedule", "") + " " + f.get("employmenttype", "")).strip(), 60),
+                     "ext_id": pid, "department": clean(f.get("department", ""), 80)})
+    return rows
+
+
+def parse_adzuna(data: Any, settings: dict) -> list[dict]:
+    """Adzuna search answer: {count, results:[{id, title, description, created, redirect_url, salary_min, salary_max, salary_is_predicted,
+    contract_type, contract_time, location{display_name, area[]}, company{display_name}, category{label}}]}. Yearly salaries in the
+    country's currency. A salary Adzuna only estimates (salary_is_predicted "1") is dropped: it is a guess, not the employer's figure."""
+    rows_in = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(rows_in, list):
+        raise ValueError("not an Adzuna search answer")
+    cur = ADZUNA_CURRENCY.get(str(settings.get("country") or "").lower(), "")
+    rows = []
+    for j in rows_in[:100]:
+        if not isinstance(j, dict) or not _text(j.get("title")):
+            continue
+        predicted = str(j.get("salary_is_predicted") or "0") in ("1", "true", "True")
+        pay = None if predicted else N.pay_struct(j.get("salary_min"), j.get("salary_max"), cur, "year")
+        rows.append({"title": _text(j.get("title")), "company": _text(_g(j, "company", "display_name")), "url": _text(j.get("redirect_url")),
+                     "description": _text(j.get("description"), 3000), "published": j.get("created") or "",
+                     "location": _text(_g(j, "location", "display_name")),
+                     "employment": " ".join(x for x in (_text(j.get("contract_time")).replace("_", "-"), _text(j.get("contract_type"))) if x),
+                     "pay": pay, "ext_id": str(j.get("id") or "")})
+    return rows
+
+
+def parse_jooble(data: Any, settings: dict) -> list[dict]:
+    """Jooble answer: {totalCount, jobs:[{title, location, snippet, salary, source, type, link, company, updated, id}]}."""
+    rows_in = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(rows_in, list):
+        raise ValueError("not a Jooble search answer")
+    rows = []
+    for j in rows_in[:100]:
+        if not isinstance(j, dict) or not _text(j.get("title")):
+            continue
+        rows.append({"title": _text(j.get("title")), "company": _text(j.get("company")), "url": _text(j.get("link")),
+                     "description": _text(j.get("snippet"), 3000), "published": j.get("updated") or "", "location": _text(j.get("location")),
+                     "employment": _text(j.get("type")), "pay_text": _text(j.get("salary")), "ext_id": str(j.get("id") or "")})
+    return rows
+
+
+def parse_findwork(data: Any, settings: dict) -> list[dict]:
+    """Findwork answer: {count, next, previous, results:[{id, role, company_name, employment_type, location, remote, url, text, date_posted, keywords[]}]}."""
+    rows_in = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(rows_in, list):
+        raise ValueError("not a Findwork answer")
+    rows = []
+    for j in rows_in[:100]:
+        if not isinstance(j, dict) or not _text(j.get("role")):
+            continue
+        kw = _text(j.get("keywords"))
+        rows.append({"title": _text(j.get("role")), "company": _text(j.get("company_name")), "url": _text(j.get("url")),
+                     "description": (_text(j.get("text"), 3000) + (f"\nTags: {kw}" if kw else "")).strip(), "published": j.get("date_posted") or "",
+                     "location": _text(j.get("location")), "employment": _text(j.get("employment_type")),
+                     "remote": "remote" if j.get("remote") is True else "", "ext_id": str(j.get("id") or "")})
+    return rows
+
+
+_WD_AGO = re.compile(r"(\d+)\+?\s+days?\s+ago", re.I)
+
+
+def workday_posted(text: str, now: float) -> str:
+    """'Posted Today', 'Posted Yesterday', 'Posted 5 Days Ago', 'Posted 30+ Days Ago' to an ISO date; '' when it says nothing usable."""
+    t = str(text or "")
+    days = 0 if re.search(r"today", t, re.I) else 1 if re.search(r"yesterday", t, re.I) else None
+    if days is None:
+        m = _WD_AGO.search(t)
+        days = int(m.group(1)) if m else None
+    if days is None:
+        return ""
+    return dt.datetime.fromtimestamp(now - days * 86400, dt.timezone.utc).date().isoformat()
+
+
+def parse_workday(data: Any, settings: dict, now: float) -> list[dict]:
+    """Workday cxs answer: {total, jobPostings:[{title, externalPath, locationsText, postedOn, bulletFields[]}]}. No description in the list."""
+    rows_in = data.get("jobPostings") if isinstance(data, dict) else None
+    if not isinstance(rows_in, list):
+        raise ValueError("not a Workday jobs answer")
+    tenant, host, site = settings.get("tenant", ""), settings.get("host", ""), settings.get("site", "")
+    company = clean(settings.get("company") or "", 100) or tenant
+    base = f"https://{quote(tenant, safe='')}.{quote(host, safe='')}.myworkdayjobs.com/{quote(site, safe='')}"
+    rows = []
+    for j in rows_in:
+        if not isinstance(j, dict) or not _text(j.get("title")):
+            continue
+        path = str(j.get("externalPath") or "")
+        bullets = j.get("bulletFields") if isinstance(j.get("bulletFields"), list) else []
+        rows.append({"title": _text(j.get("title")), "company": company, "url": base + path if path.startswith("/") else "", "description": "",
+                     "published": workday_posted(j.get("postedOn"), now), "location": _text(j.get("locationsText")),
+                     "ext_id": _text(bullets[0]) if bullets else path})
+    return rows
 
 
 # ---- generic parsers --------------------------------------------------------------------------------------------------
@@ -582,8 +774,10 @@ class Fetch(opps.Fetcher):
         if slot - now > 0:
             await self.sleep(slot - now)
 
-    async def _raw2(self, client, url: str, accept: str, etag: str, last_modified: str) -> Resp2:
+    async def _raw2(self, client, url: str, accept: str, etag: str, last_modified: str, *, method: str = "GET", json_body: Any = None,
+                    extra_headers: dict | None = None) -> Resp2:
         current = url
+        origin_host = _host(url)
         for _ in range(opps.MAX_REDIRECTS + 1):
             try:
                 await check_url(current, self.resolver)
@@ -595,7 +789,10 @@ class Fetch(opps.Fetcher):
                 headers["If-None-Match"] = etag
             if last_modified:
                 headers["If-Modified-Since"] = last_modified
-            async with client.stream("GET", current, headers=headers) as resp:
+            if extra_headers and _host(current) == origin_host:      # a token is never sent to another host after a redirect
+                headers.update(extra_headers)
+            kwargs = {"json": json_body} if method == "POST" else {}
+            async with client.stream(method, current, headers=headers, **kwargs) as resp:
                 if resp.status_code in (301, 302, 303, 307, 308):
                     target = resp.headers.get("location")
                     if not target:
@@ -603,6 +800,8 @@ class Fetch(opps.Fetcher):
                     current = urljoin(current, target)
                     if opps.LOGIN_PATH.search(urlsplit(current).path):
                         raise opps.Blocked("the site wants a sign-in (logged-in pages are never read)")
+                    if method == "POST" and resp.status_code in (301, 302, 303):
+                        method, json_body = "GET", None
                     continue
                 if resp.status_code == 304:
                     return Resp2(304, "", "", current, dict(resp.headers))
@@ -624,14 +823,15 @@ class Fetch(opps.Fetcher):
         raise opps.FetchFail("too many redirects")
 
     async def fetch(self, url: str, accept: str = "*/*", *, etag: str = "", last_modified: str = "", robots: bool = False,
-                    timeout: float = opps.SOURCE_TIMEOUT) -> Resp2:
+                    timeout: float = opps.SOURCE_TIMEOUT, method: str = "GET", json_body: Any = None, headers: dict | None = None) -> Resp2:
         import httpx
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=8.0), follow_redirects=False,
                                          transport=self.transport, headers={"User-Agent": opps.USER_AGENT}) as client:
                 if robots and not await self.allowed(client, url):
                     raise opps.Blocked("robots.txt asks automated readers not to fetch this")
-                return await asyncio.wait_for(self._raw2(client, url, accept, etag, last_modified), timeout)
+                return await asyncio.wait_for(self._raw2(client, url, accept, etag, last_modified, method=method, json_body=json_body,
+                                                         extra_headers=headers), timeout)
         except (opps.Blocked, opps.FetchFail):
             raise
         except asyncio.TimeoutError:
@@ -793,6 +993,43 @@ def check_settings(adapter: str, s: dict) -> dict:
         out["board"] = board
         if adapter == "lever" and s.get("region") == "eu":
             out["region"] = "eu"
+    if adapter == "workday":
+        tenant, site, host = clean(s.get("tenant"), 60), clean(s.get("site"), 80), clean(s.get("host"), 8).lower()
+        if not TENANT_RE.match(tenant):
+            raise SourceError("The Workday tenant may only hold letters, digits, dashes and underscores (the first part of the careers address).")
+        if not TENANT_RE.match(site):
+            raise SourceError("The Workday site name may only hold letters, digits, dashes and underscores (the last part of the careers address).")
+        if not WORKDAY_HOST_RE.match(host):
+            raise SourceError("The Workday data centre is something like wd1, wd3 or wd5 (the second part of the careers address).")
+        out.update(tenant=tenant, site=site, host=host)
+        if s.get("search"):
+            out["search"] = clean(s["search"], 80)
+    if adapter == "adzuna":
+        country = clean(s.get("country"), 2).lower()
+        if not COUNTRY_RE.match(country):
+            raise SourceError("The Adzuna country is a two-letter code such as in, gb, us, au, ca or de.")
+        out["country"] = country
+        out["what"] = clean(s.get("what"), 80)
+        if s.get("where"):
+            out["where"] = clean(s["where"], 80)
+        try:
+            out["pages"] = max(1, min(int(s.get("pages") or 1), 3))
+        except (TypeError, ValueError):
+            raise SourceError("pages must be a whole number from 1 to 3.") from None
+        if not out["what"]:
+            raise SourceError("Give the words to search for (for example: python developer).")
+    if adapter == "jooble":
+        out["keywords"] = clean(s.get("keywords"), 100)
+        if not out["keywords"]:
+            raise SourceError("Give the words to search for (for example: python developer).")
+        if s.get("location"):
+            out["location"] = clean(s["location"], 80)
+    if adapter == "findwork":
+        out["search"] = clean(s.get("search"), 100)
+        if not out["search"]:
+            raise SourceError("Give the words to search for (for example: python).")
+        if s.get("location"):
+            out["location"] = clean(s["location"], 80)
     if adapter == "email":
         out["account"] = clean(s.get("account"), 60)
         out["senders"] = [clean(x, 120).lower() for x in (s.get("senders") or []) if isinstance(x, str) and clean(x, 120)][:12]
@@ -830,11 +1067,76 @@ def validate_source(body: dict, current: dict | None = None) -> dict:
     merged = {**(cur.get("settings") or {}), **(body.get("settings") if isinstance(body.get("settings"), dict) else {})}
     settings = check_settings(adapter, merged)
     watch = bool(body.get("watch", cur.get("watch", False)))
-    if watch and adapter not in ATS_ADAPTERS + ("rss", "json", "html"):
+    if watch and adapter not in ATS_ADAPTERS + ("rss", "json", "html", "workday"):
         raise SourceError("Only fetched sources can be on the company watch list.")
     return {"id": cur.get("id", ""), "label": label, "adapter": adapter, "kind": kind, "enabled": body.get("enabled", cur.get("enabled", True)),
             "watch": watch, "interval_min": interval, "settings": settings, "preset": clean(body.get("preset", cur.get("preset", "")), 40),
             "mode": clean(body.get("mode", cur.get("mode", "")), 20), "note": clean(body.get("note", cur.get("note", "")), 200)}
+
+
+# ---- the owner's free API keys ----------------------------------------------------------------------------------------
+
+class SourceKeys:
+    """Adzuna, Jooble and Findwork keys, kept in the OS keyring (service `redline-providers`, name `oppsources:<provider>:<field>`), the same
+    place as the other provider keys. A key is NEVER written to hub.json, returned by any route, put in a log, an audit line, an error or a
+    stored item: `status()` only says whether each key is set. Tests pass `MemorySecrets`."""
+
+    def __init__(self, secrets=None):
+        self.secrets = secrets or KeyringSecrets()
+
+    @staticmethod
+    def _name(provider: str, field: str) -> str:
+        return f"oppsources:{provider}:{field}"
+
+    @staticmethod
+    def _spec(provider: str) -> dict:
+        spec = KEYED.get(provider)
+        if spec is None:
+            raise SourceError("That source does not use a key.", 404)
+        return spec
+
+    def values(self, provider: str) -> dict[str, str]:
+        spec = self._spec(provider)
+        return {f: self.secrets.get(self._name(provider, f)) for f, _ in spec["fields"]}
+
+    def has(self, provider: str) -> bool:
+        return all(v for v in self.values(provider).values())
+
+    def set(self, provider: str, given: Any) -> None:
+        spec = self._spec(provider)
+        if not isinstance(given, dict):
+            raise SourceError("Send the key as {\"values\": {...}}.")
+        cleaned = {}
+        for field, label in spec["fields"]:
+            v = given.get(field)
+            if not isinstance(v, str) or not (8 <= len(v.strip()) <= 200) or re.search(r"[\s/?#&]", v.strip()):
+                raise SourceError(f"{label}: paste the key exactly as {spec['label']} gave it (8 to 200 characters, no spaces).")
+            cleaned[field] = v.strip()
+        try:
+            for field, v in cleaned.items():
+                self.secrets.set(self._name(provider, field), v)
+        except ListError as exc:
+            raise SourceError(str(exc), exc.status) from None
+
+    def delete(self, provider: str) -> None:
+        for field, _ in self._spec(provider)["fields"]:
+            self.secrets.delete(self._name(provider, field))
+
+    def scrub(self, text: str) -> str:
+        """Every stored key value replaced by ***, for any text that might carry a request address."""
+        for provider in KEYED:
+            for v in self.values(provider).values():
+                if v and len(v) >= 4:
+                    text = text.replace(v, "***")
+        return text
+
+    def status(self) -> dict:
+        out = {}
+        for provider, spec in KEYED.items():
+            have = self.values(provider)
+            out[provider] = {"label": spec["label"], "set": all(have.values()), "signup": spec["signup"],
+                             "fields": [{"name": f, "label": label, "set": bool(have[f])} for f, label in spec["fields"]]}
+        return out
 
 
 # ---- the engine -------------------------------------------------------------------------------------------------------
@@ -847,8 +1149,9 @@ class OppSources:
     """Sources, items, runs. One per app (`ctx.oppsources`). Injectable: `fetcher`, `clock`, `mail` (a gmailx-like object)."""
 
     def __init__(self, ctx: Ctx, *, fetcher: Fetch | None = None, clock: Callable[[], float] | None = None, mail: Any = None,
-                 finder: Any = None):
+                 finder: Any = None, secrets: Any = None):
         self.ctx, self.config = ctx, ctx.config
+        self.keys = SourceKeys(secrets)
         self.clock = clock or time.time
         self.fetcher = fetcher or Fetch(clock=self.clock)
         self._mail, self._finder = mail, finder
@@ -928,6 +1231,9 @@ class OppSources:
             if len(rows) >= MAX_SOURCES:
                 raise SourceError(f"The list is full ({MAX_SOURCES} sources). Delete one first.")
             entry = validate_source(body)
+            if entry["adapter"] in KEYED and not self.keys.has(entry["adapter"]):
+                entry["enabled"] = False                  # a key-gated source stays off until its key exists
+                entry["note"] = (entry["note"] or "")[:150] + f" Needs your free {KEYED[entry['adapter']]['label']} key."
             entry["id"] = self._new_id(entry["label"], {s["id"] for s in rows})
             entry["created"] = _now_iso(self.clock())
             rows.append(entry)
@@ -942,6 +1248,8 @@ class OppSources:
             if cur is None:
                 raise SourceError("No such source.", 404)
             entry = validate_source(body, cur)
+            if entry["adapter"] in KEYED and entry["enabled"] and not self.keys.has(entry["adapter"]):
+                raise SourceError(f"Needs your free {KEYED[entry['adapter']]['label']} key. Save it first, then switch this source on.", 409)
             entry["created"] = cur.get("created", "")
             rows[rows.index(cur)] = entry
             self._save_sources(rows)
@@ -976,6 +1284,10 @@ class OppSources:
             if not value:
                 raise SourceError(f"This preset needs: {need}.")
             settings[need] = value
+        for opt in p.get("optional", ()):
+            value = body.get(opt) or (body.get("settings") or {}).get(opt)
+            if value:
+                settings[opt] = value
         if p["adapter"] == "lever" and body.get("region") == "eu":
             settings["region"] = "eu"
         mode = body.get("mode") or (p["modes"][0] if p["modes"] else "")
@@ -984,7 +1296,8 @@ class OppSources:
         adapter = "link" if mode == "open-link" else p["adapter"]
         if adapter == "link":
             settings = {k: v for k, v in settings.items() if k != "senders"}
-        label = clean(body.get("label"), 60) or (f"{p['label']} ({settings['board']})" if "board" in settings else p["label"] + (" (open link)" if adapter == "link" else ""))
+        label = clean(body.get("label"), 60) or (f"{p['label']} ({settings['board'] if 'board' in settings else settings['tenant']})" if ("board" in settings or "tenant" in settings)
+                                                 else p["label"] + (" (open link)" if adapter == "link" else ""))
         if isinstance(body.get("settings"), dict):
             settings.update({k: v for k, v in body["settings"].items() if k in ("senders", "account", "company", "subject_contains", "hours")})
         return self.add_source({"label": label, "adapter": adapter, "kind": p["kind"], "settings": settings, "preset": pid, "mode": mode,
@@ -1135,11 +1448,13 @@ class OppSources:
 
     @staticmethod
     def fetched(s: dict) -> bool:
-        return s["adapter"] in ("rss", "json", "html", "hn", "email") + ATS_ADAPTERS
+        return s["adapter"] in ("rss", "json", "html", "hn", "email", "workday") + ATS_ADAPTERS + tuple(KEYED)
 
     def due(self, s: dict, now: float) -> bool:
         if not s.get("enabled") or not self.fetched(s):
             return False
+        if s["adapter"] in KEYED and not self.keys.has(s["adapter"]):
+            return False                                 # key removed after the source was switched on: it simply waits
         return now >= float(self._state()["runs"].get(s["id"], {}).get("next_at") or 0)
 
     async def _rows(self, s: dict, run: dict | None, persist: bool = True) -> tuple[list[dict], bool, dict]:
@@ -1157,6 +1472,10 @@ class OppSources:
                 raise ValueError("no hiring thread found")
             resp = await self.fetcher.fetch(f"https://hn.algolia.com/api/v1/search?tags=comment,story_{story}&hitsPerPage=100", "application/json")
             return parse_hn_comments(json.loads(resp.text)), False, meta
+        if a == "workday":
+            return await self._workday_rows(st), False, meta
+        if a in KEYED:
+            return await self._keyed_rows(a, st), False, meta
         url = ats_url(a, st) if a in ATS_ADAPTERS else st["url"]
         accept = "application/json,application/rss+xml,application/atom+xml,application/xml;q=0.9,text/html;q=0.5,*/*;q=0.3"
         resp = await self.fetcher.fetch(url, accept, etag=(run or {}).get("etag", ""), last_modified=(run or {}).get("last_modified", ""),
@@ -1186,6 +1505,62 @@ class OppSources:
         if a == "html":
             return parse_html_rows(resp.text, st, resp.url), False, meta
         raise ValueError("this source type is not fetched")
+
+    async def _workday_rows(self, st: dict) -> list[dict]:
+        """Workday career-site search: POST {limit, offset, searchText}, up to WORKDAY_PAGES pages, robots.txt honoured, host gap kept."""
+        url = f"https://{st['tenant']}.{st['host']}.myworkdayjobs.com/wday/cxs/{st['tenant']}/{st['site']}/jobs"
+        rows: list[dict] = []
+        for page in range(WORKDAY_PAGES):
+            body = {"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": page * WORKDAY_PAGE, "searchText": st.get("search", "")}
+            resp = await self.fetcher.fetch(url, "application/json", method="POST", json_body=body, robots=True)
+            try:
+                data = json.loads(resp.text)
+            except json.JSONDecodeError:
+                raise ValueError("not JSON") from None
+            got = parse_workday(data, st, self.clock())
+            rows.extend(got)
+            total = data.get("total") if isinstance(data, dict) else None
+            if len(got) < WORKDAY_PAGE or (isinstance(total, int) and (page + 1) * WORKDAY_PAGE >= total):
+                break
+        return rows
+
+    async def _keyed_rows(self, adapter: str, st: dict) -> list[dict]:
+        """Adzuna, Jooble and Findwork: the owner's own free key from the OS keyring. The key is placed in the request and nowhere else."""
+        from urllib.parse import urlencode
+        if not self.keys.has(adapter):
+            raise SourceError(f"Needs your free {KEYED[adapter]['label']} key. Save it in the source catalogue first.", 409)
+        key = self.keys.values(adapter)
+        if adapter == "adzuna":
+            rows: list[dict] = []
+            for page in range(1, int(st.get("pages") or 1) + 1):
+                q = {"app_id": key["app_id"], "app_key": key["app_key"], "results_per_page": 50, "what": st.get("what", ""), "sort_by": "date",
+                     "content-type": "application/json"}
+                if st.get("where"):
+                    q["where"] = st["where"]
+                resp = await self.fetcher.fetch(f"https://api.adzuna.com/v1/api/jobs/{st['country']}/search/{page}?{urlencode(q)}", "application/json")
+                try:
+                    got = parse_adzuna(json.loads(resp.text), st)
+                except json.JSONDecodeError:
+                    raise ValueError("not JSON") from None
+                rows.extend(got)
+                if len(got) < 50:
+                    break
+            return rows
+        if adapter == "jooble":
+            body = {"keywords": st.get("keywords", ""), "location": st.get("location", ""), "page": 1}
+            resp = await self.fetcher.fetch(f"https://jooble.org/api/{quote(key['key'], safe='')}", "application/json", method="POST", json_body=body)
+            try:
+                return parse_jooble(json.loads(resp.text), st)
+            except json.JSONDecodeError:
+                raise ValueError("not JSON") from None
+        q = {"search": st.get("search", "")}
+        if st.get("location"):
+            q["location"] = st["location"]
+        resp = await self.fetcher.fetch(f"https://findwork.dev/api/jobs/?{urlencode(q)}", "application/json", headers={"Authorization": f"Token {key['token']}"})
+        try:
+            return parse_findwork(json.loads(resp.text), st)
+        except json.JSONDecodeError:
+            raise ValueError("not JSON") from None
 
     def _email_rows(self, s: dict, persist: bool = True) -> list[dict]:
         """Job-alert mails from the owner's accounts, parsed locally (destination 'local': bodies never reach a model here)."""
@@ -1226,6 +1601,7 @@ class OppSources:
         now = self.clock()
         counts = {"found": len(rows), "new": 0, "seen": 0, "dup": 0, "blocked": 0, "expired": 0, "reposts": 0, "closed": 0, "early": 0}
         stale_cut = now - self.stale_days * 86400
+        noreply = triage.no_reply_map(self.ctx)          # companies you applied to and never heard from (job tracker), read once per batch
         to_find: dict[str, list[dict]] = {}
         fresh: list[dict] = []
         with self.lock:
@@ -1257,7 +1633,8 @@ class OppSources:
                     existing["last_seen"] = now
                     if existing.get("status") == "closed":
                         existing["status"] = "new"
-                    existing["signals"] = self._signals(existing, now)
+                        existing["reopened"] = existing.get("reopened", 0) + 1      # same company and title, seen again after it closed
+                    existing["signals"] = self._signals(existing, now, noreply)
                     counts["seen"] += 1
                     continue
                 it.update(first_seen=now, last_seen=now, status="new", refs={s["id"]: [it["ext"]]}, also_on=[], reposts=0,
@@ -1279,7 +1656,7 @@ class OppSources:
                         it["early"] = True
                         counts["early"] += 1
                     fresh.append(it)
-                it["signals"] = self._signals(it, now)
+                it["signals"] = self._signals(it, now, noreply)
                 items[it["id"]] = it
                 present.add(it["id"])
                 if it["url"]:
@@ -1315,22 +1692,14 @@ class OppSources:
         return {"title": it["title"], "company": it["company"], "url": it["url"], "description": head + "\n" + it["description"],
                 "published": it.get("posted_at", ""), "contact": item_contact(it),
                 "meta": {"early": bool(it.get("early")), "work_mode": it["work_mode"], "employment": it["employment"],
-                         "apply_method": it["apply_method"], "pay": it.get("pay"), "oppsource_id": it["id"]}}
+                         "apply_method": it["apply_method"], "pay": it.get("pay"), "oppsource_id": it["id"],
+                         # for the triage label (ghost and repost signals, location locks): hub/triage.py
+                         "first_seen": it.get("first_seen"), "posted_ts": it.get("posted_ts"), "reposts": it.get("reposts", 0),
+                         "reopened": it.get("reopened", 0), "also_on": it.get("also_on", [])[:4], "location": it.get("location", "")}}
 
-    def _signals(self, it: dict, now: float) -> list[dict]:
-        sig = []
-        n = it.get("reposts", 0)
-        if n:
-            sig.append({"code": "repost", "label": f"Reposted {n} time{'s' if n != 1 else ''}"})
-        base = it.get("posted_ts") or it.get("first_seen") or now
-        listed = it.get("last_seen", 0) >= now - 2 * 86400
-        if n >= 2 or (listed and now - base > self.ghost_days * 86400):
-            sig.append({"code": "ghost", "label": "Open a long time or reposted often: may be a ghost listing"})
-        if it.get("also_on"):
-            sig.append({"code": "multi", "label": "Also on " + ", ".join(it["also_on"][:4])})
-        if it.get("early"):
-            sig.append({"code": "early", "label": "Be early: new from a company you watch"})
-        return sig
+    def _signals(self, it: dict, now: float, noreply: dict | None = None) -> list[dict]:
+        """repost, reopened, long_open, vague, noreply, ghost ("Likely ghost"), multi, early: see hub/triage.py `ghost_signals`."""
+        return triage.ghost_signals(it, now, ghost_days=self.ghost_days, no_reply=noreply)["signals"]
 
     def _announce_early(self, it: dict) -> None:
         try:
@@ -1364,6 +1733,8 @@ class OppSources:
         except Exception as exc:  # noqa: BLE001 - one broken source never stops the others
             log.warning("source %s failed", s["id"], exc_info=True)
             out.update(state="error", error=f"unexpected problem ({type(exc).__name__})")
+        if out["error"] and s["adapter"] in KEYED:
+            out["error"] = self.keys.scrub(out["error"])
         with self.lock:
             state = self._state()
             prev = state["runs"].get(s["id"], {})
@@ -1432,6 +1803,8 @@ class OppSources:
             out["error"] = clean(str(exc), 160) or "failed"
         except Exception as exc:  # noqa: BLE001
             out["error"] = f"unexpected problem ({type(exc).__name__})"
+        if out["error"] and s["adapter"] in KEYED:
+            out["error"] = self.keys.scrub(out["error"])
         return out
 
     # ---- webhook + pasted link
@@ -1521,7 +1894,7 @@ class OppSources:
             rows.append({**s, "status": run, "interval_effective": self._interval(s), "webhook": ({"path": f"/hooks/source/{s['id']}", "has_secret": s["id"] in state["hooks"]}
                                                                                                   if s["adapter"] == "webhook" else None)})
         return {"enabled": self.enabled, "interval_min": self.interval_min, "watch_interval_min": self.watch_interval_min,
-                "stale_days": self.stale_days, "ghost_days": self.ghost_days, "counts": cnt, "sources": rows, "early": sum(1 for i in items.values() if i.get("early") and i.get("status") == "new")}
+                "stale_days": self.stale_days, "ghost_days": self.ghost_days, "triage_ai": getattr(self.config, "triage_ai", False) is True, "counts": cnt, "sources": rows, "early": sum(1 for i in items.values() if i.get("early") and i.get("status") == "new")}
 
 
 def engine_for(ctx: Ctx, **kwargs) -> OppSources:
@@ -1566,9 +1939,37 @@ def make_router(ctx: Ctx, **kwargs) -> APIRouter:
     @router.get(P + "/presets")
     def presets():
         have = {s.get("preset") for s in eng.sources()}
-        return {"presets": [{**preset_view(p), "added": p["id"] in have} for p in PRESETS],
-                "groups": ["ats", "remote", "freelance", "task"],
+        keys = eng.keys.status()
+        return {"presets": [{**preset_view(p), "added": p["id"] in have,
+                             "key_set": keys[p["needs_key"]]["set"] if p["needs_key"] else None,
+                             "disabled_reason": (f"needs your free {KEYED[p['needs_key']]['label']} key" if p["needs_key"] and not keys[p["needs_key"]]["set"] else "")}
+                            for p in PRESETS],
+                "groups": ["ats", "search", "remote", "freelance", "task"],
+                "keys": keys,
                 "policy": "Freelance and AI-task platforms are email-alert or open-link only. Auto-submit is off for them and for everything else: you tap."}
+
+    @router.get(P + "/keys")
+    def key_status():
+        """Whether each search source has its key. The key itself is never returned."""
+        return {"keys": eng.keys.status()}
+
+    @router.put(P + "/keys/{provider}")
+    def key_save(provider: str, body: dict = Body(...)):
+        guarded(eng.keys.set, provider, (body or {}).get("values") if isinstance(body, dict) else None)
+        ctx.audit("oppsource_key_saved", provider=provider)         # the provider's name only, never a value
+        return {"ok": True, "keys": eng.keys.status()}
+
+    @router.delete(P + "/keys/{provider}")
+    def key_delete(provider: str):
+        guarded(eng.keys.delete, provider)
+        with eng.lock:                                               # sources that need the key switch themselves off
+            rows = eng.sources()
+            for s in rows:
+                if s["adapter"] == provider and s.get("enabled"):
+                    s["enabled"] = False
+            eng._save_sources(rows)
+        ctx.audit("oppsource_key_removed", provider=provider)
+        return {"ok": True, "keys": eng.keys.status()}
 
     @router.post(P + "/presets/add-group")
     def add_group(body: dict = Body(default={})):

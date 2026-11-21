@@ -51,7 +51,7 @@ ALLOWED_KEYS = (*MODEL_KEYS, "default_provider", "duo_verify", "duo_max_claude_p
                "redact_enabled", "redact_kinds", "redact_names", "cloud_daily_cap", "provider_daily_caps",
                "claude_login_5h_soft_cap", "applyq_enabled", "applyq_daily_cap", "gmail_company_ai_allowed")
 ALLOWED_KEYS = (*ALLOWED_KEYS, "panic_confirm", "panic_phrases", "trust_enabled", "trust_threshold")   # hub/panic.py, hub/trust.py
-ALLOWED_KEYS = (*ALLOWED_KEYS, "oppsources_enabled", "oppsources_interval_min", "oppsources_watch_interval_min", "oppsources_stale_days", "oppsources_ghost_days")   # hub/oppsources.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "oppsources_enabled", "oppsources_interval_min", "oppsources_watch_interval_min", "oppsources_stale_days", "oppsources_ghost_days", "triage_ai")   # hub/oppsources.py, hub/triage.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "tailor_enabled", "tailor_ai", "answerbank_enabled", "answerbank_min_confidence", "answerbank_embeddings")   # hub/tailor.py, hub/answerbank.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "local_reasoning_model", "deep_think_timeout_min", "deep_think_max_chars")   # hub/models.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "batches_enabled", "batches_catchup_min", "batches_outreach_cap")   # hub/batches.py
@@ -209,7 +209,7 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, "autopilot_enabled must be true or false.")
             changes[key] = value
-        elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse", "jobtrack_enabled"):
+        elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "triage_ai", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse", "jobtrack_enabled"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
@@ -631,7 +631,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "opps_min_score": config.opps_min_score,
             "oppsources_enabled": config.oppsources_enabled is True, "oppsources_interval_min": config.oppsources_interval_min,
             "oppsources_watch_interval_min": config.oppsources_watch_interval_min,
-            "oppsources_stale_days": config.oppsources_stale_days, "oppsources_ghost_days": config.oppsources_ghost_days,
+            "oppsources_stale_days": config.oppsources_stale_days, "oppsources_ghost_days": config.oppsources_ghost_days, "triage_ai": config.triage_ai is True,
             "applyq_enabled": config.applyq_enabled, "applyq_daily_cap": config.applyq_daily_cap,
             "batches_enabled": config.batches_enabled is not False, "batches_catchup_min": config.batches_catchup_min,
             "batches_outreach_cap": config.batches_outreach_cap,

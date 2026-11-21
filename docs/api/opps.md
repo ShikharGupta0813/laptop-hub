@@ -20,7 +20,7 @@ Only `rss`/`api`/`html` sources with an address are fetched. The starter endpoin
 - Fetching: public http/https only (the research SSRF guard, every redirect re-checked), robots.txt honoured, polite user agent, 20 s timeout, 2 MB cap,
   exponential backoff after failures. 401/403/429, robots refusal or a login redirect mark the source "needs manual check" and it is left alone.
 - XML: entity declarations are refused. Everything fetched is untrusted text, shown with textContent, never given to a model.
-- `GET /api/opps/finds?status=&q=&limit=` ranked finds plus `counts`, `enabled`, `last_run`. `GET /api/opps/status`.
+- `GET /api/opps/finds?status=&q=&limit=&verdict=` ranked finds plus `counts`, `triage_counts`, `triage_ai`, `enabled`, `last_run`. Every find has `triage` (go / no-go label, ghost and lock flags, gig score: docs/api/triage.md); `verdict=apply|maybe|skip` filters by it and also lists finds your job profiles filtered out of the normal list. `GET /api/opps/status`.
 - `POST /api/opps/run {source_id?}`: run now. `POST /api/opps/add {url, note}`: a pasted link (page read if public, else made from the note and flagged).
 - `POST /api/opps/finds/{id}/queue|dismiss`, `DELETE /api/opps/finds/{id}`. Blocked finds cannot be queued.
 - `opps.ingest_email(ctx, subject, sender, body)`: for the mail feature; extracts links/titles from alert emails.
