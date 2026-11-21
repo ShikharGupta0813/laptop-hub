@@ -543,6 +543,11 @@ def make_router(ctx: Ctx, **kw) -> APIRouter:
             raise HTTPException(400, str(exc)) from None
         except NotFound as exc:
             raise HTTPException(404, str(exc)) from None
+        except Exception as exc:   # a BatchError from hub/batches.py carries its own status (404 unknown batch, 409 sending)
+            status = getattr(exc, "status", None)
+            if isinstance(status, int) and 400 <= status < 500:
+                raise HTTPException(status, getattr(exc, "message", str(exc))) from None
+            raise
 
     def pid(value: str) -> str:
         if not _ID_RE.match(value or ""):
