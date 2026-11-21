@@ -1,4 +1,4 @@
-# 46 · Offers and negotiation
+# 49 · Offers and negotiation
 
 > 🟡 Not tested on real devices yet. Built and tested with fake data only.
 

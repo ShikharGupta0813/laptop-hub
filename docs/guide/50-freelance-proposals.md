@@ -1,4 +1,4 @@
-# 47 · Freelance proposals
+# 50 · Freelance proposals
 
 > 🟡 Not tested on real devices yet. Built and tested with fake data only.
 

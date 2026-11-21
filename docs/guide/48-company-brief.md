@@ -1,4 +1,4 @@
-# 45 · Company brief and "who do I know here"
+# 48 · Company brief and "who do I know here"
 
 > 🟡 Not tested on real devices yet. Built and tested with fake data only.
 

@@ -625,7 +625,9 @@ TEMPLATES = [
 
 # ---- the store and engine --------------------------------------------------------------------------------------
 
-DEFAULT_OWNER = {"regions": [], "timezones": [], "honour_region": True}
+# work_auth: countries or regions the owner may work in without sponsorship; notice_days: days before the owner can start (None = not set);
+# relocate: willing to move for on-site work; languages: spoken languages (English is always assumed). Read by hub/triage.py.
+DEFAULT_OWNER = {"regions": [], "timezones": [], "honour_region": True, "work_auth": [], "notice_days": None, "relocate": False, "languages": []}
 
 
 class Jobprefs:
@@ -700,6 +702,22 @@ class Jobprefs:
                 if not isinstance(raw["honour_region"], bool):
                     raise PrefError("honour_region must be true or false.")
                 cur["honour_region"] = raw["honour_region"]
+            if "work_auth" in raw:
+                cur["work_auth"] = _list(raw["work_auth"], 40)
+            if "languages" in raw:
+                cur["languages"] = [x.title() for x in _list(raw["languages"], 30)]
+            if "relocate" in raw:
+                if not isinstance(raw["relocate"], bool):
+                    raise PrefError("relocate must be true or false.")
+                cur["relocate"] = raw["relocate"]
+            if "notice_days" in raw:
+                nd = raw["notice_days"]
+                if nd in (None, ""):
+                    cur["notice_days"] = None
+                elif isinstance(nd, bool) or not isinstance(nd, int) or not 0 <= nd <= 365:
+                    raise PrefError("notice_days is a whole number of days from 0 to 365 (or empty).")
+                else:
+                    cur["notice_days"] = nd
             d["owner"] = cur
             self.file.save(d)
             return cur

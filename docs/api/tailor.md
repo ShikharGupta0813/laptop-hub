@@ -41,3 +41,6 @@ Entry: `{id, label, category, questions[], answer, owner_only, approved, source:
 
 ## Assistant tools
 `tailor_preview` (untrusted: posting text; sends nothing), `answerbank_list`, `answerbank_add` (asks first). Group `tailor` in `assistant.TOOL_GROUPS`.
+
+## Master resume and version
+`POST /preview` also records `master {id, name, version, label, stale, auto}` and `resume_version` (the label, for example "Backend v2") on the variant, from the master resume named in `master_id` (or `"none"`; default: the family that best matches the posting, if any). Applying the variant copies `resume_version` onto the application item, where the job tracker reads it for its per-resume reply stats. See docs/api/resumes.md.
