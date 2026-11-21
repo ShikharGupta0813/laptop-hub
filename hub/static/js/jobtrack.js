@@ -3,6 +3,8 @@
 // One data call (GET /api/jobtrack) fills all three tabs; there is no polling. Every string goes in with textContent.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { repliesCard } from "./jobreplies.js";
+import { insightsTab } from "./jobinsights.js";
 
 const CSS = "/css/jobtrack.css";
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -119,7 +121,8 @@ export function init(container) {
       ...data.statuses.map(([v, l]) => el("option", { value: v }, `${l} (${data.counts[v]})`)));
     sel.value = filter; sel.addEventListener("change", () => { filter = sel.value; paint(); });
     const rows = data.records.filter((r) => filter === "all" || r.status === filter);
-    return [el("div", { class: "jt-actions" }, ui.button({ label: "I applied", icon: "plus", variant: "primary", onClick: () => recordSheet(null) }), sel),
+    return [repliesCard(data, { records: data.records, statuses: data.statuses, reload: load }),
+      el("div", { class: "jt-actions" }, ui.button({ label: "I applied", icon: "plus", variant: "primary", onClick: () => recordSheet(null) }), sel),
       ...(rows.length ? rows.map(recordCard) : [el("p", { class: "ui-hint" }, data.records.length ? "Nothing with that status." : "No applications yet. Ones you send from Applications appear here by themselves, or tap I applied to add one.")])];
   }
 
@@ -170,13 +173,14 @@ export function init(container) {
     if (error) { root.replaceChildren(el("p", { class: "ui-hint" }, error)); return; }
     if (!data) { root.replaceChildren(el("p", { class: "ui-hint" }, "Loading…")); return; }
     const seg = ui.segmented({ label: "Job tracker sections", value: tab, onChange: (v) => { tab = v; paint(); },
-      options: [{ value: "tracker", label: "Tracker" }, { value: "follow", label: `Follow-ups${data.due.length ? " (" + data.due.length + ")" : ""}` }, { value: "stats", label: "What works" }] });
+      options: [{ value: "tracker", label: "Tracker" }, { value: "follow", label: data.due.length ? `Due (${data.due.length})` : "Follow-ups" }, { value: "stats", label: "Works" }, { value: "insights", label: "Insights" }] });
     const c = data.counts;
     const stat = (n, label) => el("div", { class: "jt-stat" }, el("b", {}, String(n)), el("span", {}, label));
     root.replaceChildren(el("h2", { class: "ui-title" }, "Job tracker"),
       el("div", { class: "jt-stats" }, stat(data.records.length, "tracked"), stat(c.applied + c.viewed, "waiting"), stat(c.replied + c.interview, "replies"), stat(c.offer, "offers")),
-      seg, ...(tab === "tracker" ? trackerTab() : tab === "follow" ? followTab() : statsTab()));
+      seg, ...(tab === "tracker" ? trackerTab() : tab === "follow" ? followTab() : tab === "stats" ? statsTab() : [el("p", { class: "ui-hint" }, "Working it out…")]));
     ui.renumberEyebrows(root);
+    if (tab === "insights") insightsTab(paint).then((nodes) => { if (tab === "insights") { const holder = root.lastElementChild; holder.replaceWith(...nodes); ui.renumberEyebrows(root); } });
   }
 
   paint();

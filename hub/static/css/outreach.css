@@ -1,0 +1,16 @@
+/* Outreach. Scoped under #view-outreach; tokens only. */
+#view-outreach .oc { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
+#view-outreach .oc > * { min-width: 0; }
+.oc-card { padding: var(--sp-4); }
+.oc-row { display: flex; gap: var(--sp-3); align-items: flex-start; min-width: 0; }
+.oc-row input[type="checkbox"] { margin-top: var(--sp-1); flex: none; }
+.oc-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.oc-title { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+.oc-sub { color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.oc-preview { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+.oc-warn { margin: 0; color: var(--c-warn, #d99a1d); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.oc-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.oc-actions a.ui-btn { text-decoration: none; }
+.oc-actions .ui-input { flex: 1 1 12em; min-width: 0; }
+.oc-check { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); color: var(--c-text-2); }
+.oc-draft { width: 100%; min-height: 14rem; font: inherit; }

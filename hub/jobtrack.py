@@ -47,6 +47,7 @@ STALE_DAYS = 30
 OVERDUE_GRACE_DAYS = 3      # a follow-up date already this far in the past when the record is made is not chased
 MIN_SAMPLE = 10             # applications before "this source gave nothing" is said
 MAX_RECORDS = 3000
+POSTING_CHARS = 2000        # how much of the posting text is kept (local only) for the skill-gap report
 FOLLOWUP_HOUR = 9
 SYNC_SECONDS = 1800
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
@@ -122,6 +123,18 @@ def role_words(role: str) -> list[str]:
         if len(w) >= 3 and w not in STOP and not w.isdigit() and w not in seen:
             seen.append(w)
     return seen
+
+
+def _hour(value: Any) -> int | None:
+    try:
+        h = int(str(value)) if value not in (None, "") and not isinstance(value, bool) else None
+    except ValueError:
+        return None
+    return h if h is not None and 0 <= h <= 23 else None
+
+
+def _score(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1000 else None
 
 
 def plural(n: int, one: str, many: str | None = None) -> str:
@@ -248,7 +261,10 @@ class Jobtrack:
                    "resume_version": clean(raw.get("resume_version"), 80), "status": st,
                    "history": [{"status": st, "at": self.stamp(), "note": history_note or "added"}],
                    "notes": clean(raw.get("notes"), 2000, True), "salary_note": clean(raw.get("salary_note"), 200),
-                   "origin": origin, "applyq_id": applyq_id, "call": raw.get("call") is True, "followups": [], "created": self.stamp()}
+                   "origin": origin, "applyq_id": applyq_id, "call": raw.get("call") is True, "followups": [], "created": self.stamp(),
+                   # learning-loop extras (hub/jobinsights.py): all optional, all local
+                   "applied_hour": _hour(raw.get("applied_hour")), "score": _score(raw.get("score")),
+                   "triaged": raw.get("triaged") is True, "posting": clean(raw.get("posting"), POSTING_CHARS, True)}
             d["records"].append(rec)
             self._schedule(rec)
             self._save(d)
@@ -283,7 +299,10 @@ class Jobtrack:
                 self.add({"company": item.get("company") or "Unknown company", "role": item.get("title"), "url": item.get("url", ""),
                           "source": meta.get("source_id") or item.get("source") or "finder", "applied_at": day or None,
                           "resume_version": item.get("resume_version") or meta.get("resume") or "",
-                          "posted_at": str(meta.get("posted_at") or "")[:10] or None},
+                          "posted_at": str(meta.get("posted_at") or "")[:10] or None,
+                          "applied_hour": str(item.get("sent_at") or item.get("applied_at") or "")[11:13] or None,
+                          "score": item.get("score") or (meta.get("match") or {}).get("score") if isinstance(meta.get("match"), dict) else item.get("score"),
+                          "triaged": bool(meta.get("triage") or meta.get("triaged")), "posting": item.get("description") or ""},
                          origin="applyq", applyq_id=iid, status="replied" if item.get("state") == "replied" else "applied",
                          history_note="imported from your application queue")
                 added += 1
@@ -542,7 +561,12 @@ class Jobtrack:
                 log.warning("jobtrack: sync failed", exc_info=True)
         d = self._data()
         recs = sorted(d["records"], key=lambda r: (r["applied_at"], r["created"]), reverse=True)
-        return {"records": [self.view(r) for r in recs], "counts": self.counts(recs), "due": self.due_followups(recs),
+        try:                       # reply suggestions (hub/replies.py): its own local file, mail is NOT read here
+            from . import replies
+            rep = replies.engine_for(self.ctx).overview() if replies.enabled(self.ctx.config) else None
+        except Exception:  # noqa: BLE001 - optional
+            rep = None
+        return {"replies": rep, "records": [self.view(r) for r in recs], "counts": self.counts(recs), "due": self.due_followups(recs),
                 "stats": self.stats(recs), "suggestions": self.suggestions(recs, d), "summary": self.summary(recs),
                 "statuses": [[s, STATUS_LABELS[s]] for s in STATUSES],
                 "settings": {"enabled": enabled(self.ctx.config), "followup_days": followup_days(self.ctx.config),
@@ -730,7 +754,15 @@ def today_line(config, clock: Callable[[], dt.datetime] | None = None) -> str:
             return ""
         ctx = Ctx(config=config, model_for=lambda p: None, transcriber=None, notes=None, need_auth=lambda: None, audit=lambda *a, **k: None)
         n = len(Jobtrack(ctx, clock=clock).due_followups())
-        return f"{n} follow-up{'' if n == 1 else 's'} due" if n else ""
+        parts = [f"{n} follow-up{'' if n == 1 else 's'} due"] if n else []
+        try:                                           # reply sorting (hub/replies.py): local file only, optional
+            from . import replies
+            extra = replies.today_line(config)
+            if extra:
+                parts.append(extra)
+        except Exception:  # noqa: BLE001
+            pass
+        return ", ".join(parts)
     except Exception:  # noqa: BLE001
         return ""
 
