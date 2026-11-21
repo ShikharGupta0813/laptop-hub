@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from hub import oppsources as S
 from hub.assistant import TOOL_GROUPS
 from hub.common import Ctx
+from hub.provlist import MemorySecrets
 from tests.helpers import make_config
 
 PUBLIC = lambda host: ["93.184.216.34"]  # noqa: E731
@@ -27,10 +28,11 @@ class Net:
     """url -> (status, content_type, body[, headers]) or an exception. Records every request (url, headers)."""
 
     def __init__(self):
-        self.routes, self.requests = {}, []
+        self.routes, self.requests, self.calls = {}, [], []
 
     def handler(self, request: httpx.Request):
         self.requests.append((str(request.url), dict(request.headers)))
+        self.calls.append((request.method, str(request.url), request.content))
         item = self.routes.get(str(request.url))
         if item is None:
             return httpx.Response(404)
@@ -84,7 +86,8 @@ class Base(unittest.TestCase):
             self.sleeps.append(sec)
         fetcher = S.Fetch(resolver=PUBLIC, transport=httpx.MockTransport(self.net.handler), clock=lambda: self.now, sleep=nosleep)
         self.mail = FakeMail([])
-        self.eng = S.engine_for(self.ctx, fetcher=fetcher, clock=lambda: self.now, finder=self.finder, mail=self.mail)
+        self.secrets = MemorySecrets()        # never the real OS keyring in tests
+        self.eng = S.engine_for(self.ctx, fetcher=fetcher, clock=lambda: self.now, finder=self.finder, mail=self.mail, secrets=self.secrets)
         app = FastAPI()
         app.include_router(S.make_router(self.ctx))
         self.client = TestClient(app, cookies={"hub_session": "yes"})
@@ -159,10 +162,13 @@ class Presets(Base):
     def test_verification_is_honest(self):
         by = {p["id"]: p for p in self.client.get("/api/oppsources/presets").json()["presets"]}
         # checked live on 2026-11-15 (see docs/api/oppsources.md); workable stayed unverified (empty job lists) and platforms are never fetched
+        # 2026-11-21: Personio and Breezy answered live; Workday redirected to its maintenance page; Adzuna, Jooble and Findwork need a key (not called)
         for pid, p in by.items():
-            if pid == "workable" or p["adapter"] == "email":
+            if pid in ("workable", "workday", "adzuna", "jooble", "findwork") or p["adapter"] == "email":
                 self.assertEqual(p["verification"], "unverified", pid)
-                self.assertIn("UNVERIFIED", p["note"]) if pid == "workable" else None
+                self.assertIn("UNVERIFIED", p["note"]) if pid != "workable" and p["adapter"] != "email" else None
+            elif pid in ("personio", "breezy"):
+                self.assertEqual(p["verification"], "verified 2026-11-21", pid)
             else:
                 self.assertEqual(p["verification"], "verified 2026-11-15", pid)
             self.assertTrue(p["note"], pid)
@@ -726,6 +732,354 @@ class StatusAndTools(Base):
         self.assertIn("1 item", out)
         ok, out = self.run_async(tools["sources_list"].run({}))
         self.assertIn(sid, out)
+
+
+ADZUNA = {"count": 2, "mean": 900000, "results": [
+    {"id": "4001", "title": "Backend Developer", "description": "Python and SQL. Hybrid in Pune.", "created": "2026-11-12T09:00:00Z",
+     "redirect_url": "https://www.adzuna.in/land/ad/4001?se=abc", "salary_min": 900000, "salary_max": 1200000, "salary_is_predicted": "0",
+     "contract_type": "permanent", "contract_time": "full_time", "location": {"display_name": "Pune, Maharashtra", "area": ["India", "Maharashtra", "Pune"]},
+     "company": {"display_name": "Acme Labs"}, "category": {"label": "IT Jobs"}},
+    {"id": "4002", "title": "Data Engineer", "description": "SQL, Airflow.", "created": "2026-11-13T09:00:00Z",
+     "redirect_url": "https://www.adzuna.in/land/ad/4002", "salary_min": 500000, "salary_max": 500000, "salary_is_predicted": "1",
+     "location": {"display_name": "Remote"}, "company": {"display_name": "Zed"}}]}
+JOOBLE = {"totalCount": 2, "jobs": [
+    {"title": "Python Developer", "location": "Berlin", "snippet": "Python, Django. Remote friendly.", "salary": "EUR 60k per year", "source": "example.org",
+     "type": "Full-time", "link": "https://jooble.org/desc/111", "company": "Acme GmbH", "updated": "2026-11-10T10:00:00.0000000", "id": 111},
+    {"title": "", "link": "https://jooble.org/desc/112"}]}
+FINDWORK = {"count": 1, "next": None, "previous": None, "results": [
+    {"id": "fw1", "role": "Remote Python Engineer", "company_name": "Acme", "company_num_employees": "11-50", "employment_type": "full time",
+     "location": "Remote", "remote": True, "logo": None, "url": "https://findwork.dev/fw1/remote-python-engineer",
+     "text": "<p>Python and Postgres.</p>", "date_posted": "2026-11-12T10:00:00Z", "keywords": ["python", "postgres"], "source": "x"}]}
+PERSONIO = """<?xml version="1.0" encoding="UTF-8"?><workzag-jobs>
+<position><id>7001</id><office>Berlin</office><department>Tech</department><name>Backend Engineer (m/f/d)</name>
+<jobDescriptions><jobDescription><name>Your tasks</name><value>&lt;p&gt;Build APIs in Python.&lt;/p&gt;</value></jobDescription></jobDescriptions>
+<employmentType>permanent</employmentType><seniority>experienced</seniority><schedule>full-time</schedule><createdAt>2026-11-11T17:43:42+00:00</createdAt></position>
+<position><id>7002</id><office>Munich</office><name>Intern</name><jobDescriptions></jobDescriptions><schedule>part-time</schedule><createdAt>2026-11-10T10:00:00+00:00</createdAt></position>
+</workzag-jobs>"""
+BREEZY = [{"id": "b1", "friendly_id": "b1-data-analyst", "name": "Data Analyst", "url": "https://acme.breezy.hr/p/b1-data-analyst", "published_date": "2026-11-06T20:57:57.244Z",
+           "type": {"id": "full-time", "name": "Full-Time"}, "location": {"name": "Remote", "is_remote": True, "remote_details": {"value": "remote"}},
+           "department": "", "salary": "$21 / hour", "company": {"name": "Acme", "friendly_id": "acme"}}]
+WORKDAY = {"total": 3, "jobPostings": [
+    {"title": "Senior Engineer", "externalPath": "/job/Pune/Senior-Engineer_JR100", "locationsText": "Pune", "postedOn": "Posted 3 Days Ago", "bulletFields": ["JR100"]},
+    {"title": "Analyst", "externalPath": "/job/Remote/Analyst_JR101", "locationsText": "Remote", "postedOn": "Posted Today", "bulletFields": ["JR101"]}]}
+
+
+class NewSources(Base):
+    """Adzuna, Jooble, Findwork (keyed), Workday, Personio, Breezy. Every fixture is invented."""
+
+    def add_keyed(self, provider, **settings):
+        ok = self.client.post(f"/api/oppsources/presets/{provider}/add", json=settings)
+        self.assertEqual(ok.status_code, 200, ok.text)
+        return ok.json()
+
+    def test_keyed_presets_start_disabled_and_say_why(self):
+        by = {p["id"]: p for p in self.client.get("/api/oppsources/presets").json()["presets"]}
+        for pid in ("adzuna", "jooble", "findwork"):
+            self.assertEqual(by[pid]["key_set"], False)
+            self.assertIn("needs your free", by[pid]["disabled_reason"])
+            self.assertEqual(by[pid]["verification"], "unverified")
+        src = self.add_keyed("adzuna", country="in", what="python developer")
+        self.assertFalse(src["enabled"])
+        self.assertIn("Needs your free Adzuna key", src["note"])
+        r = self.client.put(f"/api/oppsources/sources/{src['id']}", json={"enabled": True})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("free Adzuna key", r.text)
+        self.run_async(self.eng.run_now())
+        self.assertEqual(self.net.requests, [])                       # nothing is fetched without a key
+        r = self.client.post(f"/api/oppsources/sources/{src['id']}/test").json()
+        self.assertIn("free Adzuna key", r["error"])
+        self.assertEqual(self.net.requests, [])
+
+    def test_keys_are_saved_in_the_keyring_and_never_echoed(self):
+        secret_id, secret_key = "abcd1234efgh", "zzzz9999yyyy8888"
+        r = self.client.put("/api/oppsources/keys/adzuna", json={"values": {"app_id": secret_id, "app_key": secret_key}})
+        self.assertEqual(r.status_code, 200, r.text)
+        for text in (r.text, self.client.get("/api/oppsources/keys").text, self.client.get("/api/oppsources/presets").text, self.client.get("/api/oppsources").text):
+            self.assertNotIn(secret_id, text)
+            self.assertNotIn(secret_key, text)
+        self.assertTrue(self.client.get("/api/oppsources/keys").json()["keys"]["adzuna"]["set"])
+        self.assertEqual(self.secrets.data["oppsources:adzuna:app_id"], secret_id)         # in the keyring store only
+        import pathlib
+        for f in pathlib.Path(self.config.data_path()).rglob("*"):
+            if f.is_file():
+                self.assertNotIn(secret_key, f.read_text(encoding="utf-8", errors="ignore"), f.name)
+        src = self.add_keyed("adzuna", country="in", what="python")
+        self.assertTrue(src["enabled"])                                 # a key exists now, so the preset starts on
+        self.assertEqual(self.client.put("/api/oppsources/keys/adzuna", json={"values": {"app_id": "short", "app_key": secret_key}}).status_code, 400)
+        self.assertEqual(self.client.put("/api/oppsources/keys/adzuna", json={"values": {"app_id": "has space 1234", "app_key": secret_key}}).status_code, 400)
+        self.assertEqual(self.client.put("/api/oppsources/keys/nope", json={"values": {}}).status_code, 404)
+        self.assertEqual(self.client.put("/api/oppsources/keys/adzuna", json={"values": {"app_id": secret_id}}).status_code, 400)   # both parts needed
+        d = self.client.delete("/api/oppsources/keys/adzuna").json()
+        self.assertFalse(d["keys"]["adzuna"]["set"])
+        self.assertNotIn("oppsources:adzuna:app_id", self.secrets.data)
+        self.assertFalse(self.eng.get_source(src["id"])["enabled"])          # its source switched itself off
+        self.assertEqual(self.anon.get("/api/oppsources/keys").status_code, 401)
+        self.assertEqual(self.anon.put("/api/oppsources/keys/adzuna", json={"values": {}}).status_code, 401)
+
+    def test_scrub_removes_a_key_from_any_text(self):
+        self.client.put("/api/oppsources/keys/jooble", json={"values": {"key": "joobleKEY-12345678"}})
+        out = self.eng.keys.scrub("could not reach https://jooble.org/api/joobleKEY-12345678 now")
+        self.assertNotIn("joobleKEY", out)
+        self.assertIn("***", out)
+
+    def test_adzuna_url_fields_and_estimated_salary(self):
+        self.client.put("/api/oppsources/keys/adzuna", json={"values": {"app_id": "id-12345678", "app_key": "key-87654321"}})
+        src = self.add_keyed("adzuna", country="in", what="python developer", where="Pune")
+        url_seen = []
+
+        def handler(request):
+            url_seen.append(str(request.url))
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(ADZUNA).encode())
+        self.eng.fetcher.transport = httpx.MockTransport(handler)
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        self.assertEqual(res["found"], 2)
+        u = url_seen[0]
+        self.assertTrue(u.startswith("https://api.adzuna.com/v1/api/jobs/in/search/1?"))
+        for part in ("app_id=id-12345678", "app_key=key-87654321", "what=python+developer", "where=Pune"):
+            self.assertIn(part, u)
+        items = {i["title"]: i for i in self.all_items()}
+        a = items["Backend Developer"]
+        self.assertEqual((a["pay"]["min"], a["pay"]["max"], a["pay"]["currency"], a["pay"]["unit"]), (900000, 1200000, "INR", "year"))
+        self.assertEqual(a["company"], "Acme Labs")
+        self.assertEqual(a["location"], "Pune, Maharashtra")
+        self.assertIsNone(items["Data Engineer"]["pay"])                   # Adzuna's own estimate is not shown as pay
+        self.assertNotIn("id-12345678", json.dumps(self.eng.status()))
+        self.assertNotIn("key-87654321", json.dumps(self.all_items()))
+
+    def test_jooble_is_a_post_with_the_key_in_the_address_only(self):
+        self.client.put("/api/oppsources/keys/jooble", json={"values": {"key": "jooble-secret-key-1"}})
+        src = self.add_keyed("jooble", keywords="python", location="Berlin")
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, str(request.url), request.content))
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(JOOBLE).encode())
+        self.eng.fetcher.transport = httpx.MockTransport(handler)
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        method, url, body = calls[0]
+        self.assertEqual((method, url), ("POST", "https://jooble.org/api/jooble-secret-key-1"))
+        self.assertEqual(json.loads(body)["keywords"], "python")
+        self.assertEqual(json.loads(body)["location"], "Berlin")
+        it = self.all_items()[0]
+        self.assertEqual((it["title"], it["company"], it["location"]), ("Python Developer", "Acme GmbH", "Berlin"))
+        self.assertNotIn("jooble-secret-key-1", json.dumps(self.all_items()) + json.dumps(self.eng.status()) + json.dumps(self.eng._state()))
+        # a failure never repeats the address
+        self.eng.fetcher.transport = httpx.MockTransport(lambda r: (_ for _ in ()).throw(httpx.ConnectError("boom " + str(r.url))))
+        bad = self.run_src(src, force=True)
+        self.assertNotIn("jooble-secret-key-1", json.dumps(bad))
+        self.assertNotIn("jooble-secret-key-1", json.dumps(self.eng._state()))
+
+    def test_findwork_sends_the_token_header_to_its_own_host_only(self):
+        self.client.put("/api/oppsources/keys/findwork", json={"values": {"token": "findwork-token-12"}})
+        src = self.add_keyed("findwork", search="python", location="remote")
+        seen = []
+
+        def handler(request):
+            seen.append((str(request.url), request.headers.get("authorization")))
+            if request.url.host == "findwork.dev" and request.url.path == "/api/jobs/":
+                return httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(FINDWORK).encode())
+            return httpx.Response(404)
+        self.eng.fetcher.transport = httpx.MockTransport(handler)
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        self.assertEqual(seen[0][0], "https://findwork.dev/api/jobs/?search=python&location=remote")
+        self.assertEqual(seen[0][1], "Token findwork-token-12")
+        it = self.all_items()[0]
+        self.assertEqual((it["title"], it["company"], it["work_mode"]), ("Remote Python Engineer", "Acme", "remote"))
+        self.assertIn("Tags: python, postgres", it["description"])
+        # a redirect to another host never carries the token
+        seen.clear()
+
+        def redirecting(request):
+            seen.append((str(request.url), request.headers.get("authorization")))
+            if request.url.host == "findwork.dev":
+                return httpx.Response(302, headers={"location": "https://elsewhere.example/api"})
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=b"{}")
+        self.eng.fetcher.transport = httpx.MockTransport(redirecting)
+        self.run_src(src, force=True)
+        self.assertEqual(seen[-1][1], None)
+
+    def test_adzuna_jooble_findwork_rows_parse_directly(self):
+        rows = S.parse_adzuna(ADZUNA, {"country": "in"})
+        self.assertEqual([r["title"] for r in rows], ["Backend Developer", "Data Engineer"])
+        self.assertEqual(rows[0]["employment"], "full-time permanent")
+        self.assertEqual(S.parse_adzuna(ADZUNA, {"country": "gb"})[0]["pay"]["currency"], "GBP")
+        self.assertEqual([r["title"] for r in S.parse_jooble(JOOBLE, {})], ["Python Developer"])
+        self.assertEqual(S.parse_jooble(JOOBLE, {})[0]["pay_text"], "EUR 60k per year")
+        self.assertEqual(S.parse_findwork(FINDWORK, {})[0]["remote"], "remote")
+        for bad in ({}, [], {"results": "x"}):
+            with self.assertRaises(ValueError):
+                S.parse_adzuna(bad, {})
+        with self.assertRaises(ValueError):
+            S.parse_jooble({"nope": 1}, {})
+
+    def test_workday_posts_pages_and_respects_robots(self):
+        self.assertEqual(self.client.post("/api/oppsources/presets/workday/add", json={"tenant": "acme", "site": "Careers"}).status_code, 400)
+        bad = self.client.post("/api/oppsources/presets/workday/add", json={"tenant": "acme", "site": "Careers", "host": "evil.com/x"})
+        self.assertEqual(bad.status_code, 400)
+        src = self.add_keyed("workday", tenant="acme", site="Careers", host="wd5", search="engineer")
+        self.assertEqual(src["adapter"], "workday")
+        self.assertTrue(src["enabled"])
+        calls = []
+        base = "https://acme.wd5.myworkdayjobs.com"
+
+        def handler(request):
+            calls.append((request.method, str(request.url), request.content))
+            if request.url.path == "/robots.txt":
+                return httpx.Response(200, headers={"content-type": "text/plain"}, content=b"User-agent: *\nDisallow: /private/\n")
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(WORKDAY).encode())
+        self.eng.fetcher.transport = httpx.MockTransport(handler)
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        posts = [c for c in calls if c[0] == "POST"]
+        self.assertEqual(posts[0][1], base + "/wday/cxs/acme/Careers/jobs")
+        body = json.loads(posts[0][2])
+        self.assertEqual((body["limit"], body["offset"], body["searchText"]), (20, 0, "engineer"))
+        self.assertEqual(len(posts), 1)                            # 2 results < a full page of 20: one request is enough
+        self.assertIn(("GET", base + "/robots.txt", b""), calls)
+        items = {i["title"]: i for i in self.all_items()}
+        self.assertEqual(items["Senior Engineer"]["url"], base + "/Careers/job/Pune/Senior-Engineer_JR100")
+        self.assertEqual(items["Senior Engineer"]["apply_method"], "ats_form")
+        self.assertEqual(items["Senior Engineer"]["company"], "acme")
+        self.assertEqual(items["Analyst"]["posted_at"][:10], "2026-11-14")
+        self.assertEqual(items["Senior Engineer"]["posted_at"][:10], "2026-11-11")
+        self.assertTrue(all(s <= 3 * S.HOST_GAP for s in self.sleeps))
+
+    def test_workday_robots_refusal_and_pagination(self):
+        src = self.add_keyed("workday", tenant="acme", site="Careers", host="wd1")
+        self.eng.fetcher.transport = httpx.MockTransport(lambda r: httpx.Response(200, headers={"content-type": "text/plain"}, content=b"User-agent: *\nDisallow: /\n")
+                                                         if r.url.path == "/robots.txt" else httpx.Response(500))
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "manual_check", res)
+        full = {"total": 45, "jobPostings": [{"title": f"Role {n}", "externalPath": f"/job/X/R_{n}", "locationsText": "X", "postedOn": "Posted 30+ Days Ago", "bulletFields": [f"R{n}"]} for n in range(20)]}
+        offsets = []
+
+        def handler(request):
+            if request.url.path == "/robots.txt":
+                return httpx.Response(404)
+            offsets.append(json.loads(request.content)["offset"])
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(full).encode())
+        self.eng.fetcher.transport = httpx.MockTransport(handler)
+        self.eng.fetcher._robots = {}
+        self.eng.update_source(src["id"], {"settings": {"tenant": "acme", "site": "Careers", "host": "wd1", "search": ""}})
+        self.run_src(src, force=True)
+        self.assertEqual(offsets, [0, 20, 40])                     # at most three pages
+
+    def test_workday_redirect_to_a_maintenance_page_is_an_error_not_a_crash(self):
+        src = self.add_keyed("workday", tenant="acme", site="Careers", host="wd5")
+        self.eng.fetcher.transport = httpx.MockTransport(lambda r: httpx.Response(404) if r.url.path == "/robots.txt" else
+                                                         httpx.Response(303, headers={"location": "/maintenance"}) if r.url.path != "/maintenance" else
+                                                         httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>Workday is currently unavailable.</html>"))
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "error")
+        self.assertIn("not JSON", res["error"])
+
+    def test_workday_settings_are_validated(self):
+        for bad in ({"tenant": "a b", "site": "S", "host": "wd5"}, {"tenant": "acme", "site": "S/../x", "host": "wd5"}, {"tenant": "acme", "site": "S", "host": "wd5.evil.com"}):
+            with self.assertRaises(S.SourceError):
+                S.check_settings("workday", bad)
+        self.assertEqual(S.check_settings("workday", {"tenant": "acme", "site": "Careers", "host": "WD3"})["host"], "wd3")
+        self.assertEqual(S.workday_posted("Posted Yesterday", NOW), "2026-11-13")
+        self.assertEqual(S.workday_posted("who knows", NOW), "")
+
+    def test_personio_parses_the_xml_feed(self):
+        src = self.add_keyed("personio", board="acme-gmbh")
+        self.assertEqual(S.ats_url("personio", src["settings"]), "https://acme-gmbh.jobs.personio.de/xml")
+        self.net.routes["https://acme-gmbh.jobs.personio.de/xml"] = (200, "text/xml", PERSONIO)
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        items = {i["title"]: i for i in self.all_items()}
+        a = items["Backend Engineer (m/f/d)"]
+        self.assertEqual(a["url"], "https://acme-gmbh.jobs.personio.de/job/7001")
+        self.assertEqual(a["location"], "Berlin")
+        self.assertIn("Build APIs in Python.", a["description"])
+        self.assertEqual(a["apply_method"], "ats_form")
+        self.assertEqual(a["employment"], "full-time")
+        self.assertEqual(items["Intern"]["employment"], "part-time")
+        self.net.routes["https://acme-gmbh.jobs.personio.de/xml"] = (200, "text/xml", "<html>nope")
+        self.assertIn("not a readable Personio feed", self.client.post(f"/api/oppsources/sources/{src['id']}/test").json()["error"])
+        with self.assertRaises(ValueError):
+            S.parse_personio("<!DOCTYPE x [<!ENTITY a 'b'>]><workzag-jobs/>", {"board": "x"})
+
+    def test_breezy_parses_the_json_list(self):
+        src = self.add_keyed("breezy", board="acme")
+        self.assertEqual(S.ats_url("breezy", src["settings"]), "https://acme.breezy.hr/json")
+        self.net.routes["https://acme.breezy.hr/json"] = (200, "application/json; charset=utf-8", json.dumps(BREEZY))
+        res = self.run_src(src)
+        self.assertEqual(res["state"], "ok", res)
+        it = self.all_items()[0]
+        self.assertEqual((it["title"], it["company"], it["work_mode"], it["url"]), ("Data Analyst", "Acme", "remote", "https://acme.breezy.hr/p/b1-data-analyst"))
+        self.assertEqual((it["pay"]["min"], it["pay"]["unit"]), (21, "hour"))
+        self.assertEqual(it["apply_method"], "ats_form")
+        self.net.routes["https://acme.breezy.hr/json"] = (200, "application/json", '{"not": "a list"}')
+        self.assertIn("not a Breezy", self.client.post(f"/api/oppsources/sources/{src['id']}/test").json()["error"])
+
+    def test_detect_ats_knows_the_new_systems(self):
+        self.assertEqual(S.detect_ats("https://acme.jobs.personio.de/"), {"adapter": "personio", "board": "acme"})
+        self.assertEqual(S.detect_ats("https://acme.breezy.hr/"), {"adapter": "breezy", "board": "acme"})
+        self.assertEqual(S.apply_method("https://acme.wd5.myworkdayjobs.com/x/job/1", "workday", "job", "", ""), "ats_form")
+
+    def test_new_sources_never_touch_the_never_automate_sites(self):
+        for host in ("linkedin.com", "indeed.com", "naukri.com", "wellfound.com"):
+            self.assertIn(host, S.NEVER_AUTOMATE)
+        for pid in ("adzuna", "jooble", "findwork", "workday", "personio", "breezy"):
+            self.assertFalse(S.preset_view(S.PRESET_BY_ID[pid])["auto_submit"])
+
+
+class GhostSignals(Base):
+    def test_reopened_long_open_vague_and_no_reply(self):
+        s = self.add()
+        row = {"title": "Platform Engineer", "company": "Zed", "url": "https://z.example/1", "description": "Some role.", "published": "2026-09-20T00:00:00Z"}
+        self.config.oppsources_stale_days = 365
+        self.eng.process(s, [row], complete=True)
+        it = self.all_items()[0]
+        codes = [x["code"] for x in it["signals"]]
+        self.assertIn("long_open", codes)                      # posted 55 days before NOW
+        self.assertIn("vague", codes)                          # no salary, team or location
+        self.assertIn("ghost", codes)
+        self.assertIn("Likely ghost", next(x["label"] for x in it["signals"] if x["code"] == "ghost"))
+        self.eng.process(s, [], complete=True)                 # it closes
+        self.assertEqual(self.all_items()[0]["status"], "closed")
+        self.now += 86400
+        self.eng.process(s, [row])                             # the same company and title is listed again
+        it = self.all_items()[0]
+        self.assertEqual(it["reopened"], 1)
+        self.assertIn("reopened", [x["code"] for x in it["signals"]])
+
+    def test_a_fresh_specific_posting_has_no_ghost_label(self):
+        s = self.add()
+        row = {"title": "Platform Engineer", "company": "Zed", "url": "https://z.example/2", "published": "2026-11-13T00:00:00Z",
+               "description": "Join our payments team in Pune. $120k per year. You will report to the engineering manager.", "location": "Pune"}
+        self.eng.process(s, [row])
+        codes = [x["code"] for x in self.all_items()[0]["signals"]]
+        self.assertNotIn("ghost", codes)
+        self.assertNotIn("vague", codes)
+
+    def test_company_that_never_replies_comes_from_the_job_tracker(self):
+        from hub import jobtrack
+        tracker = jobtrack.engine_for(self.ctx)
+        tracker.add({"company": "Zed Inc", "role": "Engineer", "applied_at": "2026-09-01"})
+        tracker.add({"company": "Zed", "role": "Developer", "applied_at": "2026-09-10"})
+        s = self.add()
+        row = {"title": "Staff Engineer", "company": "Zed", "url": "https://z.example/3", "published": "2026-11-13T00:00:00Z",
+               "description": "Join our platform team in Pune. $150k per year."}
+        self.eng.process(s, [row])
+        sig = self.all_items()[0]["signals"]
+        self.assertIn("noreply", [x["code"] for x in sig])
+        self.assertIn("ghost", [x["code"] for x in sig])
+
+    def test_a_reply_clears_the_no_reply_flag(self):
+        from hub import jobtrack
+        tracker = jobtrack.engine_for(self.ctx)
+        a, _ = tracker.add({"company": "Zed", "role": "Engineer", "applied_at": "2026-09-01"})
+        tracker.add({"company": "Zed", "role": "Developer", "applied_at": "2026-09-10"})
+        tracker.set_status(a["id"], "replied")
+        s = self.add()
+        self.eng.process(s, [{"title": "Staff Engineer", "company": "Zed", "url": "https://z.example/4", "published": "2026-11-13T00:00:00Z",
+                              "description": "Join our platform team in Pune. $150k per year."}])
+        self.assertNotIn("noreply", [x["code"] for x in self.all_items()[0]["signals"]])
 
 
 class SettingsKeys(unittest.TestCase):

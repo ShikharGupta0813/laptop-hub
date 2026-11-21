@@ -3,6 +3,7 @@
 // it is only ever shown as text (textContent), links open in a new tab with rel="noopener noreferrer".
 import { api, ApiError, el } from "./api.js";
 import * as ui from "./ui.js";
+import * as tg from "./triagebadges.js";
 
 const CSS = "/css/opps.css";
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
@@ -27,10 +28,10 @@ export function init(container) {
   if (!document.querySelector(`link[href="${CSS}"]`)) document.head.append(el("link", { rel: "stylesheet", href: CSS }));
   const root = el("div", { class: "op ui-stack ui-stack--lg" });
   container.append(root);
-  let tab = "finds", finds = null, sources = null, profile = null, status = null, error = "", running = false;
+  let tab = "finds", finds = null, sources = null, profile = null, status = null, error = "", running = false, vf = "", counts = {};
 
   async function loadFinds() {
-    try { const r = await api("/api/opps/finds?limit=200"); finds = r.finds || []; status = r; error = ""; }
+    try { const r = await api("/api/opps/finds?limit=200" + (vf ? `&verdict=${vf}` : "")); finds = r.finds || []; status = r; counts = r.triage_counts || {}; error = ""; }
     catch (e) { error = e.message; }
   }
   async function loadSources() {
@@ -64,6 +65,13 @@ export function init(container) {
         });
       } }));
     }
+    if (status?.triage_ai && f.triage && !f.triage.ai) {
+      actions.append(ui.button({ label: "Ask AI", icon: "sparkles", size: "sm", variant: "ghost", onClick: async (e) => {
+        await ui.busy(e.currentTarget, async () => {
+          try { await api(`/api/triage/refine/${f.id}`, { method: "POST" }); await loadFinds(); paint(); } catch (err) { fail(err); }
+        });
+      } }));
+    }
     if (f.status !== "dismissed") {
       actions.append(ui.button({ label: "Dismiss", icon: "x", size: "sm", variant: "ghost", onClick: async () => {
         try { await api(`/api/opps/finds/${f.id}/dismiss`, { method: "POST" }); await loadFinds(); paint(); } catch (err) { fail(err); }
@@ -77,7 +85,10 @@ export function init(container) {
           el("div", { class: "ui-hint" }, [f.company, f.source, ui.relTime ? ui.relTime(f.found_at) : ""].filter(Boolean).join(" · ")))),
       f.status === "blocked" ? ui.notice("Held back, not sent to the queue: " + (f.blocked_reason || "looks like a scam"), { tone: "bad" })
         : el("p", { class: "op-reason" }, f.reason || ""),
-      el("div", { class: "ui-row op-flags" }, ui.badge(KIND_NAME[f.kind] || f.kind || "other"), f.status === "queued" ? ui.badge("In queue", "good") : null, ...flagBadges(f)),
+      tg.verdictLine(f.triage),
+      f.status === "filtered" ? el("p", { class: "ui-hint" }, "Your job preferences filtered this out of the normal list: " + (f.filtered_reason || "no match") + ". It is shown because of the filter you chose.") : null,
+      tg.ghostWhy(f.triage), tg.aiLine(f.triage),
+      el("div", { class: "ui-row op-flags" }, ui.badge(KIND_NAME[f.kind] || f.kind || "other"), f.status === "queued" ? ui.badge("In queue", "good") : null, ...tg.flagBadges(f.triage), ...flagBadges(f)),
       actions);
   }
 
@@ -124,10 +135,13 @@ export function init(container) {
       field("Add a link", url), field("Note", note), add));
     if (status && !status.queue) parts.push(ui.notice("The ready-to-send queue is not installed on this hub yet, so finds are listed here only.", { tone: "warn" }));
     const list = (finds || []).filter((f) => f.status !== "dismissed");
-    const good = list.filter((f) => f.status !== "blocked" && f.status !== "low");
-    const low = list.filter((f) => f.status === "low");
-    const blocked = list.filter((f) => f.status === "blocked");
+    // With a go / no-go filter on, every find with that label is listed whatever its status: nothing is out of sight.
+    const good = vf ? list : list.filter((f) => f.status !== "blocked" && f.status !== "low");
+    const low = vf ? [] : list.filter((f) => f.status === "low");
+    const blocked = vf ? [] : list.filter((f) => f.status === "blocked");
+    tg.loadCss();
     parts.push(ui.eyebrow("02", `Ranked finds (${good.length})`));
+    parts.push(tg.chipRow({ value: vf, counts, onChange: async (v) => { vf = v; await loadFinds(); paint(); } }));
     parts.push(good.length ? el("ul", { class: "op-list" }, ...good.map(findCard))
       : ui.emptyState({ icon: "search", title: "No finds yet", body: "Turn on automatic checking, press Run now, or paste a link.", compact: true }));
     if (low.length) parts.push(el("details", { class: "op-more" }, el("summary", {}, `Below your score threshold (${low.length})`), el("ul", { class: "op-list" }, ...low.map(findCard))));

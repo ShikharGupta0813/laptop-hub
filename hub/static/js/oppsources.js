@@ -10,9 +10,10 @@ const good = (text) => ui.toast(text, { kind: "good" });
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
 const ADAPTER_NAME = { rss: "RSS or Atom feed", json: "JSON API (field mapping)", html: "Public page (CSS selectors)", email: "Email alerts", webhook: "Webhook",
   greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workable: "Workable", smartrecruiters: "SmartRecruiters", recruitee: "Recruitee",
-  teamtailor: "Teamtailor", hn: "Hacker News: Who is hiring", link: "Open link (paste listings)" };
+  teamtailor: "Teamtailor", personio: "Personio", breezy: "Breezy HR", workday: "Workday", adzuna: "Adzuna (key)", jooble: "Jooble (key)", findwork: "Findwork (key)",
+  hn: "Hacker News: Who is hiring", link: "Open link (paste listings)" };
 const STATE_NAME = { ok: "Worked", unchanged: "Nothing new", manual_check: "Needs a manual check", error: "Failed, will retry" };
-const GROUP_NAME = { ats: "Company job systems (public, no login)", remote: "Remote job boards", freelance: "Freelance (email alerts or open link only)", task: "AI-training and task platforms (email alerts or open link only)" };
+const GROUP_NAME = { ats: "Company job systems (public, no login)", search: "Search sites with salary data (your own free key)", remote: "Remote job boards", freelance: "Freelance (email alerts or open link only)", task: "AI-training and task platforms (email alerts or open link only)" };
 const lines = (text) => String(text || "").split("\n").map((x) => x.trim()).filter(Boolean);
 const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); };
 
@@ -49,9 +50,10 @@ export async function openSources() {
       { key: "oppsources_watch_interval_min", label: "Check watched companies every (minutes, 2 to 120)", type: "number", min: 2, max: 120, hint: "New roles from companies you watch are flagged Be early." },
       { key: "oppsources_stale_days", label: "Hide listings older than (days)", type: "number", min: 7, max: 365 },
       { key: "oppsources_ghost_days", label: "Suspect a ghost listing after (days still open)", type: "number", min: 14, max: 730 },
+      { key: "triage_ai", label: "Allow an AI second opinion on a find", type: "switch", hint: "Off by default. The go / no-go label is always worked out on this laptop by plain rules. With this on, an Ask AI button appears on a find; only that find's text is sent, redacted, and the plain label stays." },
     ],
     values: { oppsources_enabled: data.enabled, oppsources_interval_min: data.interval_min, oppsources_watch_interval_min: data.watch_interval_min,
-      oppsources_stale_days: data.stale_days, oppsources_ghost_days: data.ghost_days },
+      oppsources_stale_days: data.stale_days, oppsources_ghost_days: data.ghost_days, triage_ai: data.triage_ai === true },
     onSave: async (v) => { await api("/api/settings", { method: "PATCH", json: Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null)) }); await reload(); good("Saved."); },
   });
 
@@ -97,21 +99,42 @@ export async function openSources() {
       node.append(el("section", { class: "st-group" }, el("h2", { class: "ui-caps st-caps" }, GROUP_NAME[group] || group), bulk,
         el("div", { class: "ui-list ui-list--inset ui-list--icons" }, rows.map((p) => ui.listRow({
           icon: p.never_automated ? "shield" : "globe", tone: p.never_automated ? "orange" : "accent", title: p.label, sub: `${p.verification}. ${p.note}`,
-          meta: p.added ? ui.badge("Added", "good") : ui.badge("Add", "info"), chevron: true, onClick: () => addPreset(p, sheet) })))));
+          meta: p.added ? ui.badge("Added", "good") : p.disabled_reason ? ui.badge("Needs key", "warn") : ui.badge("Add", "info"), chevron: true, onClick: () => addPreset(p, sheet, cat.keys) })))));
     }
     const sheet = ui.sheet({ title: "Source catalogue", class: "st-sheet st-sheet--tall", content: node });
   }
 
-  function addPreset(p, parent) {
+  const NEED_LABEL = { board: "Company board name", tenant: "Workday tenant (first part of the careers address)", site: "Workday site name (last part of the address)",
+    host: "Workday data centre (wd1, wd3, wd5...)", country: "Country code (in, gb, us, au, ca, de...)", what: "Search words (for example: python developer)",
+    keywords: "Search words", search: "Search words", where: "Place (optional)", location: "Place (optional)" };
+
+  function addPreset(p, parent, keys) {
     const fields = [];
-    for (const need of p.needs) fields.push({ key: need, label: need === "board" ? "Company board name" : need, type: "text", maxlength: 80,
-      hint: "The company's name in its job-board address, for example the part after boards.greenhouse.io/." });
+    const spec = p.needs_key ? keys?.[p.needs_key] : null;
+    if (spec && !spec.set) {
+      fields.push({ type: "note", text: `This source needs your own free ${spec.label} key. Get it at ${spec.signup}, then paste it here. It is saved in this laptop's secure keyring, never shown again and never written to a file. The source stays off until a key is saved.` });
+      for (const f of spec.fields) fields.push({ key: "key:" + f.name, label: f.label, type: "password", maxlength: 200, hint: "Paste it exactly as given. It is not shown back." });
+    } else if (spec && spec.set) {
+      fields.push({ type: "note", text: `${spec.label} key: saved in your keyring (not shown). To replace it, remove it from the source list screen and add the source again.` });
+    }
+    for (const need of p.needs) fields.push({ key: need, label: NEED_LABEL[need] || need, type: "text", maxlength: 80,
+      hint: need === "board" ? "The company's name in its job-board address, for example the part after boards.greenhouse.io/." : undefined });
+    for (const opt of p.optional || []) fields.push({ key: opt, label: NEED_LABEL[opt] || opt, type: "text", maxlength: 80 });
     if (p.modes.length) fields.push({ key: "mode", label: "Mode", type: "select", options: p.modes.map((m) => [m, m === "email-alert" ? "Email alerts (read from your mail)" : "Open link (paste listings, prepare a proposal)"]),
       hint: "No logins and no bots. You submit by hand." });
     if (p.adapter === "lever") fields.push({ key: "region", label: "Lever region", type: "select", options: [["", "Global"], ["eu", "EU"]] });
     fields.push({ key: "label", label: "Name (optional)", type: "text", maxlength: 60 });
     formSheet({ title: `Add ${p.label}`, saveLabel: "Add", fields, values: { mode: p.modes[0] || "", region: "" },
-      onSave: async (v) => { await api(`/api/oppsources/presets/${p.id}/add`, { method: "POST", json: Object.fromEntries(Object.entries(v).filter(([, x]) => x)) }); parent?.close(); await reload(); good("Added."); } });
+      onSave: async (v) => {
+        const keyValues = {};
+        for (const [k, x] of Object.entries(v)) if (k.startsWith("key:")) { if (x) keyValues[k.slice(4)] = x; delete v[k]; }
+        if (spec && !spec.set) {
+          if (!Object.keys(keyValues).length) throw new Error(`Paste your ${spec.label} key first, or close this sheet.`);
+          await api(`/api/oppsources/keys/${p.needs_key}`, { method: "PUT", json: { values: keyValues } });
+        }
+        await api(`/api/oppsources/presets/${p.id}/add`, { method: "POST", json: Object.fromEntries(Object.entries(v).filter(([, x]) => x)) });
+        parent?.close(); await reload(); good("Added.");
+      } });
   }
 
   const kinds = [["job", "Job"], ["freelance", "Freelance"], ["llm-task", "AI task"]];
@@ -126,7 +149,7 @@ export async function openSources() {
     if (adapter === "html") f.push({ key: "item_selector", label: "Item selector", type: "text", maxlength: 200, placeholder: "li.job" },
       { key: "mapping", label: "Field selectors (one 'field = selector' per line)", type: "textarea", rows: 6, maxlength: 800,
         hint: "Example: title = a.title, url = a.title@href, company = .co, location = .loc. Tags, .class, #id, [attr], spaces and > work." });
-    if (["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "teamtailor"].includes(adapter)) f.push({ key: "board", label: "Company board name", type: "text", maxlength: 80 },
+    if (["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "teamtailor", "personio", "breezy"].includes(adapter)) f.push({ key: "board", label: "Company board name", type: "text", maxlength: 80 },
       { key: "company", label: "Company display name", type: "text", maxlength: 100 }, { key: "watch", label: "On the watch list (early-bird)", type: "switch", default: false });
     if (adapter === "email") f.push({ key: "senders", label: "Senders (address or domain)", type: "chips", hint: "Only mail from these is read, on this laptop." },
       { key: "subject_contains", label: "Or subject contains", type: "chips" }, { key: "account", label: "Mail account id (empty = all)", type: "text", maxlength: 60 });

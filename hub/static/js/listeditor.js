@@ -83,8 +83,8 @@ export function formSheet({ title, fields, values = {}, onSave, saveLabel = "Sav
       input = el("input", { class: "ui-input", type: "text", maxlength: String(f.maxlength || 400), placeholder: f.placeholder || "word, another word" });
       input.value = Array.isArray(v) ? v.join(", ") : (v ?? "");
     } else {
-      input = el("input", { class: "ui-input", type: f.type === "number" ? "number" : "text", maxlength: String(f.maxlength || 200), placeholder: f.placeholder || "",
-        ...(f.type === "number" ? { min: f.min, max: f.max, step: f.step || "any" } : {}) });
+      input = el("input", { class: "ui-input", type: f.type === "number" ? "number" : f.type === "password" ? "password" : "text", maxlength: String(f.maxlength || 200), placeholder: f.placeholder || "",
+        ...(f.type === "number" ? { min: f.min, max: f.max, step: f.step || "any" } : {}), ...(f.type === "password" ? { autocomplete: "off", spellcheck: "false" } : {}) });
       input.value = v ?? "";
     }
     if (f.readonly) input.disabled = true;
