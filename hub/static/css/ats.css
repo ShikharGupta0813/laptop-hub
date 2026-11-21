@@ -1,0 +1,32 @@
+/* ATS and packets. Scoped under #view-ats; tokens only. */
+#view-ats .ats { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
+#view-ats .ats > *, #view-ats .ats-card > * { min-width: 0; }
+.ats-card { padding: var(--sp-4); }
+.ats-title { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+.ats-sub { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.ats-warn { margin: 0; color: var(--c-warn, #d99a1d); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.ats-fix { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.ats-score { display: flex; gap: var(--sp-3); align-items: center; }
+.ats-bars { display: grid; gap: var(--sp-3); }
+.ats-bar { display: grid; grid-template-columns: minmax(0, 1fr) 3rem; gap: var(--sp-1) var(--sp-2); font-size: var(--fs-sm); }
+.ats-bar .n { text-align: right; color: var(--c-text); }
+.ats-bar .k { color: var(--c-text-2); overflow-wrap: anywhere; }
+.ats-bar > :nth-child(n+3) { grid-column: 1 / -1; }
+.ats-bar.off { opacity: 0.6; }
+.ats-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); list-style: none; margin: 0; padding: 0; }
+.ats-chip { padding: 2px var(--sp-2); border: 1px solid var(--c-line); border-radius: 999px; font-size: var(--fs-sm); background: var(--c-surface-2); overflow-wrap: anywhere; }
+.ats-chip.good { border-color: var(--c-good, #2f9e6b); }
+.ats-chip.warn { border-color: var(--c-warn, #d99a1d); }
+.ats-chip.bad { border-color: var(--c-bad, #d6485a); }
+.ats-tips { margin: 0; padding-left: 1.1rem; font-size: var(--fs-sm); color: var(--c-text-2); }
+.ats-trap { display: grid; gap: var(--sp-1); padding: var(--sp-2) 0; border-top: 1px solid var(--c-line); }
+.ats-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: var(--sp-2); font-size: var(--fs-sm); }
+.ats-row .k { color: var(--c-text-3); }
+.ats-row .v { overflow-wrap: anywhere; }
+.ats-pre { margin: 0; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-sm); color: var(--c-text-2); }
+.ats-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.ats-actions a.ui-btn { text-decoration: none; }
+.ats-picks { display: grid; gap: var(--sp-1); }
+.ats-pick { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.ats-ans { display: grid; gap: 2px; padding: var(--sp-2) 0; border-top: 1px solid var(--c-line); }
+.ats-ans p { margin: 0; overflow-wrap: anywhere; }
