@@ -4,6 +4,7 @@
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
 import { repliesCard } from "./jobreplies.js";
+import { callCardSheet, referralSheet } from "./jobassist.js";
 import { insightsTab } from "./jobinsights.js";
 
 const CSS = "/css/jobtrack.css";
@@ -108,6 +109,8 @@ export function init(container) {
       el("div", { class: "jt-actions" },
         ui.button({ label: "Status", icon: "edit", variant: "tonal", size: "sm", onClick: () => statusSheet(rec) }),
         ui.button({ label: "Nudge draft", icon: "copy", variant: "ghost", size: "sm", onClick: () => draftSheet(rec) }),
+        ui.button({ label: "Call card", icon: "phone", variant: "ghost", size: "sm", onClick: () => callCardSheet(rec) }),
+        ui.button({ label: "Referral draft", icon: "users", variant: "ghost", size: "sm", onClick: () => referralSheet(rec) }),
         ui.button({ label: "Edit", variant: "ghost", size: "sm", onClick: () => recordSheet(rec) }),
         href ? el("a", { class: "ui-btn ui-btn--ghost ui-btn--sm", href, target: "_blank", rel: "noopener noreferrer" }, "Posting") : null,
         ui.button({ label: "Delete", variant: "ghost", size: "sm", onClick: async () => {

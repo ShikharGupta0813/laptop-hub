@@ -266,6 +266,12 @@ class Config:
     outreach_enabled: bool = True
     outreach_followup_days: int = 5              # one follow-up per person this many days after the first email (needs its own tap)
     outreach_gap_seconds: int = 180              # pause between two outreach emails in one send (0 to 1800)
+    # Interview scheduling helper, recruiter call card, referral drafts (hub/jobassist.py). Drafts only; nothing is sent or opened.
+    jobassist_enabled: bool = True
+    jobassist_work_start: str = "10:00"          # free times are offered inside these hours (IST, Monday to Friday)
+    jobassist_work_end: str = "19:00"
+    jobassist_buffer_minutes: int = 30           # clear time kept around every calendar event (0 to 120)
+    jobassist_slot_minutes: int = 60             # length of an offered slot (15 to 180)
     # Job digest (hub/jobdigest.py): daily top 10, weekly review, follow-up nudges. Drafts and lists only; nothing is sent.
     jobdigest_enabled: bool = True
     jobdigest_hour: int = 8                      # the digest is built after this hour of the laptop's local clock (IST for the owner)
@@ -429,6 +435,9 @@ def save(config: Config, path: Path) -> None:
         "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
         "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
         "outreach_followup_days": int(config.outreach_followup_days or 5), "outreach_gap_seconds": int(config.outreach_gap_seconds),
+        "jobassist_enabled": config.jobassist_enabled is not False, "jobassist_work_start": str(config.jobassist_work_start or "10:00"),
+        "jobassist_work_end": str(config.jobassist_work_end or "19:00"), "jobassist_buffer_minutes": int(config.jobassist_buffer_minutes),
+        "jobassist_slot_minutes": int(config.jobassist_slot_minutes or 60),
         "jobdigest_enabled": config.jobdigest_enabled is not False, "jobdigest_hour": int(config.jobdigest_hour), "jobdigest_notify": config.jobdigest_notify is not False,
         "jobdigest_weekly_day": int(config.jobdigest_weekly_day), "jobdigest_nudge_days": int(config.jobdigest_nudge_days), "jobdigest_nudges": config.jobdigest_nudges is not False,
         "sharein_enabled": config.sharein_enabled is not False,

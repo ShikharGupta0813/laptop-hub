@@ -1,6 +1,6 @@
 // Keeps the app shell available when the laptop is off, so the app still opens and says so.
 // API calls and the terminal socket are never cached. Bump VERSION whenever a shell file changes.
-const VERSION = "v48-job-lanes-2026.11";
+const VERSION = "v49-job-lanes-2-2026.11";
 const CACHE = `hub-shell-${VERSION}`;
 const SHELL = [
   "/js/models.js", "/css/models.css", "/js/dictation.js", "/css/dictation.css", "/js/provlists.js",
@@ -43,6 +43,7 @@ const SHELL = [
   "/js/jobreplies.js", "/js/jobinsights.js",
   "/js/outreach.js", "/css/outreach.css",
   "/js/ats.js", "/css/ats.css",
+  "/js/jobassist.js", "/css/jobassist.css",
   "/js/triagebadges.js", "/css/triage.css",
   "/js/jobdigest.js", "/css/jobdigest.css",
   "/js/share.js", "/css/share.css",

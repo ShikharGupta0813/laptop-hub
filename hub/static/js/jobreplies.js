@@ -3,6 +3,7 @@
 // The data comes with the tracker's one call (GET /api/jobtrack, key `replies`); "Check mail now" is a tap, never a timer.
 import { api, el } from "./api.js";
 import * as ui from "./ui.js";
+import { scheduleSheet } from "./jobassist.js";
 
 const fail = (error) => ui.toast(error?.message || "Something went wrong.", { kind: "bad" });
 const TONE = { interview: "good", offer: "good", assessment: "accent", rejection: "bad", recruiter: "", auto_ack: "gray", opt_out: "warn", other: "" };
@@ -45,6 +46,7 @@ export function repliesCard(data, { records, statuses, reload }) {
           }
           act(() => api(`/api/replies/${s.id}/confirm`, { method: "POST", json: {} }), s.action === "optout" ? "Added to your opt-out list." : "Done.");
         } }),
+        s.kind === "interview" ? ui.button({ label: "Offer times", icon: "calendar", variant: "tonal", size: "sm", onClick: () => scheduleSheet(s) }) : null,
         ui.button({ label: "Dismiss", variant: "ghost", size: "sm", onClick: () => act(() => api(`/api/replies/${s.id}/dismiss`, { method: "POST", json: {} })) })));
   }
 

@@ -68,6 +68,7 @@ export const VIEWS = [
   { id: "companyintel", label: "Company brief", icon: "search", path: "./companyintel.js", under: "apps" },
   { id: "offers", label: "Offers", icon: "trend", path: "./offers.js", under: "apps" },
   { id: "proposals", label: "Proposals", icon: "pen", path: "./proposals.js", under: "apps" },
+  { id: "jobassist", label: "Interview helper", icon: "phone", path: "./jobassist.js", under: "apps" },
   { id: "outreach", label: "Outreach", icon: "send", path: "./outreach.js", under: "apps" },
   { id: "ats", label: "ATS and packets", icon: "wand", path: "./ats.js", under: "apps" },
   { id: "jobdigest", label: "Job digest", icon: "target", path: "./jobdigest.js", under: "apps" },
