@@ -103,3 +103,4 @@ It matches the project as of its `HANDOFF.md` (last updated 2026-11-04, with lat
 31. [50 · Freelance proposals](50-freelance-proposals.md): proposal drafts from your own facts with three openings, and which opening wins more. You submit by hand.
 32. [51 · Share to REDLINE](51-share-to-redline.md): share a job from LinkedIn, Naukri or any phone app to REDLINE; only the shared text is read, you get a go / no-go and the ATS match, and one-tap Tailor + packet or Add to apply queue.
 33. [52 · Form filling on more job sites](52-form-adapters.md): the application filler now understands SuccessFactors, Taleo, Oracle Recruiting, iCIMS and Ashby. You still sign in, answer voluntary questions and press Next and Submit.
+34. [53 · Job digest](53-job-digest.md): the best new jobs each morning, a weekly review of your search, and follow-up and thank-you drafts. You send everything yourself.

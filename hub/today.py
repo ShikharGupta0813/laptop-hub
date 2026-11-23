@@ -442,7 +442,7 @@ async def collect(ctx: Ctx, call: Caller, clock: Callable[[], dt.datetime], *, g
             "meetings": meetings, "tasks": {k: tasks[k] for k in ("due_today", "overdue", "updated", "commented")} |
             {"completed": tasks["completed"]},
             "expenses": expenses, "mail": mail, "done": done, "pending": pending, "timeline": timeline,
-            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "jobtrack": _jobtrack_line(ctx), "owe": _owe_list(ctx),
+            "brain": memory, "proactive": _proactive_view(ctx), "applyq": _applyq_line(ctx), "jobtrack": _jobtrack_line(ctx), "jobdigest": _jobdigest_line(ctx), "owe": _owe_list(ctx),
             "numbers": numbers, "sources_failed": sorted(set(failed)),
             "cache": {"minutes": round(ttl_s / 60, 1),
                       "oldest_at": dt.datetime.fromtimestamp(min(used_at)).isoformat(timespec="seconds") if used_at else "",
@@ -474,6 +474,15 @@ def _jobtrack_line(ctx: Ctx) -> str:
     try:
         from . import jobtrack
         return jobtrack.today_line(ctx.config)
+    except Exception:  # noqa: BLE001 - optional
+        return ""
+
+
+def _jobdigest_line(ctx: Ctx) -> str:
+    """ONE short line from the job digest (hub/jobdigest.py): "7 new jobs in your digest, 2 with someone you know". "" when off or empty."""
+    try:
+        from . import jobdigest
+        return jobdigest.today_line(ctx.config)
     except Exception:  # noqa: BLE001 - optional
         return ""
 

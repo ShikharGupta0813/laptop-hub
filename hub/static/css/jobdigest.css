@@ -1,0 +1,16 @@
+/* Job digest. Scoped under #view-jobdigest; tokens only. */
+#view-jobdigest .jd { max-width: var(--content-max); margin: 0 auto; min-width: 0; padding: var(--sp-4) 0 var(--sp-8); }
+#view-jobdigest .jd > * { min-width: 0; }
+.jd-card { padding: var(--sp-4); }
+.jd-title { margin: 0; font-size: var(--fs-md, 1rem); overflow-wrap: anywhere; }
+.jd-sub, .jd-note { margin: 0; color: var(--c-text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.jd-note { color: var(--c-text-2); }
+.jd-warm { margin: 0; color: var(--c-text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.jd-badges, .jd-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.jd-actions a.ui-btn { text-decoration: none; }
+.jd-stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.jd-stat { display: flex; flex-direction: column; min-width: 4.5rem; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); }
+.jd-stat b { font-size: var(--fs-lg, 1.25rem); color: var(--c-text); }
+.jd-stat span { color: var(--c-text-3); font-size: var(--fs-sm); }
+.jd-suggest { padding: var(--sp-2) var(--sp-3); border: 1px dashed var(--c-line); border-radius: var(--r-md, 12px); font-size: var(--fs-sm); color: var(--c-text-2); overflow-wrap: anywhere; }
+.jd-draft { margin: 0; padding: var(--sp-3); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-sm); color: var(--c-text-2); border: 1px solid var(--c-line); border-radius: var(--r-md, 12px); background: var(--c-surface-2); }

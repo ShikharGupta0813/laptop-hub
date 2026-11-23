@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from . import ats, packet   # ATS match score and application packet tools (docs/api/ats.md, packet.md)
 from . import networking, interviews   # networking drafts and interview coach (docs/api/networking.md, interviews.md)
 from . import replies, outreach   # their draft-only Friday tools (docs/api/replies.md, outreach.md)
+from . import jobdigest   # its read-only Friday tools job_digest and job_week_review (docs/api/jobdigest.md)
 from . import companyintel, offers, proposals   # company brief, offers and negotiation, freelance proposals (docs/api/companyintel.md, offers.md, proposals.md)
 from . import assistant_tools, assistant_tools_more, studylib, auth, brain_tools, buildflow_tools, ccsessions, council_tools, files, friday_tools, research, skills_tools, vision, opps, applyq_tools, gmailx_tools, devto, posts, alerts_tools, lanes_tools, meetings_tools, computeruse, playbooks, batches, oppsources, tailor, chatchan, jobtrack
 from . import models as models_mod
@@ -89,6 +90,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("companyintel", "offers", "proposals")   # 
 FEATURE_MODULES = FEATURE_MODULES + ("replies", "jobinsights", "outreach")   # reply sorting, deeper job insights, batched personal outreach (docs/api/replies.md, jobinsights.md, outreach.md)
 FEATURE_MODULES = FEATURE_MODULES + ("ats", "resumes", "packet")   # ATS match score + resume read check, master resumes + batch tailoring queue, one-page application packet (docs/api/ats.md, resumes.md, packet.md)
 FEATURE_MODULES = FEATURE_MODULES + ("triage",)   # go / no-go label, ghost and lock flags, gig score for finds (docs/api/triage.md)
+FEATURE_MODULES = FEATURE_MODULES + ("jobdigest",)   # daily top 10, weekly review, follow-up nudges (docs/api/jobdigest.md)
 FEATURE_MODULES = FEATURE_MODULES + ("sharein",)   # Share > REDLINE from the phone: shared job text becomes an opportunity with triage and ATS score (docs/api/sharein.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
@@ -240,6 +242,7 @@ def create_app(config: Config, deps: Deps | None = None, audit_path: Path | None
         + networking.build(lambda: app, config)
         + interviews.build(lambda: app, config)
         + replies.build(lambda: app, config) + outreach.build(lambda: app, config)
+        + jobdigest.build(lambda: app, config)
         + companyintel.build(lambda: app, config) + offers.build(lambda: app, config) + proposals.build(lambda: app, config)
         + alerts_tools.build(lambda: app, config)
         + ccsessions.build(lambda: app, config)
