@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><title>Apply - Acme Test Careers</title></head><body>
+<div class="sapUiBody" id="applyContent">
+<h1>Personal Information</h1>
+<p>Step 1 of 2</p>
+<form id="applyForm" action="/submit" method="post" onsubmit="return false">
+ <label for="fname">First Name *</label><div class="sapMInput"><input id="fname" class="sapMInputBaseInner" type="text" aria-required="true"></div>
+ <label for="lname">Last Name *</label><div class="sapMInput"><input id="lname" class="sapMInputBaseInner" type="text" aria-required="true"></div>
+ <label for="mail">Email Address *</label><div class="sapMInput"><input id="mail" class="sapMInputBaseInner" type="text"></div>
+ <label for="mob">Mobile Phone</label><div class="sapMInput"><input id="mob" class="sapMInputBaseInner" type="text"></div>
+ <label for="cty">City</label><div class="sapMInput"><input id="cty" class="sapMInputBaseInner" type="text"></div>
+ <label for="ctry">Country/Region *</label>
+ <div class="sapMComboBox"><input id="ctry" class="sapMInputBaseInner sapMComboBoxBaseInner" role="combobox" aria-haspopup="listbox" type="text" data-search="1"
+   data-options='["India","United States","Germany"]'></div>
+ <label for="lang">Preferred Language</label>
+ <select id="lang" class="sapMSltNative"><option value="">Please select</option><option value="en">English</option><option value="hi">Hindi</option></select>
+ <label for="src">How did you hear about us? *</label>
+ <select id="src" class="sapMSltNative"><option value="">Please select</option><option value="job">Job Board</option><option value="web">Company Website</option></select>
+ <label for="avail">Available From</label>
+ <div class="sapMDatePicker"><input id="avail" class="sapMInputBaseInner" type="text" placeholder="dd/MM/yyyy"></div>
+ <label for="natl">Nationality</label><div class="sapMInput"><input id="natl" class="sapMInputBaseInner" type="text"></div>
+ <label for="cv">Resume</label><input id="cv" type="file">
+ <input type="checkbox" id="dp"><label for="dp">I accept the data privacy statement</label>
+ <button type="button" class="sapMBtn" data-next="review.html">Next</button>
+</form></div>
+<script src="/ad-mock.js"></script>
+</body></html>

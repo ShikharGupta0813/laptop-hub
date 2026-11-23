@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><title>Apply - Acme Test</title></head><body>
+<div class="apply-flow" id="apply-flow-page">
+<h1>Contact Information</h1>
+<p class="apply-flow-progress">Step 1 of 3</p>
+<form action="/submit" method="post" onsubmit="return false">
+ <oj-input-text label-hint="First Name" required="true"><div class="oj-text-field-container"><input id="firstName|input" class="oj-text-field-input" type="text"></div></oj-input-text>
+ <oj-input-text><label for="lastName|input">Last Name *</label><div class="oj-text-field-container"><input id="lastName|input" class="oj-text-field-input" type="text"></div></oj-input-text>
+ <oj-input-text><label for="email|input">Email *</label><div class="oj-text-field-container"><input id="email|input" class="oj-text-field-input" type="text"></div></oj-input-text>
+ <oj-input-text><label for="phone|input">Phone Number</label><div class="oj-text-field-container"><input id="phone|input" class="oj-text-field-input" type="text"></div></oj-input-text>
+ <oj-select-single label-hint="Country"><label for="country|input">Country *</label><div class="oj-text-field-container">
+   <input id="country|input" class="oj-text-field-input oj-combobox-input" role="combobox" aria-haspopup="listbox" aria-expanded="false" type="text" readonly
+     data-options='["India","United States","Germany"]'></div></oj-select-single>
+ <oj-select-single><label for="src|input">How did you hear about us?</label><div class="oj-text-field-container">
+   <input id="src|input" class="oj-text-field-input oj-combobox-input" role="combobox" aria-haspopup="listbox" type="text" readonly
+     data-options='["Employee Referral","Company Career Site","Job Board","Other"]'></div></oj-select-single>
+ <oj-input-date><label for="avail|input">Available from</label><input id="avail|input" class="oj-text-field-input" type="text" placeholder="MM/DD/YYYY"></oj-input-date>
+ <oj-input-date><label for="dob|input">Date of birth</label><input id="dob|input" class="oj-text-field-input oj-inputdatetime-input" type="text"></oj-input-date>
+ <oj-radioset><fieldset><legend>Are you willing to relocate? *</legend>
+   <label><input type="radio" name="reloc" value="yes"> Yes</label><label><input type="radio" name="reloc" value="no"> No</label></fieldset></oj-radioset>
+ <oj-radioset><fieldset><legend>Do you require visa sponsorship? *</legend>
+   <label><input type="radio" name="visa" value="yes"> Yes</label><label><input type="radio" name="visa" value="no"> No</label></fieldset></oj-radioset>
+ <oj-checkboxset><label><input type="checkbox" name="consent" value="1"> I consent to the processing of my personal data</label></oj-checkboxset>
+ <oj-button><button type="button" class="oj-button-button" data-next="review.html">Next</button></oj-button>
+</form></div>
+<script src="/ad-mock.js"></script>
+</body></html>
