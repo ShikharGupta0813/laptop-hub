@@ -280,3 +280,7 @@ Run `npm run sync` again with the new `HUB_URL`, rebuild, reinstall. The address
 
 The cloud build has run successfully (about 2 minutes, producing a 3.7 MB debug APK), but that test build used a placeholder address, so build your own with your real one. The APK has **not been installed on a real phone yet**. If the app opens to a blank or error page, check that
 Tailscale is on, the hub is running, and the address you built with is exactly the one from `tailscale serve status`.
+
+## Share a job to the app
+
+After this build, LinkedIn, Naukri, a browser or any app lists **Laptop Hub** in its Share sheet for text. Tap it and the Shared job screen opens with the go / no-go and the ATS match (docs/guide/51-share-to-redline.md). Only the shared text is used; the hub never opens LinkedIn or Naukri. `scripts/patch-manifest.js` adds the share filter if you regenerate the Android project.
