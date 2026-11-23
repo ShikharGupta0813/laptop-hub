@@ -272,6 +272,15 @@ class Config:
     jobassist_work_end: str = "19:00"
     jobassist_buffer_minutes: int = 30           # clear time kept around every calendar event (0 to 120)
     jobassist_slot_minutes: int = 60             # length of an offered slot (15 to 180)
+    # Job digest (hub/jobdigest.py): daily top 10, weekly review, follow-up nudges. Drafts and lists only; nothing is sent.
+    jobdigest_enabled: bool = True
+    jobdigest_hour: int = 8                      # the digest is built after this hour of the laptop's local clock (IST for the owner)
+    jobdigest_notify: bool = True                # one phone notification a day, only when the digest has something in it
+    jobdigest_weekly_day: int = 6                # weekly review day: Monday is 0, Sunday is 6
+    jobdigest_nudge_days: int = 7                # days without a reply before a follow-up nudge
+    jobdigest_nudges: bool = True                # follow-up and thank-you reminders with a draft ready
+    # Share to REDLINE (hub/sharein.py): Share > REDLINE from another app on the phone becomes an opportunity. Nothing is sent or queued by it.
+    sharein_enabled: bool = True
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -429,6 +438,9 @@ def save(config: Config, path: Path) -> None:
         "jobassist_enabled": config.jobassist_enabled is not False, "jobassist_work_start": str(config.jobassist_work_start or "10:00"),
         "jobassist_work_end": str(config.jobassist_work_end or "19:00"), "jobassist_buffer_minutes": int(config.jobassist_buffer_minutes),
         "jobassist_slot_minutes": int(config.jobassist_slot_minutes or 60),
+        "jobdigest_enabled": config.jobdigest_enabled is not False, "jobdigest_hour": int(config.jobdigest_hour), "jobdigest_notify": config.jobdigest_notify is not False,
+        "jobdigest_weekly_day": int(config.jobdigest_weekly_day), "jobdigest_nudge_days": int(config.jobdigest_nudge_days), "jobdigest_nudges": config.jobdigest_nudges is not False,
+        "sharein_enabled": config.sharein_enabled is not False,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

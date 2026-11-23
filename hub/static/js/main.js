@@ -71,6 +71,8 @@ export const VIEWS = [
   { id: "jobassist", label: "Interview helper", icon: "phone", path: "./jobassist.js", under: "apps" },
   { id: "outreach", label: "Outreach", icon: "send", path: "./outreach.js", under: "apps" },
   { id: "ats", label: "ATS and packets", icon: "wand", path: "./ats.js", under: "apps" },
+  { id: "jobdigest", label: "Job digest", icon: "target", path: "./jobdigest.js", under: "apps" },
+  { id: "share", label: "Shared job", icon: "target", path: "./share.js", under: "apps" },
 ];
 // Screens that ship with the app; any other module is checked before it is imported.
 const CORE = new Set(["home", "assistant", "work", "learn", "apps", "notes", "files", "terminal", "hub"]);

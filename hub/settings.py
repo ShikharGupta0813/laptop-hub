@@ -59,8 +59,10 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "chatch_enabled", "chatch_email_parse")   # hub/c
 ALLOWED_KEYS = (*ALLOWED_KEYS, "networking_enabled", "networking_nudge_days", "networking_ai", "interviews_enabled", "interviews_ai")   # hub/networking.py, hub/interviews.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "jobtrack_enabled", "jobtrack_followup_days", "jobtrack_ghost_days")   # hub/jobtrack.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "companyintel_enabled", "companyintel_ai", "offers_enabled", "proposals_enabled")   # hub/companyintel.py, offers.py, proposals.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "jobdigest_enabled", "jobdigest_hour", "jobdigest_notify", "jobdigest_weekly_day", "jobdigest_nudge_days", "jobdigest_nudges")   # hub/jobdigest.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "replies_enabled", "replies_ai", "jobinsights_enabled", "outreach_enabled", "outreach_followup_days", "outreach_gap_seconds")   # hub/replies.py, jobinsights.py, outreach.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "jobassist_enabled", "jobassist_work_start", "jobassist_work_end", "jobassist_buffer_minutes", "jobassist_slot_minutes")   # hub/jobassist.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "sharein_enabled")   # hub/sharein.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -216,6 +218,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
             changes[key] = value
+        elif key == "sharein_enabled":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "sharein_enabled must be true or false.")
+            changes[key] = value
         elif key in ("tailor_enabled", "tailor_ai", "answerbank_enabled", "answerbank_embeddings"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
@@ -328,6 +334,15 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
             changes[key] = value
         elif key in ("jobassist_buffer_minutes", "jobassist_slot_minutes"):
             low, high = (0, 120) if key == "jobassist_buffer_minutes" else (15, 180)
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                raise HTTPException(400, f"{key} must be a whole number from {low} to {high}.")
+            changes[key] = value
+        elif key in ("jobdigest_enabled", "jobdigest_notify", "jobdigest_nudges"):
+            if not isinstance(value, bool):
+                raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key in ("jobdigest_hour", "jobdigest_weekly_day", "jobdigest_nudge_days"):
+            low, high = {"jobdigest_hour": (0, 23), "jobdigest_weekly_day": (0, 6), "jobdigest_nudge_days": (2, 60)}[key]
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise HTTPException(400, f"{key} must be a whole number from {low} to {high}.")
             changes[key] = value
@@ -664,11 +679,14 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "offers_enabled": config.offers_enabled is not False, "proposals_enabled": config.proposals_enabled is not False,
             "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
             "jobtrack_ghost_days": config.jobtrack_ghost_days,
+            "sharein_enabled": config.sharein_enabled is not False,
             "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
             "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
             "outreach_followup_days": config.outreach_followup_days, "outreach_gap_seconds": config.outreach_gap_seconds,
             "jobassist_enabled": config.jobassist_enabled is not False, "jobassist_work_start": config.jobassist_work_start, "jobassist_work_end": config.jobassist_work_end,
             "jobassist_buffer_minutes": config.jobassist_buffer_minutes, "jobassist_slot_minutes": config.jobassist_slot_minutes,
+            "jobdigest_enabled": config.jobdigest_enabled is not False, "jobdigest_hour": config.jobdigest_hour, "jobdigest_notify": config.jobdigest_notify is not False,
+            "jobdigest_weekly_day": config.jobdigest_weekly_day, "jobdigest_nudge_days": config.jobdigest_nudge_days, "jobdigest_nudges": config.jobdigest_nudges is not False,
             "tailor_enabled": config.tailor_enabled is not False, "tailor_ai": config.tailor_ai is True,
             "answerbank_enabled": config.answerbank_enabled is not False, "answerbank_min_confidence": config.answerbank_min_confidence,
             "answerbank_embeddings": config.answerbank_embeddings is True,
