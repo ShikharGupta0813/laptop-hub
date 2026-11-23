@@ -697,3 +697,9 @@ Owner (real 390px Android): model strip unreadable, the chip row was the lanes p
 - Additive touches: config keys `replies_enabled`, `replies_ai`, `jobinsights_enabled`, `outreach_enabled`, `outreach_followup_days`, `outreach_gap_seconds`; new tracker record fields `applied_hour`, `score`, `triaged`, `posting`; `Applyq.send(..., attachments=)`; `jobtrack.overview` carries `replies`; `jobtrack.today_line` appends the replies line.
 - Tools: `replies_review` (read-only), `outreach_prepare` (draft only). Sending an outreach batch is the same `batch_send` path (always asked).
 - UNVERIFIED: real mail wording on real mailboxes, a real Gmail send of a batch, the screens on a real phone (375 px dev-server check only).
+
+## Job digest (2026-11-23)
+- `hub/jobdigest.py` (daily top 10 from the finder finds that passed triage, ranked by ATS score, warm paths marked; weekly review from the tracker history; no-reply, thank-you and status nudges as reminders with a draft; one 20-minute local pass), screen `js/jobdigest.js`, Friday tools `job_digest` and `job_week_review` (read-only), one line in Today. Docs: `docs/api/jobdigest.md`, guide 53.
+- Rules: nothing is sent or applied; no model; the notification is at most once a day and only from the background pass; a no-reply nudge is not made when a tracker follow-up is within 2 days (so by default the tracker day-5 reminder covers it).
+- Additive touches: config keys `jobdigest_enabled`, `jobdigest_hour`, `jobdigest_notify`, `jobdigest_weekly_day`, `jobdigest_nudge_days`, `jobdigest_nudges` (config.py, settings.py), `today.py` key `jobdigest`, one line each in server.py, main.js, apps.js, today.js, sw.js.
+- UNVERIFIED: a real morning rollover on the owner laptop, the real ATS score on real facts, real reminders firing, the phone notification.

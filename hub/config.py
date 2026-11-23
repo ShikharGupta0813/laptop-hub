@@ -266,6 +266,13 @@ class Config:
     outreach_enabled: bool = True
     outreach_followup_days: int = 5              # one follow-up per person this many days after the first email (needs its own tap)
     outreach_gap_seconds: int = 180              # pause between two outreach emails in one send (0 to 1800)
+    # Job digest (hub/jobdigest.py): daily top 10, weekly review, follow-up nudges. Drafts and lists only; nothing is sent.
+    jobdigest_enabled: bool = True
+    jobdigest_hour: int = 8                      # the digest is built after this hour of the laptop's local clock (IST for the owner)
+    jobdigest_notify: bool = True                # one phone notification a day, only when the digest has something in it
+    jobdigest_weekly_day: int = 6                # weekly review day: Monday is 0, Sunday is 6
+    jobdigest_nudge_days: int = 7                # days without a reply before a follow-up nudge
+    jobdigest_nudges: bool = True                # follow-up and thank-you reminders with a draft ready
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -420,6 +427,8 @@ def save(config: Config, path: Path) -> None:
         "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
         "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
         "outreach_followup_days": int(config.outreach_followup_days or 5), "outreach_gap_seconds": int(config.outreach_gap_seconds),
+        "jobdigest_enabled": config.jobdigest_enabled is not False, "jobdigest_hour": int(config.jobdigest_hour), "jobdigest_notify": config.jobdigest_notify is not False,
+        "jobdigest_weekly_day": int(config.jobdigest_weekly_day), "jobdigest_nudge_days": int(config.jobdigest_nudge_days), "jobdigest_nudges": config.jobdigest_nudges is not False,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
