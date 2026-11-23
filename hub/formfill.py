@@ -941,6 +941,35 @@ SEARCH_OPTION_SEL = ('[data-automation-id="activeListContainer"] [role="option"]
                      '[role="listbox"] [role="option"]')
 
 
+COMBO_OPTION_SEL = ('[role="listbox"] [role="option"]:visible, [role="listbox"] li:visible, .sapMSelectList li:visible, .sapMPopup li[role="option"]:visible, '
+                    '.oj-listbox-results li:visible, .oj-listbox-result:visible, [role="option"]:visible')
+ADAPTER_JS = """() => {
+  const out = {};
+  const shown = (e) => {
+    if (e.value) return e.value;
+    let p = e.parentElement;
+    for (let i = 0; i < 4 && p; i++, p = p.parentElement) {
+      const s = p.querySelector('[class*="singleValue" i],[class*="single-value" i],[class*="selected-value" i],[class*="selectedvalue" i],[class*="_value_" i]');
+      if (s && (s.innerText || '').trim()) return s.innerText.trim();
+    }
+    return '';
+  };
+  document.querySelectorAll('[data-rl-idx]').forEach((e) => {
+    const cls = (e.className || '') + ' ' + (e.parentElement ? e.parentElement.className || '' : '');
+    if (e.getAttribute('role') === 'combobox' || e.getAttribute('aria-haspopup') === 'listbox' || /combobox|oj-select|oj-combobox/i.test(cls))
+      out['c' + e.getAttribute('data-rl-idx')] = shown(e);
+  });
+  document.querySelectorAll('[data-rl-btn]').forEach((e) => {
+    const t = (e.innerText || '').trim().toLowerCase();
+    if (t !== 'yes' && t !== 'no') return;
+    const on = e.getAttribute('aria-pressed') === 'true' || e.getAttribute('aria-checked') === 'true'
+      || /(^|[\\s_-])(active|selected|checked|pressed)([\\s_-]|$)/i.test(e.className || '');
+    out['t' + e.getAttribute('data-rl-btn')] = on ? '1' : '0';
+  });
+  return out;
+}"""
+
+
 class Driver:
     """What the flow needs from a browser. Methods run on ONE worker thread (Playwright's sync API is thread-bound).
     The real implementation is PlaywrightDriver; tests use a fake with the same methods."""
@@ -966,6 +995,10 @@ class Driver:
     def search_options(self, idx: int, query: str) -> list[str]: raise NotImplementedError   # type into a search picker, return the options shown
     def pick_searched(self, idx: int, text: str) -> str: raise NotImplementedError           # click that option, return the chips now selected
     def wd_values(self) -> dict[str, str]: return {}                                         # visible value of every custom widget
+    # custom widgets of the hub/formadapters systems (Ashby, Oracle, SuccessFactors ...)
+    def combo_options(self, idx: int, query: str = "") -> list[str]: raise NotImplementedError   # open a combo input (typing `query`), return the options shown
+    def combo_pick(self, idx: int, text: str) -> str: raise NotImplementedError                  # click that option, return what the combo shows now
+    def ad_values(self) -> dict[str, str]: return {}                                             # c<idx> combo text, t<btn> "1" when a Yes/No button is pressed
 
 
 def playwright_available() -> bool:
@@ -980,6 +1013,7 @@ class PlaywrightDriver(Driver):
         self.profile_dir, self.resolver, self.allow_local = Path(profile_dir), resolver, allow_local
         self._factory, self._launch_options = sync_factory, dict(launch_options or {})
         self._pw = self._ctx = self._page = None
+        self._sc = None                      # a child frame that holds the form (iCIMS), else None = the page itself
         self._blocked = ""
 
     def _route(self, route, request) -> None:
@@ -1037,15 +1071,44 @@ class PlaywrightDriver(Driver):
     def url(self) -> str:
         return self._page.url
 
+    def _s(self):
+        return self._sc or self._page
+
+    def _find_frame(self, html: str):
+        """The child frame that holds the application form, for pages that keep it in an iframe (iCIMS). None for every other page."""
+        try:
+            from .formadapters import frame_wanted
+            if not frame_wanted(self._page.url, html):
+                return None
+            host = host_of(self._page.url)
+            best, best_n = None, 0
+            for fr in self._page.frames[1:]:
+                fh = host_of(fr.url or "")
+                if not fh or not (fh == host or fh.endswith(".icims.com") or fh == "icims.com"):
+                    continue
+                n = fr.locator("input:visible, select:visible, textarea:visible").count()
+                if n > best_n:
+                    best, best_n = fr, n
+            return best
+        except Exception:  # noqa: BLE001 - no frame found: read the page itself
+            return None
+
     def html(self) -> str:
+        self._sc = None
         self._page.evaluate(STAMP_JS)
-        return self._page.content()
+        html = self._page.content()
+        frame = self._find_frame(html)
+        if frame is not None:
+            self._sc = frame
+            frame.evaluate(STAMP_JS)
+            return frame.content()
+        return html
 
     def values(self) -> dict[int, str]:
-        return {int(k): v for k, v in (self._page.evaluate(READ_JS) or {}).items()}
+        return {int(k): v for k, v in (self._s().evaluate(READ_JS) or {}).items()}
 
     def _loc(self, attr: str, idx: int):
-        return self._page.locator(f'[{attr}="{int(idx)}"]').first
+        return self._s().locator(f'[{attr}="{int(idx)}"]').first
 
     def fill_text(self, idx: int, value: str) -> None:
         self._loc("data-rl-idx", idx).fill(value, timeout=5000)
@@ -1092,12 +1155,12 @@ class PlaywrightDriver(Driver):
 
     def open_list(self, btn_idx: int) -> list[str]:
         self._loc("data-rl-btn", btn_idx).click(timeout=5000)
-        box = self._page.locator('[role="listbox"]').last
+        box = self._s().locator('[role="listbox"]').last
         box.wait_for(state="visible", timeout=4000)
         return [" ".join(t.split()) for t in box.locator('[role="option"]').all_inner_texts()][:500]
 
     def pick_listed(self, btn_idx: int, text: str) -> str:
-        box = self._page.locator('[role="listbox"]').last
+        box = self._s().locator('[role="listbox"]').last
         box.get_by_role("option", name=text, exact=True).first.click(timeout=4000)
         try:
             box.wait_for(state="hidden", timeout=3000)
@@ -1117,7 +1180,7 @@ class PlaywrightDriver(Driver):
         loc.fill("", timeout=3000)
         loc.press_sequentially(query, delay=25, timeout=6000)
         loc.press("Enter")
-        opts = self._page.locator(SEARCH_OPTION_SEL)
+        opts = self._s().locator(SEARCH_OPTION_SEL)
         try:
             opts.first.wait_for(state="visible", timeout=5000)
         except Exception:  # noqa: BLE001 - nothing found
@@ -1125,7 +1188,7 @@ class PlaywrightDriver(Driver):
         return list(dict.fromkeys(" ".join(t.split()) for t in opts.all_inner_texts() if t.strip()))[:200]
 
     def pick_searched(self, idx: int, text: str) -> str:
-        opts = self._page.locator(SEARCH_OPTION_SEL)
+        opts = self._s().locator(SEARCH_OPTION_SEL)
         for i in range(opts.count()):
             o = opts.nth(i)
             if " ".join(o.inner_text().split()) == text:
@@ -1137,7 +1200,35 @@ class PlaywrightDriver(Driver):
         return (self.wd_values().get(f"p{int(idx)}") or "").replace("|", ", ")
 
     def wd_values(self) -> dict[str, str]:
-        return {str(k): str(v) for k, v in (self._page.evaluate(WIDGET_JS) or {}).items()}
+        return {str(k): str(v) for k, v in (self._s().evaluate(WIDGET_JS) or {}).items()}
+
+    def combo_options(self, idx: int, query: str = "") -> list[str]:
+        loc = self._loc("data-rl-idx", idx)
+        loc.click(timeout=5000)
+        if query:
+            loc.fill("", timeout=3000)
+            loc.press_sequentially(query, delay=25, timeout=6000)
+        opts = self._s().locator(COMBO_OPTION_SEL)
+        try:
+            opts.first.wait_for(state="visible", timeout=4000)
+        except Exception:  # noqa: BLE001 - this input shows no list
+            return []
+        return list(dict.fromkeys(" ".join(t.split()) for t in opts.all_inner_texts() if t.strip()))[:300]
+
+    def combo_pick(self, idx: int, text: str) -> str:
+        opts = self._s().locator(COMBO_OPTION_SEL)
+        for i in range(opts.count()):
+            o = opts.nth(i)
+            if " ".join(o.inner_text().split()) == text:
+                o.click(timeout=4000)
+                break
+        else:
+            raise FormfillError("That option is not on the page.", 400)
+        self.settle()
+        return self.ad_values().get(f"c{int(idx)}", "")
+
+    def ad_values(self) -> dict[str, str]:
+        return {str(k): str(v) for k, v in (self._s().evaluate(ADAPTER_JS) or {}).items()}
 
     def close(self) -> None:
         for obj, method in ((self._ctx, "close"), (self._pw, "stop")):
@@ -1335,14 +1426,16 @@ class Formfill:
 
     # -- capture -----------------------------------------------------------------------------------------------------
     def _wd_read(self, url: str, html: str, page: dict) -> dict | None:
-        """The Workday reading of a page, or None for every other site (then nothing below changes)."""
+        """The Workday (or other adapter) reading of a page, or None for every other site (then nothing below changes)."""
         try:
             from . import workday
-            if not workday.applies(url, html):
-                return None
-            return workday.parse(page, url)
-        except Exception:  # noqa: BLE001 - if the Workday reader fails the generic mapper still works
-            log.warning("formfill: the Workday reader failed, using the generic mapper")
+            if workday.applies(url, html):
+                return workday.parse(page, url)
+            from . import formadapters                      # SuccessFactors, Taleo, Oracle, iCIMS, Ashby (hub/formadapters)
+            system = formadapters.for_page(url, html)
+            return system.parse(page, url) if system is not None else None
+        except Exception:  # noqa: BLE001 - if a site reader fails the generic mapper still works
+            log.warning("formfill: the site reader failed, using the generic mapper")
             return None
 
     def _capture(self, run: Run, status: int | None = None, *, fill: bool = False) -> None:
@@ -1356,7 +1449,8 @@ class Formfill:
         run.blockers = detect_blockers(page, run.url, status)
         if wd is not None:
             from . import workday
-            run.blockers = workday.blockers(wd, run.blockers)
+            mod = wd.get("adapter") or workday               # an adapter system carries itself; Workday is the module
+            run.blockers = mod.blockers(wd, run.blockers)
             run.controls = wd["controls"]
             run.step = {**wd["step"], "has_next": run.controls["next"] is not None}
         else:
@@ -1380,7 +1474,7 @@ class Formfill:
                 except Exception:  # noqa: BLE001
                     pass
                 if wd is not None:
-                    run.plans = workday.fill_step(self.ctx, drv, wd, facts, item=item, profile=profile, this_year=self.svc.clock().year,
+                    run.plans = mod.fill_step(self.ctx, drv, wd, facts, item=item, profile=profile, this_year=self.svc.clock().year,
                                                   reread=lambda: self._wd_reread(run))
                 else:
                     run.plans = plan_form(fields, facts)
@@ -1394,6 +1488,8 @@ class Formfill:
                 run.controls = again["controls"]
                 run.step = {**again["step"], "has_next": run.controls["next"] is not None, "current": run.step["current"]}
             extra = drv.wd_values()
+            if wd.get("adapter") is not None:
+                extra = {**extra, **drv.ad_values()}
         values = drv.values()
         run.digest = digest_of(run.url, page["fields"], values, run.controls["submit"], extra)
         self._drop_shot(run)

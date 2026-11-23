@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><title>Personal Information - Acme Test Careers</title></head><body>
+<div id="requisitionListInterface" class="ftlcontainer">
+<h1>Personal Information</h1>
+<p class="subtitle">Step 2 of 4</p>
+<form id="ftlform" name="ftlform" action="jobapply.ftl" method="post">
+<table class="formtable">
+ <tr><th><label for="requisitionListInterface.ID1.row1">First Name *</label></th><td><input id="requisitionListInterface.ID1.row1" name="fn" type="text" class="inputtext" required></td></tr>
+ <tr><th><label for="requisitionListInterface.ID2.row1">Last Name *</label></th><td><input id="requisitionListInterface.ID2.row1" name="ln" type="text" class="inputtext" required></td></tr>
+ <tr><th><label for="requisitionListInterface.ID3.row1">E-mail Address *</label></th><td><input id="requisitionListInterface.ID3.row1" name="em" type="text" class="inputtext" required></td></tr>
+ <tr><th><label for="requisitionListInterface.ID4.row1">Mobile Phone</label></th><td><input id="requisitionListInterface.ID4.row1" name="ph" type="text" class="inputtext"></td></tr>
+ <tr><th><label for="requisitionListInterface.ID5.row1">City</label></th><td><input id="requisitionListInterface.ID5.row1" name="ct" type="text" class="inputtext"></td></tr>
+ <tr><th><label for="requisitionListInterface.ID6.row1">Country/Territory *</label></th><td>
+   <select id="requisitionListInterface.ID6.row1" name="co" required><option value="-1">Select</option><option value="IN">India</option><option value="US">United States</option></select></td></tr>
+ <tr><th><label for="requisitionListInterface.ID7.row1">How did you hear about us? *</label></th><td>
+   <select id="requisitionListInterface.ID7.row1" name="hear" required><option value="-1">Select</option><option value="1">Job Board</option><option value="2">Employee Referral</option><option value="3">Other</option></select></td></tr>
+ <tr><th><label for="requisitionListInterface.ID8.row1">Resume</label></th><td><input id="requisitionListInterface.ID8.row1" name="cv" type="file"></td></tr>
+ <tr><th><label for="requisitionListInterface.ID9.row1">Date of Birth</label></th><td><input id="requisitionListInterface.ID9.row1" name="dob" type="text"></td></tr>
+ <tr><th><label for="requisitionListInterface.ID10.row1">Current Salary</label></th><td><input id="requisitionListInterface.ID10.row1" name="sal" type="text"></td></tr>
+</table>
+<input type="checkbox" id="requisitionListInterface.consent" name="consent"><label for="requisitionListInterface.consent">I agree to the terms and the privacy statement</label>
+<div class="buttons">
+ <input type="button" id="requisitionListInterface.backAction" value="Back" data-next="login.html">
+ <input type="button" id="requisitionListInterface.nextAction" value="Next" data-next="eeo.html">
+</div>
+</form></div>
+<script src="/ad-mock.js"></script>
+</body></html>
