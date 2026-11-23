@@ -256,6 +256,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], re.Pattern]] = {
     "networking": ({"network_draft", "interview_prep"},
                    re.compile(r"\breferral\b|\bnetwork(?:ing)? (?:message|note|draft)\b|\brecruiters?\b|\bthank[- ]you (?:note|email|message)\b|\bfollow(?:ing)?[- ]up (?:note|email|message)\b|"
                               r"\binterview (?:prep|questions?|practice|coach|brief)\b|\bprepare me for (?:the |my )?interview\b|\btell me about yourself\b|\bstar (?:story|stories)\b|\bnegotiat\w+\b", re.I)),
+    "jobassist": ({"call_card"},
+                  re.compile(r"\bcall card\b|\brecruiter (?:call|screen)\b|\bprepare me for (?:the |my )?(?:recruiter|screening) call\b|\bscreening call\b", re.I)),
     "study": ({"study_library_list", "study_import_path"},
               re.compile(r"\bstudy library\b|\b(?:add|import|put|save|upload)\b.{0,40}\b(?:to|into|in) (?:my )?(?:study|learn|library)\b|\bstudy (?:material|materials|notes|files?)\b|\bmy library\b", re.I)),
     "posts": ({"post_destinations", "post_ideas", "post_draft", "post_list", "post_save_draft", "post_publish", "post_pack"},

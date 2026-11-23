@@ -99,6 +99,15 @@ _RULES: list[tuple[str, re.Pattern]] = [
 _RULES_BY_KIND = dict(_RULES)
 
 
+def _schedule_host(body: str) -> str:
+    """Host of a "pick a time" link in an interview mail (hub/jobassist.py). Only the host is stored; the link is never opened."""
+    try:
+        from .jobassist import schedule_host
+        return schedule_host(body)
+    except Exception:  # noqa: BLE001 - an extra
+        return ""
+
+
 def clean(value: Any, limit: int = 200) -> str:
     if not isinstance(value, str):
         return ""
@@ -413,7 +422,8 @@ class Replies:
                 "record_id": rec["id"] if rec else "", "company": rec["company"] if rec else "", "role": rec["role"] if rec else "",
                 "outreach": outreach, "address": address, "candidates": [{"id": c["id"], "company": c["company"], "role": c["role"]} for c in cands],
                 "sender": clean((m.get("sender") or "").split("<")[0], 80) or "unknown sender", "subject": clean(m.get("subject"), 140),
-                "snippet": clean(m.get("snippet") or body, 200), "date": str(m.get("date") or "")[:10], "created": self.now(), "state": "pending"}
+                "snippet": clean(m.get("snippet") or body, 200), "date": str(m.get("date") or "")[:10], "created": self.now(), "state": "pending",
+                "schedule_host": _schedule_host(body) if kind == "interview" else ""}
 
     # reading ----------------------------------------------------------------------------------------------------------
     def pending(self) -> list[dict]:

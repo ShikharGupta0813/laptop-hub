@@ -101,3 +101,4 @@ It matches the project as of its `HANDOFF.md` (last updated 2026-11-04, with lat
 29. [48 · Company brief](48-company-brief.md): a one-page brief from public sources only, red flags, and who you know at the company.
 30. [49 · Offers and negotiation](49-offers-and-negotiation.md): record and compare offers with an India in-hand estimate, a counter-offer draft, a clause checklist and a pay check.
 31. [50 · Freelance proposals](50-freelance-proposals.md): proposal drafts from your own facts with three openings, and which opening wins more. You submit by hand.
+32. [54 · Interview helper](54-interview-helper.md): three free times for an interview invite as a draft reply, a call card before a recruiter call, and a referral request draft. You send them yourself.
