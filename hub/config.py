@@ -266,6 +266,8 @@ class Config:
     outreach_enabled: bool = True
     outreach_followup_days: int = 5              # one follow-up per person this many days after the first email (needs its own tap)
     outreach_gap_seconds: int = 180              # pause between two outreach emails in one send (0 to 1800)
+    # Share to REDLINE (hub/sharein.py): Share > REDLINE from another app on the phone becomes an opportunity. Nothing is sent or queued by it.
+    sharein_enabled: bool = True
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -420,6 +422,7 @@ def save(config: Config, path: Path) -> None:
         "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
         "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
         "outreach_followup_days": int(config.outreach_followup_days or 5), "outreach_gap_seconds": int(config.outreach_gap_seconds),
+        "sharein_enabled": config.sharein_enabled is not False,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

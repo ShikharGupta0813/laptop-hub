@@ -702,8 +702,9 @@ class Opps:
             return False
 
     def ingest(self, rows: list[dict], *, source_name: str, source_id: str, kind: str, sender: str = "",
-               contact: str = "") -> dict:
-        """Vet, score, dedupe and store candidate rows. Returns {new, queued, blocked, seen}."""
+               contact: str = "", auto_queue: bool = True) -> dict:
+        """Vet, score, dedupe and store candidate rows. Returns {new, queued, blocked, seen}.
+        `auto_queue=False` (a job the owner shared by hand, hub/sharein.py): nothing goes to the apply queue until the owner taps."""
         prof = profile_mod.get_profile(self.ctx)
         now = self.clock()
         counts = {"new": 0, "queued": 0, "blocked": 0, "seen": 0, "low": 0, "filtered": 0}
@@ -750,7 +751,7 @@ class Opps:
                     find["status"], find["filtered_reason"] = "filtered", verdict["reason"]
                     counts["filtered"] += 1
                 elif find["score"] >= self.min_score or (find.get("meta") or {}).get("early"):   # watch-list companies always reach the queue
-                    if self.push_to_queue(find):
+                    if auto_queue and self.push_to_queue(find):
                         find["status"] = "queued"
                         counts["queued"] += 1
                     counts["new"] += 1
@@ -824,7 +825,7 @@ class Opps:
         name = "Email alert: " + (opps_vet.host_of("http://" + sender.split("@")[-1].strip("> ")) or clean(sender, 60))
         return self.ingest(rows, source_name=name, source_id="email", kind="job", sender=sender)
 
-    async def add_link(self, url: str, note: str = "") -> dict:
+    async def add_link(self, url: str, note: str = "", *, auto_queue: bool = True, source_name: str = "Pasted link") -> dict:
         """A page the owner pasted: read the public text (SSRF-guarded) and make a find. An unreadable page still
         becomes a find from the link and the note, flagged so the owner knows nothing was read."""
         url = clean(url, 500)
@@ -848,7 +849,7 @@ class Opps:
             problem = str(exc)
         host = opps_vet.host_of(url)
         row = {"title": title or note or host, "url": url, "company": "", "description": (note + "\n" + text).strip()[:MAX_DESC]}
-        counts = self.ingest([row], source_name="Pasted link", source_id="manual", kind="job")
+        counts = self.ingest([row], source_name=source_name, source_id="manual", kind="job", auto_queue=auto_queue)
         key = find_key(url, row["title"], "", "manual")
         stored = self.find(key)
         if stored is not None and problem:

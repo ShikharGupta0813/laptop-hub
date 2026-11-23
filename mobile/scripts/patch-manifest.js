@@ -60,6 +60,19 @@ const components = [
 `,
   },
 ];
+// Share > REDLINE: ACTION_SEND text/plain on the main activity (handled in MainActivity.java / ShareIn.java).
+if (!xml.includes("android.intent.action.SEND")) {
+  const anchor = /([ \t]*)<\/activity>/;
+  if (!anchor.test(xml)) throw new Error("AndroidManifest.xml has no </activity>");
+  xml = xml.replace(anchor, `$1    <!-- Share > REDLINE: a job shared as text from another app. Text only, never files. -->
+$1    <intent-filter>
+$1        <action android:name="android.intent.action.SEND" />
+$1        <category android:name="android.intent.category.DEFAULT" />
+$1        <data android:mimeType="text/plain" />
+$1    </intent-filter>
+$1</activity>`);
+  changed = true;
+}
 for (const c of components) {
   if (!xml.includes(`"${c.marker}"`)) {
     if (!xml.includes("</application>")) throw new Error("AndroidManifest.xml has no </application>");

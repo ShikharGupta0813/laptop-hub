@@ -89,6 +89,7 @@ FEATURE_MODULES = FEATURE_MODULES + ("companyintel", "offers", "proposals")   # 
 FEATURE_MODULES = FEATURE_MODULES + ("replies", "jobinsights", "outreach")   # reply sorting, deeper job insights, batched personal outreach (docs/api/replies.md, jobinsights.md, outreach.md)
 FEATURE_MODULES = FEATURE_MODULES + ("ats", "resumes", "packet")   # ATS match score + resume read check, master resumes + batch tailoring queue, one-page application packet (docs/api/ats.md, resumes.md, packet.md)
 FEATURE_MODULES = FEATURE_MODULES + ("triage",)   # go / no-go label, ghost and lock flags, gig score for finds (docs/api/triage.md)
+FEATURE_MODULES = FEATURE_MODULES + ("sharein",)   # Share > REDLINE from the phone: shared job text becomes an opportunity with triage and ATS score (docs/api/sharein.md)
 INTERNAL_HOST = "hub.internal"  # the assistant's in-process calls
 
 
