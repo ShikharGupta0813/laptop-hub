@@ -238,6 +238,11 @@ class AlertPipelineTest(unittest.TestCase):
         self.client.__enter__()
         self.addCleanup(self.client.__exit__, None, None, None)
         self.client.post("/api/login", json={"token": TOKEN})
+        # The real laptop idle time would make presence say "at_laptop" (no phone speech) whenever someone is using this
+        # machine. This test is about the pipeline, so presence answers "speak as before"; presence has its own tests.
+        pin = mock.patch("hub.presence.alert_actions", return_value=None)
+        pin.start()
+        self.addCleanup(pin.stop)
 
     def test_urgent_alert_reaches_notifications_the_phone_voice_queue_and_proactive_log(self):
         r = self.client.post("/api/alerts/ingest", json={"source": "whatsapp", "title": "Boss", "sender": "Boss",

@@ -61,6 +61,7 @@ ALLOWED_KEYS = (*ALLOWED_KEYS, "jobtrack_enabled", "jobtrack_followup_days", "jo
 ALLOWED_KEYS = (*ALLOWED_KEYS, "companyintel_enabled", "companyintel_ai", "offers_enabled", "proposals_enabled")   # hub/companyintel.py, offers.py, proposals.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "jobdigest_enabled", "jobdigest_hour", "jobdigest_notify", "jobdigest_weekly_day", "jobdigest_nudge_days", "jobdigest_nudges")   # hub/jobdigest.py
 ALLOWED_KEYS = (*ALLOWED_KEYS, "replies_enabled", "replies_ai", "jobinsights_enabled", "outreach_enabled", "outreach_followup_days", "outreach_gap_seconds")   # hub/replies.py, jobinsights.py, outreach.py
+ALLOWED_KEYS = (*ALLOWED_KEYS, "sharein_enabled")   # hub/sharein.py
 # Never shown and never accepted here (named so the UI can say "edit hub.json by hand").
 LOCKED_KEYS = ("token_hash", "session_secret", "allowed_hosts", "allowed_origins", "scripts", "apps",
                "shells", "jarvis_dir", "session_generation", "council_dir", "council_python", "council_timeout_min",
@@ -215,6 +216,10 @@ def validate_patch(config, body: Any) -> tuple[dict[str, Any], bool]:
         elif key in ("autopilot_research", "today_enabled", "chat_history_enabled", "skills_enabled", "research_enabled", "brain_enabled", "brain_context", "proactive_enabled", "vision_enabled", "buildflow_enabled", "wake_laptop_enabled", "opps_enabled", "oppsources_enabled", "applyq_enabled", "gmail_company_ai_allowed", "formfill_enabled", "formfill_headed", "batches_enabled", "chatch_enabled", "chatch_email_parse", "jobtrack_enabled", "replies_enabled", "replies_ai", "jobinsights_enabled", "outreach_enabled", "triage_ai"):
             if not isinstance(value, bool):
                 raise HTTPException(400, f"{key} must be true or false.")
+            changes[key] = value
+        elif key == "sharein_enabled":
+            if not isinstance(value, bool):
+                raise HTTPException(400, "sharein_enabled must be true or false.")
             changes[key] = value
         elif key in ("tailor_enabled", "tailor_ai", "answerbank_enabled", "answerbank_embeddings"):
             if not isinstance(value, bool):
@@ -660,6 +665,7 @@ def make_router(ctx: Ctx, *, transport: httpx.AsyncBaseTransport | None = None) 
             "offers_enabled": config.offers_enabled is not False, "proposals_enabled": config.proposals_enabled is not False,
             "jobtrack_enabled": config.jobtrack_enabled is not False, "jobtrack_followup_days": config.jobtrack_followup_days,
             "jobtrack_ghost_days": config.jobtrack_ghost_days,
+            "sharein_enabled": config.sharein_enabled is not False,
             "replies_enabled": config.replies_enabled is not False, "replies_ai": config.replies_ai is True,
             "jobinsights_enabled": config.jobinsights_enabled is not False, "outreach_enabled": config.outreach_enabled is not False,
             "outreach_followup_days": config.outreach_followup_days, "outreach_gap_seconds": config.outreach_gap_seconds,

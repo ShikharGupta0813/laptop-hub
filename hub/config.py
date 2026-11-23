@@ -273,6 +273,8 @@ class Config:
     jobdigest_weekly_day: int = 6                # weekly review day: Monday is 0, Sunday is 6
     jobdigest_nudge_days: int = 7                # days without a reply before a follow-up nudge
     jobdigest_nudges: bool = True                # follow-up and thank-you reminders with a draft ready
+    # Share to REDLINE (hub/sharein.py): Share > REDLINE from another app on the phone becomes an opportunity. Nothing is sent or queued by it.
+    sharein_enabled: bool = True
 
     def data_path(self) -> Path:
         """Where Learn and English keep their history (quiz results, vocabulary...)."""
@@ -429,6 +431,7 @@ def save(config: Config, path: Path) -> None:
         "outreach_followup_days": int(config.outreach_followup_days or 5), "outreach_gap_seconds": int(config.outreach_gap_seconds),
         "jobdigest_enabled": config.jobdigest_enabled is not False, "jobdigest_hour": int(config.jobdigest_hour), "jobdigest_notify": config.jobdigest_notify is not False,
         "jobdigest_weekly_day": int(config.jobdigest_weekly_day), "jobdigest_nudge_days": int(config.jobdigest_nudge_days), "jobdigest_nudges": config.jobdigest_nudges is not False,
+        "sharein_enabled": config.sharein_enabled is not False,
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
